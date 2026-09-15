@@ -62,8 +62,22 @@ en viñetas dentro del mismo README, justificando por qué no llevan
 
 ## Estado del proyecto
 
-MVP en construcción — arquitectura y stack ya decididos (ver `docs/adr/`),
-código de negocio aún no implementado (solo scaffolding: entrypoints,
-esquema de base de datos, apps Flutter vacías). `go`, `flutter` y `docker`
-no están instalados en la máquina donde se generó este scaffolding —
-instálalos antes de correr nada (ver `backend/README.md`).
+MVP en construcción — arquitectura y stack decididos (ver `docs/adr/`).
+
+- **`admin/`**: primer walking skeleton implementado — login
+  (`docs/feature/login-administrativo/`) y panel principal con listado de
+  Clientes respetando jerarquía (`docs/feature/panel-principal-admin/`),
+  con sistema de diseño propio (`docs/adr/0007-custom-design-system-koons-tokens.md`).
+  Corre contra repositorios *fake* en memoria (no contra el backend real
+  todavía) — ver la nota de alcance en cada feature doc.
+- **`backend/`**: solo scaffolding (entrypoints, esquema de base de datos,
+  seed de prueba) — sin casos de uso reales implementados aún. Bloqueado
+  para desarrollo real por la falta de Postgres local (ver siguiente
+  punto).
+- **`cardholder/`**: solo scaffolding, sin pantallas implementadas.
+
+**Entorno de desarrollo (en la máquina donde se hizo este trabajo):** Go y
+Flutter instalados en `/usr/local/{go,flutter}`. **Docker no está
+instalado todavía** — es necesario para levantar Postgres local (ver
+`backend/README.md`) antes de implementar el backend real y reemplazar los
+repositorios fake de `admin/`.

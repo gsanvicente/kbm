@@ -64,3 +64,15 @@ una acción vía autoservicio.
 **Mitigación de diseño:** `.env` gitignored, `.env.example` solo con
 placeholders, `backend/scripts/init-db/001_seed.sql` explícitamente
 marcado como solo-local.
+
+## 8. Dependencias de terceros en runtime (frontend)
+**Riesgo:** un paquete de UI descarga recursos externos en tiempo de
+ejecución (ej. `google_fonts` obtiene el archivo de la tipografía Inter
+desde una CDN de Google en el primer arranque) — superficie de red
+adicional, y un punto de falla si esa CDN no es alcanzable en el entorno
+de despliegue.
+**Mitigación de diseño (pendiente de implementar):** vendorizar las
+fuentes como asset local antes de producción/auditoría — ver
+`admin/docs/tdr/0001-google-fonts-typography.md` y
+`docs/adr/0007-custom-design-system-koons-tokens.md`. No cerrar esta
+auditoría de seguridad sin resolver este punto.
