@@ -1,0 +1,26 @@
+name: admin-ci
+
+on:
+  pull_request:
+    paths:
+      - 'admin/**'
+  push:
+    branches: [main]
+    paths:
+      - 'admin/**'
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test

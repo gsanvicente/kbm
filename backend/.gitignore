@@ -1,0 +1,16 @@
+# Binaries
+/bin/
+/dist/
+
+# Env
+.env
+*.env.local
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Go
+*.test
+*.out

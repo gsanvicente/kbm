@@ -1,0 +1,26 @@
+name: cardholder-ci
+
+on:
+  pull_request:
+    paths:
+      - 'cardholder/**'
+  push:
+    branches: [main]
+    paths:
+      - 'cardholder/**'
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cardholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test

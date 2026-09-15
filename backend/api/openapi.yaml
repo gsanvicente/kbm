@@ -1,0 +1,19 @@
+openapi: 3.0.3
+info:
+  title: KBM API
+  version: 0.1.0
+  description: >
+    Koons Balance Management API. Source of truth for the contract between
+    the Go backend and the Flutter clients (kbm-admin, kbm-cardholder).
+    Extended as each use case is implemented — kept in sync with
+    internal/adapters/http/handler.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+paths:
+  /healthz:
+    get:
+      summary: Liveness check
+      responses:
+        '200':
+          description: OK

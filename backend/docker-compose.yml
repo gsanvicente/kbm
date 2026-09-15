@@ -1,0 +1,27 @@
+# Local development only. The app itself (cmd/api, cmd/worker) runs natively
+# on the host (`make run`) — only Postgres is containerized here. Mounting
+# migrations/ and scripts/init-db/ as individual files (not whole
+# directories) lets us control execution order via the mapped filename,
+# since Postgres runs /docker-entrypoint-initdb.d/* alphabetically.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kbm-postgres
+    environment:
+      POSTGRES_USER: kbm
+      POSTGRES_PASSWORD: kbm
+      POSTGRES_DB: kbm
+    ports:
+      - "5432:5432"
+    volumes:
+      - kbm_postgres_data:/var/lib/postgresql/data
+      - ./migrations/0001_init.sql:/docker-entrypoint-initdb.d/0001_init.sql:ro
+      - ./scripts/init-db/001_seed.sql:/docker-entrypoint-initdb.d/0002_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kbm -d kbm"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  kbm_postgres_data:
