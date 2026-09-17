@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../features/auth/fake_auth_repository.dart';
 import '../features/auth/login_screen.dart';
+import '../features/cardholders/fake_cardholder_repository.dart';
 import '../features/clients/fake_client_repository.dart';
 import 'admin_shell.dart';
 import 'auth_controller.dart';
@@ -21,6 +22,7 @@ class _KbmAdminAppState extends State<KbmAdminApp> {
   // swapping these for the real HTTP-backed repositories.
   late final _authController = AuthController(FakeAuthRepository());
   final _clientRepository = FakeClientRepository();
+  final _cardholderRepository = FakeCardholderRepository();
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +40,7 @@ class _KbmAdminAppState extends State<KbmAdminApp> {
           return AdminShell(
             session: session,
             clientRepository: _clientRepository,
+            cardholderRepository: _cardholderRepository,
             authController: _authController,
           );
         },

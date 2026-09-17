@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../core/models/session.dart';
-import '../features/clients/client_list_view.dart';
+import '../features/cardholders/cardholder_repository.dart';
+import '../features/cardholders/tarjetahabientes_section.dart';
 import '../features/clients/client_repository.dart';
+import '../features/clients/clientes_section.dart';
 import 'auth_controller.dart';
 import 'theme.dart';
 
@@ -39,7 +41,6 @@ extension on _Section {
     }
   }
 
-  bool get isImplemented => this == _Section.clientes;
 }
 
 class AdminShell extends StatefulWidget {
@@ -47,11 +48,13 @@ class AdminShell extends StatefulWidget {
     super.key,
     required this.session,
     required this.clientRepository,
+    required this.cardholderRepository,
     required this.authController,
   });
 
   final Session session;
   final ClientRepository clientRepository;
+  final CardholderRepository cardholderRepository;
   final AuthController authController;
 
   @override
@@ -99,13 +102,24 @@ class _AdminShellState extends State<AdminShell> {
   }
 
   Widget _buildBody() {
-    if (!_selected.isImplemented) {
-      return _EmptySectionPlaceholder(label: _selected.label);
+    switch (_selected) {
+      case _Section.clientes:
+        return ClientesSection(
+          session: widget.session,
+          clientRepository: widget.clientRepository,
+          cardholderRepository: widget.cardholderRepository,
+        );
+      case _Section.tarjetahabientes:
+        return TarjetahabientesSection(
+          session: widget.session,
+          clientRepository: widget.clientRepository,
+          cardholderRepository: widget.cardholderRepository,
+        );
+      case _Section.tarjetas:
+      case _Section.operaciones:
+      case _Section.aprobaciones:
+        return _EmptySectionPlaceholder(label: _selected.label);
     }
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: ClientListView(repository: widget.clientRepository, session: widget.session),
-    );
   }
 }
 

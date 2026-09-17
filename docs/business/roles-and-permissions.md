@@ -27,6 +27,23 @@ Cuando un Cliente tiene empresas hijas (ver
   `backend/internal/application/ports/doc.go`) y Row-Level Security en
   Postgres.
 
+## Gestión de Tarjetahabientes (editar / desactivar)
+
+Distinto de "ver" (todos los roles de staff pueden ver tarjetahabientes
+dentro de su alcance): **editar información** (nombre, documento,
+contacto) o **desactivar/reactivar** un tarjetahabiente está limitado a:
+
+- **Super Admin** y **Admin Cliente** — coherente con que Admin Cliente ya
+  tiene "gestionar tarjetahabientes" en su alcance en la tabla de arriba.
+- **Operador** y **Auditor NO pueden** — el Operador gestiona *saldos*
+  (operaciones de tarjeta), no el perfil del tarjetahabiente; el Auditor
+  es de solo lectura por definición.
+
+Desactivar un tarjetahabiente **no** requiere aprobación (no es una
+`balance_operation`, no mueve dinero) — es una acción directa sujeta solo
+al chequeo de rol de arriba. Ver
+`docs/feature/detalle-y-gestion-tarjetahabiente/`.
+
 ## Plano de autoservicio (Tarjetahabiente)
 
 Identidad completamente separada de los roles de staff (`cardholder_users`

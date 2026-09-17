@@ -12,6 +12,7 @@ CREATE TYPE card_status AS ENUM ('active', 'blocked', 'frozen', 'cancelled');
 CREATE TYPE ledger_entry_type AS ENUM ('debit', 'credit');
 CREATE TYPE operation_type AS ENUM ('load', 'debit', 'transfer', 'block', 'unblock');
 CREATE TYPE operation_status AS ENUM ('pending_approval', 'approved', 'rejected', 'executed', 'failed');
+CREATE TYPE id_document_type AS ENUM ('INE', 'pasaporte', 'cedula_profesional');
 
 -- Clients (empresas), self-referencing for parent/child company groups.
 CREATE TABLE clients (
@@ -48,13 +49,31 @@ CREATE TABLE users (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- KYC/PLD fields (curp, rfc, domicilio, id_politically_exposed) hold
+-- sensitive personal data regulated under Mexico's LFPDPPP, not just
+-- generic PII — see docs/business/kyc-tarjetahabiente.md and
+-- docs/security/data-classification.md before adding new consumers of
+-- this table (exports, reports, logs).
 CREATE TABLE cardholders (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id uuid NOT NULL REFERENCES clients(id),
     full_name text NOT NULL,
-    document_id text NOT NULL,
+    id_document_type id_document_type NOT NULL DEFAULT 'INE',
+    id_document_number text NOT NULL,
+    curp text,
+    rfc text,
+    date_of_birth date,
+    nationality text DEFAULT 'Mexicana',
+    address_street text,
+    address_neighborhood text,
+    address_city text,
+    address_state text,
+    address_postal_code text,
+    address_country text DEFAULT 'México',
+    is_politically_exposed boolean NOT NULL DEFAULT false,
     email citext,
     phone text,
+    is_active boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );

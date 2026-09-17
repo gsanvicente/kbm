@@ -6,10 +6,16 @@ import '../../core/models/session.dart';
 import 'client_repository.dart';
 
 class ClientListView extends StatefulWidget {
-  const ClientListView({super.key, required this.repository, required this.session});
+  const ClientListView({
+    super.key,
+    required this.repository,
+    required this.session,
+    this.onSelect,
+  });
 
   final ClientRepository repository;
   final Session session;
+  final ValueChanged<Client>? onSelect;
 
   @override
   State<ClientListView> createState() => _ClientListViewState();
@@ -46,6 +52,7 @@ class _ClientListViewState extends State<ClientListView> {
             final isGroup = client.parentClientId == null &&
                 clients.any((c) => c.parentClientId == client.id);
             return ListTile(
+              onTap: widget.onSelect != null ? () => widget.onSelect!(client) : null,
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               leading: Container(
                 width: 40,

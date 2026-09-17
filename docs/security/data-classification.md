@@ -5,7 +5,9 @@
 | Dato | Clasificación | Notas |
 |---|---|---|
 | PAN de tarjeta | **Fuera de alcance** | KBM solo almacena `masked_pan` (ej. `**** **** **** 1234`). El PAN real vive en el procesador de tarjetas externo, nunca en la base de datos de KBM. Ver `compliance-notes.md`. |
-| `document_id` (cédula/identificación) del Tarjetahabiente | Sensible (PII) | Requiere las mismas protecciones de acceso que cualquier dato personal identificable. |
+| `curp`, `rfc`, tipo/número de identificación oficial del Tarjetahabiente | **Sensible (PII regulada — LFPDPPP)** | Datos personales de identificación bajo la ley mexicana de protección de datos. Mismo nivel de protección que credenciales: nunca en logs, nunca en exports sin control de acceso. Ver `docs/business/kyc-tarjetahabiente.md`. |
+| Domicilio y fecha de nacimiento del Tarjetahabiente | Sensible (PII) | Requisito de KYC ("comprobante de domicilio"), no dato de contacto genérico — mismo nivel que CURP/RFC. |
+| `is_politically_exposed` (PEP) | Sensible (PII de cumplimiento) | Dato de perfil PLD/AML — su exposición indebida puede ser tan dañina como la del propio CURP; no incluir en exports/reportes sin necesidad justificada. |
 | Saldos y movimientos (`ledger_entries`) | Confidencial / financiero | Append-only por diseño (ver threat-model.md, punto 3). |
 | `password_hash` (staff y cardholder) | Secreto | Nunca en texto plano, nunca en logs. Hashing vía bcrypt (`pgcrypto` en local; el backend real usa la misma familia de algoritmo). |
 | `audit_log` | Integridad crítica | Debe tratarse como append-only igual que el ledger — es la evidencia ante un incidente o auditoría. |
