@@ -19,3 +19,19 @@ Característica: Listado global de Tarjetahabientes
     Cuando entro a "Tarjetahabientes" desde el menú principal
     Entonces solo veo tarjetahabientes de "Koons Subsidiaria A"
     Y no veo tarjetahabientes de "Koons Subsidiaria B"
+
+  Escenario: Filtrar el listado por Empresa
+    Dado que inicié sesión como Super Admin en "Tarjetahabientes"
+    Cuando selecciono "Koons Subsidiaria B" en el filtro de Empresa
+    Entonces solo veo tarjetahabientes de "Koons Subsidiaria B"
+
+  Escenario: El filtro de Empresa no aparece si solo hay un Cliente accesible
+    Dado que inicié sesión como Admin Cliente de "Koons Subsidiaria A"
+    Cuando entro a "Tarjetahabientes" desde el menú principal
+    Entonces no veo el filtro de Empresa
+
+  Escenario: Buscar un tarjetahabiente por nombre
+    Dado que inicié sesión como Super Admin en "Tarjetahabientes"
+    Cuando escribo "Maria" en el buscador de nombre
+    Y selecciono "Maria Gomez" de las sugerencias
+    Entonces solo veo a "Maria Gomez" en el listado

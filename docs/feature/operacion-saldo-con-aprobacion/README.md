@@ -37,6 +37,17 @@ operaciones.
 Ver `docs/business/approval-policy.md` y
 `docs/business/roles-and-permissions.md` — no se repiten aquí.
 
+## Nota — relación con la implementación real de bloqueo/desbloqueo
+Este documento describe el modelo completo (backend real, ledger,
+`pending_approval`, cola de Aprobaciones) — sigue siendo el diseño
+objetivo, no se ha implementado. La primera pieza real de "Operaciones de
+saldo" que sí se construyó (`docs/feature/bloqueo-de-tarjeta/`) es una
+versión simplificada: acción directa en `admin/` contra un repositorio
+fake, sin flujo de aprobación todavía, precisamente porque construirlo
+completo (según este documento) requiere backend real y la cola de
+Aprobaciones, que aún no existen. No hay contradicción: es una iteración
+intermedia hacia este diseño, no el diseño final.
+
 ## Casos borde / fuera de alcance
 - Qué pasa si el Cliente dueño de la tarjeta no tiene ningún Admin Cliente
   activo (¿escala al Admin de la empresa padre?) — **pendiente de

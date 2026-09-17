@@ -44,6 +44,15 @@ Desactivar un tarjetahabiente **no** requiere aprobación (no es una
 al chequeo de rol de arriba. Ver
 `docs/feature/detalle-y-gestion-tarjetahabiente/`.
 
+## Gestión de Tarjetas (asignar del pool de disponibles)
+
+Mismo criterio que la gestión de Tarjetahabientes: **Super Admin** y
+**Admin Cliente** pueden asignar una tarjeta disponible a un
+Tarjetahabiente; Operador y Auditor solo ven el estado de las tarjetas.
+Ver `docs/business/tarjetas-y-asignacion.md` para el ciclo de vida
+completo y el límite configurable de tarjetas activas por
+Tarjetahabiente.
+
 ## Plano de autoservicio (Tarjetahabiente)
 
 Identidad completamente separada de los roles de staff (`cardholder_users`

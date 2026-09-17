@@ -8,11 +8,13 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "citext";
 
 CREATE TYPE user_role AS ENUM ('super_admin', 'client_admin', 'operator', 'auditor');
-CREATE TYPE card_status AS ENUM ('active', 'blocked', 'frozen', 'cancelled');
+CREATE TYPE card_status AS ENUM ('unassigned', 'active', 'blocked', 'frozen', 'cancelled');
+CREATE TYPE card_network AS ENUM ('visa', 'mastercard');
 CREATE TYPE ledger_entry_type AS ENUM ('debit', 'credit');
 CREATE TYPE operation_type AS ENUM ('load', 'debit', 'transfer', 'block', 'unblock');
 CREATE TYPE operation_status AS ENUM ('pending_approval', 'approved', 'rejected', 'executed', 'failed');
 CREATE TYPE id_document_type AS ENUM ('INE', 'pasaporte', 'cedula_profesional');
+CREATE TYPE claim_status AS ENUM ('open', 'in_review', 'resolved_favor', 'rejected');
 
 -- Clients (empresas), self-referencing for parent/child company groups.
 CREATE TABLE clients (
@@ -90,13 +92,31 @@ CREATE TABLE cardholder_users (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- A card is always created for a specific Cliente but can start out
+-- unassigned (cardholder_id null) — the "pool" of available cards. Its
+-- ledger_account is created only at assignment time, not before — see
+-- docs/business/tarjetas-y-asignacion.md.
 CREATE TABLE cards (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id uuid NOT NULL REFERENCES clients(id),
-    cardholder_id uuid NOT NULL REFERENCES cardholders(id),
+    cardholder_id uuid REFERENCES cardholders(id),
     external_processor_ref text,
     masked_pan text NOT NULL,
-    status card_status NOT NULL DEFAULT 'active',
+    network card_network NOT NULL DEFAULT 'visa',
+    expiry_month smallint NOT NULL CHECK (expiry_month BETWEEN 1 AND 12),
+    expiry_year smallint NOT NULL,
+    status card_status NOT NULL DEFAULT 'unassigned',
+    assigned_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK ((cardholder_id IS NULL) = (assigned_at IS NULL))
+);
+
+-- Per-Cliente configuration — same pattern as approval_rules. NULL means
+-- no limit. Counts only active cards (docs/business/tarjetas-y-asignacion.md).
+CREATE TABLE client_settings (
+    client_id uuid PRIMARY KEY REFERENCES clients(id),
+    max_active_cards_per_cardholder int,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -105,7 +125,7 @@ CREATE TABLE ledger_accounts (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id uuid NOT NULL REFERENCES clients(id),
     card_id uuid NOT NULL UNIQUE REFERENCES cards(id),
-    currency char(3) NOT NULL DEFAULT 'USD',
+    currency char(3) NOT NULL DEFAULT 'MXN',
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -119,6 +139,7 @@ CREATE TABLE ledger_entries (
     entry_type ledger_entry_type NOT NULL,
     amount numeric(18,2) NOT NULL CHECK (amount > 0),
     balance_after numeric(18,2) NOT NULL,
+    description text,
     related_operation_id uuid,
     created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -132,6 +153,24 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER ledger_entries_no_update
     BEFORE UPDATE OR DELETE ON ledger_entries
     FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+
+-- A dispute over an already-executed movement — distinct from
+-- balance_operations (which is pre-execution, approval-gated). Never
+-- mutates ledger_entries; see docs/business/reclamos-de-movimientos.md.
+-- 1:1 with the movement it's about.
+CREATE TABLE movement_claims (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id uuid NOT NULL REFERENCES clients(id),
+    ledger_entry_id uuid NOT NULL UNIQUE REFERENCES ledger_entries(id),
+    reason text NOT NULL,
+    status claim_status NOT NULL DEFAULT 'open',
+    requested_by uuid NOT NULL REFERENCES users(id),
+    resolved_by uuid REFERENCES users(id),
+    resolution_notes text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    resolved_at timestamptz,
+    CHECK ((status IN ('resolved_favor', 'rejected')) = (resolved_by IS NOT NULL AND resolved_at IS NOT NULL))
+);
 
 CREATE TABLE approval_rules (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -184,7 +223,9 @@ CREATE TABLE audit_log (
 CREATE INDEX ON cardholders (client_id);
 CREATE INDEX ON cards (client_id);
 CREATE INDEX ON cards (cardholder_id);
+CREATE INDEX ON cards (client_id, status);
 CREATE INDEX ON ledger_entries (ledger_account_id);
+CREATE INDEX ON movement_claims (status);
 CREATE INDEX ON balance_operations (client_id, status);
 CREATE INDEX ON audit_log (entity_type, entity_id);
 
@@ -198,3 +239,5 @@ ALTER TABLE ledger_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ledger_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE balance_operations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE approval_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE client_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE movement_claims ENABLE ROW LEVEL SECURITY;

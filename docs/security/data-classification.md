@@ -4,7 +4,8 @@
 
 | Dato | Clasificación | Notas |
 |---|---|---|
-| PAN de tarjeta | **Fuera de alcance** | KBM solo almacena `masked_pan` (ej. `**** **** **** 1234`). El PAN real vive en el procesador de tarjetas externo, nunca en la base de datos de KBM. Ver `compliance-notes.md`. |
+| PAN de tarjeta, CVV | **Fuera de alcance** | KBM solo almacena `masked_pan` (ej. `**** **** **** 1234`). El PAN real y el CVV viven en el procesador de tarjetas externo, nunca en la base de datos de KBM. Ver `compliance-notes.md`. |
+| Red (Visa/Mastercard), vigencia (mes/año), estado, fecha de asignación de la Tarjeta | Operacional | No reconstruye una tarjeta funcional por sí solo (sin PAN completo ni CVV) — control de acceso estándar, no requiere el mismo nivel que CURP/RFC. Ver `docs/business/tarjetas-y-asignacion.md`. |
 | `curp`, `rfc`, tipo/número de identificación oficial del Tarjetahabiente | **Sensible (PII regulada — LFPDPPP)** | Datos personales de identificación bajo la ley mexicana de protección de datos. Mismo nivel de protección que credenciales: nunca en logs, nunca en exports sin control de acceso. Ver `docs/business/kyc-tarjetahabiente.md`. |
 | Domicilio y fecha de nacimiento del Tarjetahabiente | Sensible (PII) | Requisito de KYC ("comprobante de domicilio"), no dato de contacto genérico — mismo nivel que CURP/RFC. |
 | `is_politically_exposed` (PEP) | Sensible (PII de cumplimiento) | Dato de perfil PLD/AML — su exposición indebida puede ser tan dañina como la del propio CURP; no incluir en exports/reportes sin necesidad justificada. |

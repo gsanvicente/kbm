@@ -1,50 +1,66 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/cardholder.dart';
+import '../../core/models/payment_card.dart';
 import '../../core/models/session.dart';
 import '../../shared_widgets/breadcrumb_bar.dart';
+import '../cards/card_detail_view.dart';
+import '../cards/card_repository.dart';
 import '../clients/client_repository.dart';
+import '../ledger/ledger_repository.dart';
 import 'cardholder_detail_view.dart';
 import 'cardholder_repository.dart';
 import 'global_cardholder_list_view.dart';
 
 /// Owns the drill-down state for the top-level "Tarjetahabientes" nav
 /// section: global list (across every Cliente accessible to the user) →
-/// detalle de un Tarjetahabiente. See
-/// docs/feature/listado-global-tarjetahabientes/.
+/// detalle de un Tarjetahabiente → detalle de una de sus Tarjetas. See
+/// docs/feature/listado-global-tarjetahabientes/ and
+/// docs/feature/tarjetas-de-tarjetahabiente/.
 class TarjetahabientesSection extends StatefulWidget {
   const TarjetahabientesSection({
     super.key,
     required this.session,
     required this.clientRepository,
     required this.cardholderRepository,
+    required this.cardRepository,
+    required this.ledgerRepository,
   });
 
   final Session session;
   final ClientRepository clientRepository;
   final CardholderRepository cardholderRepository;
+  final CardRepository cardRepository;
+  final LedgerRepository ledgerRepository;
 
   @override
   State<TarjetahabientesSection> createState() => _TarjetahabientesSectionState();
 }
 
 class _TarjetahabientesSectionState extends State<TarjetahabientesSection> {
-  Cardholder? _selected;
+  Cardholder? _selectedCardholder;
   String? _selectedClientName;
+  PaymentCard? _selectedCard;
 
   @override
   Widget build(BuildContext context) {
-    final selected = _selected;
+    final cardholder = _selectedCardholder;
+    final card = _selectedCard;
 
     final breadcrumbItems = <BreadcrumbItem>[
       BreadcrumbItem(
         'Tarjetahabientes',
-        onTap: selected != null ? () => setState(() {
-          _selected = null;
-          _selectedClientName = null;
-        }) : null,
+        onTap: cardholder != null
+            ? () => setState(() {
+                  _selectedCardholder = null;
+                  _selectedClientName = null;
+                  _selectedCard = null;
+                })
+            : null,
       ),
-      if (selected != null) BreadcrumbItem(selected.fullName),
+      if (cardholder != null)
+        BreadcrumbItem(cardholder.fullName, onTap: card != null ? () => setState(() => _selectedCard = null) : null),
+      if (card != null) BreadcrumbItem(card.maskedPan),
     ];
 
     return Column(
@@ -57,26 +73,44 @@ class _TarjetahabientesSectionState extends State<TarjetahabientesSection> {
         Expanded(
           child: Card(
             clipBehavior: Clip.antiAlias,
-            child: selected != null
-                ? CardholderDetailView(
-                    cardholder: selected,
-                    clientName: _selectedClientName ?? '—',
-                    repository: widget.cardholderRepository,
-                    session: widget.session,
-                    onChanged: (updated) => setState(() => _selected = updated),
-                  )
-                : GlobalCardholderListView(
-                    session: widget.session,
-                    clientRepository: widget.clientRepository,
-                    cardholderRepository: widget.cardholderRepository,
-                    onSelect: (cardholder, clientName) => setState(() {
-                      _selected = cardholder;
-                      _selectedClientName = clientName;
-                    }),
-                  ),
+            child: _buildBody(cardholder, card),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildBody(Cardholder? cardholder, PaymentCard? card) {
+    if (card != null && cardholder != null) {
+      return CardDetailView(
+        card: card,
+        cardholderName: cardholder.fullName,
+        cardRepository: widget.cardRepository,
+        cardholderRepository: widget.cardholderRepository,
+        ledgerRepository: widget.ledgerRepository,
+        session: widget.session,
+        onChanged: (updated) => setState(() => _selectedCard = updated),
+      );
+    }
+    if (cardholder != null) {
+      return CardholderDetailView(
+        cardholder: cardholder,
+        clientName: _selectedClientName ?? '—',
+        repository: widget.cardholderRepository,
+        cardRepository: widget.cardRepository,
+        session: widget.session,
+        onChanged: (updated) => setState(() => _selectedCardholder = updated),
+        onSelectCard: (selected) => setState(() => _selectedCard = selected),
+      );
+    }
+    return GlobalCardholderListView(
+      session: widget.session,
+      clientRepository: widget.clientRepository,
+      cardholderRepository: widget.cardholderRepository,
+      onSelect: (selected, clientName) => setState(() {
+        _selectedCardholder = selected;
+        _selectedClientName = clientName;
+      }),
     );
   }
 }

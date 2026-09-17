@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../core/models/session.dart';
 import '../features/cardholders/cardholder_repository.dart';
 import '../features/cardholders/tarjetahabientes_section.dart';
+import '../features/cards/card_repository.dart';
+import '../features/cards/tarjetas_section.dart';
 import '../features/clients/client_repository.dart';
+import '../features/ledger/ledger_repository.dart';
 import '../features/clients/clientes_section.dart';
 import 'auth_controller.dart';
 import 'theme.dart';
@@ -49,12 +52,16 @@ class AdminShell extends StatefulWidget {
     required this.session,
     required this.clientRepository,
     required this.cardholderRepository,
+    required this.cardRepository,
+    required this.ledgerRepository,
     required this.authController,
   });
 
   final Session session;
   final ClientRepository clientRepository;
   final CardholderRepository cardholderRepository;
+  final CardRepository cardRepository;
+  final LedgerRepository ledgerRepository;
   final AuthController authController;
 
   @override
@@ -108,14 +115,25 @@ class _AdminShellState extends State<AdminShell> {
           session: widget.session,
           clientRepository: widget.clientRepository,
           cardholderRepository: widget.cardholderRepository,
+          cardRepository: widget.cardRepository,
+          ledgerRepository: widget.ledgerRepository,
         );
       case _Section.tarjetahabientes:
         return TarjetahabientesSection(
           session: widget.session,
           clientRepository: widget.clientRepository,
           cardholderRepository: widget.cardholderRepository,
+          cardRepository: widget.cardRepository,
+          ledgerRepository: widget.ledgerRepository,
         );
       case _Section.tarjetas:
+        return TarjetasSection(
+          session: widget.session,
+          clientRepository: widget.clientRepository,
+          cardholderRepository: widget.cardholderRepository,
+          cardRepository: widget.cardRepository,
+          ledgerRepository: widget.ledgerRepository,
+        );
       case _Section.operaciones:
       case _Section.aprobaciones:
         return _EmptySectionPlaceholder(label: _selected.label);
@@ -249,7 +267,13 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Flexible(
+          // Expanded (not Flexible+Spacer) so the title alone absorbs all
+          // leftover space — a loose Flexible here competed with Spacer
+          // for an even flex share, leaving unclaimed space stranded past
+          // the logout icon instead of pinning the trailing block to the
+          // true right edge. That leftover varied with the title's own
+          // width, which is why the block visibly shifted per screen.
+          Expanded(
             child: Text(
               title,
               overflow: TextOverflow.ellipsis,
@@ -259,7 +283,6 @@ class _TopBar extends StatelessWidget {
                   ?.copyWith(fontWeight: FontWeight.w600, color: KoonsColors.navy),
             ),
           ),
-          const Spacer(),
           CircleAvatar(
             radius: 15,
             backgroundColor: KoonsColors.blue,
@@ -269,7 +292,16 @@ class _TopBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Flexible(
+          // A plain ConstrainedBox, not Flexible — a second flex
+          // participant here competed with the title's Expanded for the
+          // same leftover space (same bug class as the earlier
+          // Flexible+Spacer title issue). Since it's loose fit and this
+          // text rarely needs its full share, the unclaimed remainder
+          // ended up stranded past the logout icon instead of at the true
+          // right edge. This only needs a sane max width for pathologically
+          // long emails, not a share of the row's free space.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 220),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -289,10 +321,18 @@ class _TopBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 16),
+          // IconButton's default 48x48 tap target adds a lot of invisible
+          // padding around the icon — against the container's 24px inset,
+          // that made the whole trailing block look like it stopped well
+          // short of the true right edge instead of hugging it. Tightened
+          // to match the visual rhythm of the rest of the bar.
           IconButton(
             icon: const Icon(Icons.logout_rounded, size: 20),
             tooltip: 'Cerrar sesión',
             onPressed: onLogout,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            visualDensity: VisualDensity.compact,
           ),
         ],
       ),

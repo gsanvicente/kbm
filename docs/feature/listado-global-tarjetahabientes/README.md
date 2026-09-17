@@ -24,7 +24,16 @@ Repositorio fake, mismo dataset que las demás features de tarjetahabiente.
 2. Ve una lista de todos los tarjetahabientes de los Clientes dentro de su
    alcance (misma regla de jerarquía que `panel-principal-admin`), con una
    columna/etiqueta indicando a qué Cliente pertenece cada uno.
-3. Al hacer clic en uno, se abre su detalle — ver
+3. Puede acotar el listado con los mismos dos filtros, mismo componente
+   reutilizable que `docs/feature/pool-y-asignacion-de-tarjetas/` (son
+   filtros de cliente, nunca cambian qué tarjetahabientes están dentro de
+   su alcance):
+   - **Empresa** (multiselección, combo con casillas) — oculto si el
+     usuario solo tiene acceso a un Cliente.
+   - **Nombre**: cuadro de búsqueda con autocompletar — al elegir una
+     sugerencia, el listado se acota a esa persona exacta.
+   - Un botón "Limpiar filtros" aparece cuando hay alguno activo.
+4. Al hacer clic en uno, se abre su detalle — ver
    `docs/feature/detalle-y-gestion-tarjetahabiente/`.
 
 ## Reglas de negocio
@@ -33,9 +42,8 @@ unión de los tarjetahabientes de cada Cliente accesible (ver
 `docs/business/roles-and-permissions.md`).
 
 ## Casos borde / fuera de alcance
-- Buscar/filtrar por nombre o documento: fuera de alcance de esta
-  iteración (se agregará cuando el listado crezca lo suficiente para
-  necesitarlo).
+- Filtrar/buscar por documento (CURP, INE, RFC): fuera de alcance — el
+  buscador de esta iteración solo indexa el nombre completo.
 
 ## Criterios de aceptación
 Ver `acceptance.feature`.

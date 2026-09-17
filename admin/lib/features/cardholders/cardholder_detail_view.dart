@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../core/models/cardholder.dart';
 import '../../core/models/id_document_type.dart';
+import '../../core/models/payment_card.dart';
 import '../../core/models/session.dart';
+import '../cards/card_list_view.dart';
+import '../cards/card_repository.dart';
 import 'cardholder_repository.dart';
 
 class CardholderDetailView extends StatefulWidget {
@@ -12,19 +15,28 @@ class CardholderDetailView extends StatefulWidget {
     required this.cardholder,
     required this.clientName,
     required this.repository,
+    required this.cardRepository,
     required this.session,
     required this.onChanged,
+    this.onSelectCard,
   });
 
   final Cardholder cardholder;
   final String clientName;
   final CardholderRepository repository;
+  final CardRepository cardRepository;
   final Session session;
 
   /// Called after a successful edit/deactivate so the caller (list views)
   /// can refresh — the fake repository mutates its own in-memory list, but
   /// already-fetched Futures elsewhere won't see the change on their own.
   final ValueChanged<Cardholder> onChanged;
+
+  /// Tapping a card in the "Tarjetas" section bubbles up here — the
+  /// parent Section widget owns the whole breadcrumb chain (see
+  /// ClientesSection/TarjetahabientesSection), this view never navigates
+  /// on its own.
+  final ValueChanged<PaymentCard>? onSelectCard;
 
   @override
   State<CardholderDetailView> createState() => _CardholderDetailViewState();
@@ -159,6 +171,18 @@ class _CardholderDetailViewState extends State<CardholderDetailView> {
             title: 'Cumplimiento',
             children: [
               _InfoRow(label: 'Persona Políticamente Expuesta', value: c.isPoliticallyExposed ? 'Sí' : 'No'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _Section(
+            title: 'Tarjetas',
+            children: [
+              CardListView(
+                repository: widget.cardRepository,
+                cardholderId: c.id,
+                cardholderName: c.fullName,
+                onSelect: widget.onSelectCard,
+              ),
             ],
           ),
           if (!_canManage) ...[
