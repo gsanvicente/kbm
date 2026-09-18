@@ -94,12 +94,21 @@ INSERT INTO ledger_entries (id, client_id, ledger_account_id, entry_type, amount
 INSERT INTO movement_claims (id, client_id, ledger_entry_id, reason, status, requested_by) VALUES
     ('70000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000002', 'No reconozco este cargo.', 'in_review', '10000000-0000-0000-0000-000000000004');
 
--- Every client requires approval for transfers above 500, but not for loads.
+-- Every client requires approval for transfers above 500, but not for
+-- loads. Deliberately no rule for 'debit' anywhere — exercises the
+-- fail-safe default (no rule => requires approval), see
+-- docs/business/approval-policy.md.
 INSERT INTO approval_rules (client_id, operation_type, requires_approval, min_amount) VALUES
     ('00000000-0000-0000-0000-000000000002', 'transfer', true, 500.00),
     ('00000000-0000-0000-0000-000000000002', 'load', false, NULL),
     ('00000000-0000-0000-0000-000000000003', 'transfer', true, 500.00),
     ('00000000-0000-0000-0000-000000000003', 'load', false, NULL);
+
+-- Demo: Juan Perez's debit hits the fail-safe default above (no rule for
+-- 'debit' at Subsidiaria A => pending_approval), giving the Aprobaciones
+-- queue a real example to show on first load.
+INSERT INTO balance_operations (id, client_id, card_id, operation_type, amount, status, requested_by) VALUES
+    ('80000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000001', 'debit', 200.00, 'pending_approval', '10000000-0000-0000-0000-000000000004');
 
 -- Subsidiaria A is deliberately at capacity per-cardholder (1) to
 -- demonstrate the rejection path; Subsidiaria B has room (2) to

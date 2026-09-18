@@ -60,6 +60,27 @@ Features puramente visuales pueden quedarse con criterios de aceptación
 en viñetas dentro del mismo README, justificando por qué no llevan
 `.feature`.
 
+## Regla MUST: un conflicto con lo ya definido se pregunta, nunca se resuelve solo
+
+Si al implementar algo se detecta que la instrucción nueva contradice una
+regla de negocio, permiso o diseño ya documentado en `docs/` (no una
+ambigüedad — un conflicto real con algo que ya se decidió y quedó por
+escrito), **hay que parar, explicar el conflicto concretamente (qué dice
+hoy la documentación vs. qué se está pidiendo) y preguntar cuál de las
+dos versiones es la correcta antes de tocar código.** Nunca se asume
+silenciosamente que la instrucción nueva reemplaza la anterior, ni se
+mantiene la anterior ignorando la instrucción nueva.
+
+Ejemplo real que motivó esta regla (2026-09-19): `docs/business/roles-and-permissions.md`
+ya documentaba que el rol "Operador de Saldos" solicita Dispersión/
+Deducción/Transferencia — un cambio se implementó restringiendo esas
+acciones a Admin Cliente/Super Admin sin señalar la contradicción con lo
+ya escrito, y hubo que revertirlo. La señal de alerta a vigilar: antes de
+cambiar un `bool get can...` en `admin/lib/core/models/role.dart`, o
+cualquier regla similar, revisar si `docs/business/roles-and-permissions.md`
+ya dice algo distinto para ese rol — si lo dice, es motivo de pregunta,
+no de implementación directa.
+
 ## Estado del proyecto
 
 MVP en construcción — arquitectura y stack decididos (ver `docs/adr/`).

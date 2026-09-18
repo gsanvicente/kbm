@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../core/models/session.dart';
+import '../features/balance_operations/aprobaciones_section.dart';
+import '../features/balance_operations/balance_operation_repository.dart';
+import '../features/balance_operations/operaciones_de_saldo_section.dart';
 import '../features/cardholders/cardholder_repository.dart';
 import '../features/cardholders/tarjetahabientes_section.dart';
 import '../features/cards/card_repository.dart';
@@ -54,6 +57,7 @@ class AdminShell extends StatefulWidget {
     required this.cardholderRepository,
     required this.cardRepository,
     required this.ledgerRepository,
+    required this.balanceOperationRepository,
     required this.authController,
   });
 
@@ -62,6 +66,7 @@ class AdminShell extends StatefulWidget {
   final CardholderRepository cardholderRepository;
   final CardRepository cardRepository;
   final LedgerRepository ledgerRepository;
+  final BalanceOperationRepository balanceOperationRepository;
   final AuthController authController;
 
   @override
@@ -117,6 +122,7 @@ class _AdminShellState extends State<AdminShell> {
           cardholderRepository: widget.cardholderRepository,
           cardRepository: widget.cardRepository,
           ledgerRepository: widget.ledgerRepository,
+          balanceOperationRepository: widget.balanceOperationRepository,
         );
       case _Section.tarjetahabientes:
         return TarjetahabientesSection(
@@ -125,6 +131,7 @@ class _AdminShellState extends State<AdminShell> {
           cardholderRepository: widget.cardholderRepository,
           cardRepository: widget.cardRepository,
           ledgerRepository: widget.ledgerRepository,
+          balanceOperationRepository: widget.balanceOperationRepository,
         );
       case _Section.tarjetas:
         return TarjetasSection(
@@ -133,10 +140,26 @@ class _AdminShellState extends State<AdminShell> {
           cardholderRepository: widget.cardholderRepository,
           cardRepository: widget.cardRepository,
           ledgerRepository: widget.ledgerRepository,
+          balanceOperationRepository: widget.balanceOperationRepository,
         );
       case _Section.operaciones:
+        return OperacionesDeSaldoSection(
+          session: widget.session,
+          clientRepository: widget.clientRepository,
+          cardholderRepository: widget.cardholderRepository,
+          cardRepository: widget.cardRepository,
+          ledgerRepository: widget.ledgerRepository,
+          balanceOperationRepository: widget.balanceOperationRepository,
+        );
       case _Section.aprobaciones:
-        return _EmptySectionPlaceholder(label: _selected.label);
+        return AprobacionesSection(
+          session: widget.session,
+          clientRepository: widget.clientRepository,
+          cardholderRepository: widget.cardholderRepository,
+          cardRepository: widget.cardRepository,
+          ledgerRepository: widget.ledgerRepository,
+          balanceOperationRepository: widget.balanceOperationRepository,
+        );
     }
   }
 }
@@ -335,31 +358,6 @@ class _TopBar extends StatelessWidget {
             visualDensity: VisualDensity.compact,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _EmptySectionPlaceholder extends StatelessWidget {
-  const _EmptySectionPlaceholder({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.construction_rounded, size: 40, color: Colors.grey.shade400),
-            const SizedBox(height: 12),
-            Text(
-              '$label — próximamente',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey.shade600),
-            ),
-          ],
-        ),
       ),
     );
   }

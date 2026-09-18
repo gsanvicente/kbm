@@ -161,6 +161,7 @@ class _GlobalCardListViewState extends State<GlobalCardListView> {
                           card: card,
                           trailingLabel: clientName,
                           ledgerAccount: ledgerAccounts[card.id],
+                          cardholderName: cardholderName,
                           onTap: () => widget.onSelect(card, clientName, cardholderName),
                         );
                       },

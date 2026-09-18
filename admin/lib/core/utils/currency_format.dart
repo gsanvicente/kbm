@@ -1,7 +1,7 @@
-/// Minimal currency formatting (thousands separator + 2 decimals) without
-/// adding a dependency like `intl` — revisit if real fondeo/débito forms
-/// later need locale-aware parsing/validation, not just display.
-String formatCurrency(double amount, String currencyCode) {
+/// Minimal number formatting (thousands separator + 2 decimals) without
+/// adding a dependency like `intl` — no "$" prefix or currency code, just
+/// the digits. Shared by [formatCurrency] and CurrencyField's live mask.
+String formatAmount(double amount) {
   final fixed = amount.toStringAsFixed(2);
   final parts = fixed.split('.');
   final intPart = parts[0];
@@ -15,5 +15,9 @@ String formatCurrency(double amount, String currencyCode) {
   }
   final withSeparators = buffer.toString().split('').reversed.join();
 
-  return '\$$withSeparators.$decimals $currencyCode';
+  return '$withSeparators.$decimals';
+}
+
+String formatCurrency(double amount, String currencyCode) {
+  return '\$${formatAmount(amount)} $currencyCode';
 }

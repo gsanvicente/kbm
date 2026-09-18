@@ -1,60 +1,162 @@
 # Operación de saldo con aprobación configurable
 
-- Estado: Draft
+- Estado: En desarrollo (esta iteración: `admin/` con repositorio fake)
 - ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`
-- Amenazas relevantes: `docs/security/threat-model.md` puntos 1, 2 y 4
-- Roles/actores involucrados: Operador, Admin Cliente, Tarjetahabiente (autoservicio)
+- Amenazas relevantes: `docs/security/threat-model.md` puntos 1, 2, 4 y 9
+- Roles/actores involucrados: Operador (solicita), Admin Cliente/Super Admin (solicitan y aprueban/rechazan), Auditor (solo ve)
 
 ## Objetivo
-Permitir que un Operador (o el propio Tarjetahabiente vía autoservicio)
-solicite una operación de saldo (carga, débito, transferencia,
-bloqueo/desbloqueo) sobre una tarjeta, respetando las reglas de aprobación
-configuradas por el Cliente dueño de esa tarjeta y la jerarquía
-padre/hija.
+Permitir que un Operador de Saldos (o un Admin Cliente/Super Admin)
+solicite una Dispersión, Deducción o Transferencia de saldo sobre una
+tarjeta específica, respetando las reglas de aprobación configuradas por
+el Cliente dueño de esa tarjeta.
+
+## Quién puede solicitar
+**Operador, Admin Cliente y Super Admin** — solo Auditor no puede. Es
+justamente el enfoque del rol "Operador de Saldos": operar el saldo del
+día a día de las tarjetas de su Cliente (ver
+`docs/business/roles-and-permissions.md`). El control real de negocio no
+está en restringir quién solicita, sino en el *umbral de monto*
+(`approval_rules.min_amount`) que determina si esa solicitud necesita
+aprobación de un Admin Cliente/Super Admin antes de ejecutarse.
+
+> **Nota histórica (2026-09-19):** este permiso se restringió por error a
+> solo Admin Cliente/Super Admin, contradiciendo la tabla de roles ya
+> documentada. Se revirtió el mismo día — ver la regla MUST en el
+> `README.md` raíz sobre preguntar ante conflictos con lo ya documentado.
+
+## Nomenclatura (revisado 2026-09-19)
+Los nombres visibles para el usuario son **Dispersión**, **Deducción** y
+**Transferencia** — no "Carga"/"Débito" (términos anteriores, ya
+descartados por confusos para el usuario final). El identificador técnico
+en el esquema (`operation_type`: `load`, `debit`, `transfer`) no cambia,
+para no romper compatibilidad con lo ya migrado — es un detalle interno,
+nunca visible en la UI.
 
 ## Contexto / motivación
 Ver `docs/business/approval-policy.md` para el modelo completo. Esta
-feature es el primer caso de uso "de escritura" real del sistema — sienta
-el patrón (estado, autorización, ledger) que seguirán el resto de
-operaciones.
+feature es el primer caso de uso "de escritura" real del sistema.
+
+## Dónde vive esto en la UI (revisado 2026-09-19)
+**Ya no hay un formulario global que primero te hace elegir una tarjeta
+origen.** Cada tarjeta ya tiene una pantalla propia
+(`docs/feature/tarjetas-de-tarjetahabiente/`) — igual que Movimientos, las
+operaciones de saldo se solicitan **desde ahí**, en una tercera pestaña
+"Operaciones":
+- Muestra el historial de operaciones de saldo de **esa tarjeta**
+  (cualquier estado), con el mismo componente visual que la lista global.
+- Tres botones (visibles solo si el rol puede solicitar — ver
+  `docs/business/roles-and-permissions.md`): **Dispersión**, **Deducción**,
+  **Transferencia**. La tarjeta origen nunca se pregunta — es,
+  implícitamente, la tarjeta que ya se está viendo.
+- "Operaciones de saldo" (ítem del menú principal) sigue existiendo como
+  **historial de solo lectura** entre todas las tarjetas del alcance del
+  usuario, con los mismos filtros de Tipo/Estado/Empresa — pero ya no
+  tiene un botón para crear una operación ahí. Crear siempre pasa por la
+  tarjeta específica, para que el origen nunca sea ambiguo y para no
+  necesitar un selector de "tarjeta origen" que obligaría a buscar entre
+  todas las tarjetas del Cliente (ver la siguiente sección).
+
+## Captura de la tarjeta destino (transferencias)
+Un selector tipo combo que liste todas las tarjetas del Cliente para
+elegir el destino expondría PANs enmascarados y nombres de personas con
+las que el operador no necesariamente tiene relación directa, solo para
+completar un formulario — ver `docs/security/threat-model.md` punto 9.
+En vez de eso:
+1. El formulario de Transferencia pide los **últimos 4 dígitos** de la
+   tarjeta destino (el dato que el propio tarjetahabiente le daría al
+   operador) — no un combo navegable.
+2. Al escribir 4 dígitos, se busca una coincidencia única dentro del
+   **mismo Cliente** que la tarjeta origen (ver "Destino de una
+   transferencia" más abajo — el alcance entre Clientes no cambió).
+3. Si hay exactamente una coincidencia, se muestra una confirmación
+   (nombre del tarjetahabiente y PAN enmascarado) antes de poder enviar —
+   igual que un banco real confirma "vas a transferir a Juan Pérez,
+   terminación 1234" antes de dejarte continuar.
+4. Si no hay coincidencia, o hay más de una (no debería pasar dentro de
+   un mismo Cliente, pero se maneja igual), se explica el problema en vez
+   de dejar avanzar con un destino ambiguo.
+
+## Destino de una transferencia
+Una transferencia mueve saldo entre **dos tarjetas del mismo Cliente**
+(cualquier tarjetahabiente de esa empresa, no solo entre tarjetas de la
+misma persona). No se permite transferir entre tarjetas de Clientes
+distintos, ni siquiera entre padre e hija.
 
 ## Flujo principal
-1. El solicitante (Operador o Tarjetahabiente) pide una operación sobre
-   una tarjeta.
-2. El backend resuelve si el solicitante tiene alcance sobre esa tarjeta
-   (su Cliente, o un ancestro en la jerarquía — ver
-   `docs/business/roles-and-permissions.md`).
-3. Se evalúan las `approval_rules` del Cliente dueño de la tarjeta para
-   ese tipo de operación/monto.
-4. Sin aprobación requerida → se ejecuta de inmediato, se escribe el
-   movimiento en el ledger.
-5. Con aprobación requerida → queda `pending_approval`; el Admin Cliente
-   correspondiente la aprueba o rechaza.
-6. Aprobada → se ejecuta igual que el paso 4. Rechazada → se cierra sin
-   tocar el ledger.
+1. Desde el detalle de una tarjeta, pestaña "Operaciones", un Operador
+   (o Admin Cliente/Super Admin) con alcance sobre el Cliente dueño
+   solicita Dispersión, Deducción o Transferencia, con el monto (y, para
+   Transferencia, la tarjeta destino resuelta como se describió arriba).
+2. Se evalúan las `approval_rules` del Cliente dueño de la tarjeta origen
+   para ese tipo de operación y monto — ver
+   `docs/business/approval-policy.md` para el default cuando no hay regla
+   configurada.
+3. Sin aprobación requerida → se ejecuta de inmediato: se escribe el/los
+   movimiento(s) en el ledger (dos movimientos para una transferencia:
+   débito en origen, crédito en destino).
+4. Con aprobación requerida → la operación queda `pending_approval` y
+   aparece en "Aprobaciones" para el Admin Cliente correspondiente (o el
+   de una empresa ancestro, por herencia de jerarquía).
+5. El Admin Cliente aprueba o rechaza desde "Aprobaciones":
+   - Aprobar → se intenta ejecutar en el momento. Si hay saldo suficiente,
+     pasa a `executed` y se escribe el ledger. Si no, pasa a `failed` con
+     el motivo, y el ledger no se toca.
+   - Rechazar → pasa a `rejected` (requiere un motivo breve). El ledger no
+     se toca.
+6. La pestaña "Operaciones" de la tarjeta y el listado global
+   "Operaciones de saldo" muestran exactamente los mismos datos (el
+   global sin restringir a una tarjeta) — mismo repositorio, sin
+   duplicar lógica.
+7. Si la operación se ejecutó (no si quedó `pending_approval` ni si
+   `failed`), la pestaña "Resumen" de esa misma tarjeta refresca su
+   saldo automáticamente — no hace falta salir y volver a entrar al
+   detalle de la tarjeta para verlo actualizado. Ver "Refresco del saldo
+   mostrado" más abajo.
+
+## Refresco del saldo mostrado
+`CardDetailView` obtiene la cuenta de saldo una sola vez al entrar al
+detalle de la tarjeta (`_ledgerFuture`). Ejecutar una operación desde la
+pestaña "Operaciones" cambia el saldo real (vía
+`LedgerRepository.postEntry`), pero eso no invalida por sí solo ese
+Future ya resuelto — sin una señal explícita, "Resumen" seguiría
+mostrando el saldo viejo hasta refrescar la pantalla completa. La
+pestaña "Operaciones" avisa al detalle de la tarjeta (un callback) solo
+cuando el resultado es `executed`, y el detalle vuelve a pedir la cuenta
+de saldo — como esa nueva petición alimenta el mismo `FutureBuilder` que
+usan tanto "Resumen" como "Movimientos", ambas pestañas quedan al día,
+no solo el número de saldo.
+
+## Captura del monto
+El campo de monto nunca acepta texto libre — solo dígitos, formateado en
+vivo como moneda con 2 decimales (ej. escribir "12345" se ve como
+"$123.45"), vacío se trata como "$0.00". Ver el componente compartido
+`CurrencyField` en `admin/lib/shared_widgets/`.
+
+## Fondos insuficientes
+Un Deducción o el lado "origen" de una Transferencia nunca deja el saldo
+en negativo. Se valida en el momento exacto en que se intentaría escribir
+el movimiento (al solicitar, si no requiere aprobación; al aprobar, si sí
+la requería) — no al momento de llenar el formulario, porque el saldo
+puede cambiar entre que se solicita y se aprueba.
 
 ## Reglas de negocio
 Ver `docs/business/approval-policy.md` y
 `docs/business/roles-and-permissions.md` — no se repiten aquí.
 
-## Nota — relación con la implementación real de bloqueo/desbloqueo
-Este documento describe el modelo completo (backend real, ledger,
-`pending_approval`, cola de Aprobaciones) — sigue siendo el diseño
-objetivo, no se ha implementado. La primera pieza real de "Operaciones de
-saldo" que sí se construyó (`docs/feature/bloqueo-de-tarjeta/`) es una
-versión simplificada: acción directa en `admin/` contra un repositorio
-fake, sin flujo de aprobación todavía, precisamente porque construirlo
-completo (según este documento) requiere backend real y la cola de
-Aprobaciones, que aún no existen. No hay contradicción: es una iteración
-intermedia hacia este diseño, no el diseño final.
-
 ## Casos borde / fuera de alcance
 - Qué pasa si el Cliente dueño de la tarjeta no tiene ningún Admin Cliente
-  activo (¿escala al Admin de la empresa padre?) — **pendiente de
-  definir con negocio, no implementar hasta resolverlo**.
-- Operaciones concurrentes sobre la misma tarjeta (ej. dos débitos a la
-  vez) — fuera de alcance de este documento, requiere su propio análisis
-  de concurrencia antes de implementarse.
+  activo — ya cubierto por la herencia de jerarquía existente, no es un
+  caso huérfano.
+- Operaciones concurrentes sobre la misma tarjeta: fuera de alcance, el
+  repositorio fake es single-threaded.
+- Editar o cancelar una operación ya solicitada (antes de que se
+  apruebe/rechace): fuera de alcance, no solicitado.
+- Notificar al Tarjetahabiente cuando se ejecuta una operación sobre su
+  tarjeta: fuera de alcance (no hay autoservicio todavía).
+- Transferir escribiendo el PAN completo en vez de los últimos 4 dígitos:
+  no aplica — KBM nunca tiene el PAN completo en este nivel (ver
+  `docs/security/data-classification.md`), solo `masked_pan`.
 
 ## Criterios de aceptación
 Ver `acceptance.feature` en esta misma carpeta.

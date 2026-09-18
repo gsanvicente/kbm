@@ -624,4 +624,247 @@ void main() {
     expect(find.widgetWithText(OutlinedButton, 'Rechazar'), findsNothing);
     expect(find.textContaining('no puede resolver reclamos'), findsOneWidget);
   });
+
+  testWidgets('Operaciones de saldo shows the seeded pending Deducción', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Operaciones de saldo');
+
+    expect(find.textContaining('Deducción: **** **** **** 1234'), findsOneWidget);
+    expect(find.text('Pendiente de aprobación'), findsOneWidget);
+  });
+
+  testWidgets('the Empresa filter in Operaciones de saldo is hidden for a single-client role', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Operaciones de saldo');
+
+    expect(find.widgetWithText(OutlinedButton, 'Empresa'), findsNothing);
+  });
+
+  testWidgets('Operaciones de saldo has no creation button — it is history-only', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Operaciones de saldo');
+
+    expect(find.widgetWithText(FilledButton, 'Nueva operación'), findsNothing);
+    expect(find.byType(FilledButton), findsNothing);
+  });
+
+  testWidgets('Auditor sees a card\'s Operaciones tab but not the action buttons', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'auditor.subA@koons.test');
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 1234');
+    await _goToSection(tester, 'Operaciones');
+
+    expect(find.widgetWithText(FilledButton, 'Dispersión'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Deducción'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Transferencia'), findsNothing);
+    expect(find.textContaining('no solicitar nuevas'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Operador can request a Dispersión (it\'s the point of the role), and it refreshes '
+      'the balance shown in Resumen', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test'); // Operador de Saldos: this is exactly its job
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 1234'); // Juan Perez, balance 1250.00
+    await _goToSection(tester, 'Operaciones');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Dispersión'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nueva operación'), findsOneWidget); // generic dialog title
+    await tester.enterText(find.widgetWithText(TextField, 'Monto'), '10000'); // masked as $100.00
+    await tester.tap(find.widgetWithText(FilledButton, 'Solicitar'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('ejecutada de inmediato'), findsOneWidget);
+    expect(find.textContaining('Dispersión: **** **** **** 1234'), findsOneWidget);
+    expect(find.text('Ejecutada'), findsOneWidget);
+
+    await _goToSection(tester, 'Resumen');
+    expect(find.text('\$1,350.00 MXN'), findsOneWidget); // 1250.00 + 100.00, no manual refresh needed
+  });
+
+  testWidgets('a Deducción with no configured rule requires approval by default', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test');
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 1234');
+    await _goToSection(tester, 'Operaciones');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Deducción'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'Monto'), '5000'); // $50.00
+    await tester.tap(find.widgetWithText(FilledButton, 'Solicitar'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('pendiente de aprobación'), findsOneWidget);
+  });
+
+  testWidgets('the amount field only accepts digits, masked to 2 decimals', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test');
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 1234');
+    await _goToSection(tester, 'Operaciones');
+    await tester.tap(find.widgetWithText(FilledButton, 'Dispersión'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('0.00'), findsOneWidget); // default before typing anything
+
+    await tester.enterText(find.widgetWithText(TextField, 'Monto'), 'asdasd');
+    await tester.pumpAndSettle();
+    expect(find.text('0.00'), findsOneWidget); // letters never reach the field
+
+    await tester.enterText(find.widgetWithText(TextField, 'Monto'), '123456');
+    await tester.pumpAndSettle();
+    expect(find.text('1,234.56'), findsOneWidget);
+  });
+
+  testWidgets('a transfer at or under the threshold executes immediately and moves both balances',
+      (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 5678'); // Maria Gomez
+    await _goToSection(tester, 'Operaciones');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Transferencia'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'Monto'), '10000'); // $100.00
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Tarjeta destino (últimos 4 dígitos)'),
+      '7890', // Carlos Ruiz, same Cliente
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Destino: Carlos Ruiz'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Solicitar'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('ejecutada de inmediato'), findsOneWidget);
+    expect(
+      find.textContaining('Transferencia: **** **** **** 5678 → **** **** **** 7890'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('an immediate transfer that exceeds the source balance fails, not partially applied',
+      (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 7890'); // Carlos Ruiz, balance 75.00
+    await _goToSection(tester, 'Operaciones');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Transferencia'));
+    await tester.pumpAndSettle();
+
+    // Well under the 500 approval threshold, so this never needs
+    // approval, but 100 still exceeds his balance of 75.00.
+    await tester.enterText(find.widgetWithText(TextField, 'Monto'), '10000');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Tarjeta destino (últimos 4 dígitos)'),
+      '5678', // Maria Gomez, same Cliente
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Solicitar'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('fallida'), findsOneWidget);
+    expect(find.text('Fallida'), findsOneWidget);
+  });
+
+  testWidgets('the destination field only resolves cards from the same company', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 5678'); // Maria Gomez, Subsidiaria B
+    await _goToSection(tester, 'Operaciones');
+    await tester.tap(find.widgetWithText(FilledButton, 'Transferencia'));
+    await tester.pumpAndSettle();
+
+    // Juan Perez's card ends the same as no card in Subsidiaria B —
+    // 1234 doesn't belong to this company at all.
+    await tester.enterText(find.widgetWithText(TextField, 'Tarjeta destino (últimos 4 dígitos)'), '1234');
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('No se encontró ninguna tarjeta'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Tarjeta destino (últimos 4 dígitos)'), '7890');
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Destino: Carlos Ruiz'), findsOneWidget);
+  });
+
+  testWidgets('Admin Cliente can approve a pending operation, executing it', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Aprobaciones');
+    expect(find.textContaining('Deducción: **** **** **** 1234'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Aprobar'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('aprobada y ejecutada'), findsOneWidget);
+    expect(find.textContaining('Deducción: **** **** **** 1234'), findsNothing);
+  });
+
+  testWidgets('Admin Cliente can reject a pending operation with a reason', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Aprobaciones');
+    await tester.tap(find.byTooltip('Rechazar'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'Motivo del rechazo'), 'No autorizado.');
+    await tester.tap(find.widgetWithText(FilledButton, 'Rechazar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Operación rechazada.'), findsOneWidget);
+    expect(find.textContaining('Deducción: **** **** **** 1234'), findsNothing);
+  });
+
+  testWidgets('Operador can see Aprobaciones but not act on it', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test');
+
+    await _goToSection(tester, 'Aprobaciones');
+
+    expect(find.textContaining('Deducción: **** **** **** 1234'), findsOneWidget);
+    expect(find.byTooltip('Aprobar'), findsNothing);
+    expect(find.byTooltip('Rechazar'), findsNothing);
+    expect(find.textContaining('no aprobar ni rechazar'), findsOneWidget);
+  });
 }

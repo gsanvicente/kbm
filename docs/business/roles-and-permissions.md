@@ -1,15 +1,25 @@
 # Roles y permisos — KBM
 
-> Referencia viva. Última revisión: 2026-09-15.
+> Referencia viva. Última revisión: 2026-09-19.
 
 ## Roles administrativos/staff
 
 | Rol | Alcance | Puede hacer |
 |---|---|---|
-| Super Admin (Koons) | Global, todos los Clientes | Crear/gestionar Clientes, usuarios, configuración del sistema, ver todo |
-| Admin Cliente | Su Cliente + descendientes (si tiene hijas) | Gestionar tarjetahabientes/tarjetas, asignar Operadores, aprobar operaciones |
-| Operador de Saldos | Su Cliente + descendientes | Cargar, debitar, transferir saldo, bloquear/desbloquear tarjetas |
-| Auditor | Su Cliente + descendientes (o global) | Ver saldos, movimientos y reportes — sin poder modificar nada |
+| Super Admin (Koons) | Global, todos los Clientes | Crear/gestionar Clientes, usuarios, configuración del sistema, ver todo, incluye todo lo de Admin Cliente y de Operador de Saldos |
+| Admin Cliente | Su Cliente + descendientes (si tiene hijas) | Gestionar tarjetahabientes/tarjetas, asignar Operadores, aprobar/rechazar operaciones pendientes |
+| Operador de Saldos | Su Cliente + descendientes | **Dispersión, Deducción, Transferencia de saldo** (es justo su enfoque), bloquear/desbloquear tarjetas, solicitar reclamos sobre movimientos |
+| Auditor | Su Cliente + descendientes (o global) | Ver saldos, movimientos, operaciones y reportes — sin poder modificar nada |
+
+> **Nota histórica (2026-09-19):** por un momento este rol se restringió
+> por error para NO poder solicitar Dispersión/Deducción/Transferencia
+> (razonamiento: "mover dinero es acción de administrador"), contradiciendo
+> esta tabla ya documentada. Se revirtió el mismo día — el enfoque de
+> este rol siempre fue justamente operar el saldo del día a día, con el
+> control real puesto en `approval_rules` (umbral de monto), no en
+> restringir quién puede solicitar. Ver `docs/business/approval-policy.md`
+> y la regla MUST en el `README.md` raíz sobre preguntar ante conflictos
+> con lo ya documentado.
 
 ## Herencia sobre la jerarquía padre/hija
 

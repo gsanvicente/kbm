@@ -1,5 +1,6 @@
 import '../../core/models/ledger_account.dart';
 import '../../core/models/ledger_entry.dart';
+import '../../core/models/ledger_entry_type.dart';
 import '../../core/models/movement_claim.dart';
 
 abstract class LedgerRepository {
@@ -38,5 +39,18 @@ abstract class LedgerRepository {
     required bool inFavor,
     required String resolutionNotes,
     required String resolvedByEmail,
+  });
+
+  /// Appends a new entry and recomputes the account's cached balance —
+  /// the only way a balance ever changes, per the append-only rule (see
+  /// docs/business/saldo-y-ledger.md). Only called by
+  /// BalanceOperationRepository when executing an operation, never
+  /// directly from the UI. Throws [InsufficientFundsException] for a
+  /// debit that would leave the balance negative.
+  Future<LedgerEntry> postEntry({
+    required String ledgerAccountId,
+    required LedgerEntryType type,
+    required double amount,
+    String? description,
   });
 }

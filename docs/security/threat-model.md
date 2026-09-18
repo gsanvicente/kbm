@@ -76,3 +76,22 @@ fuentes como asset local antes de producción/auditoría — ver
 `admin/docs/tdr/0001-google-fonts-typography.md` y
 `docs/adr/0007-custom-design-system-koons-tokens.md`. No cerrar esta
 auditoría de seguridad sin resolver este punto.
+
+## 9. Sobre-exposición de datos sensibles vía directorios navegables en la UI
+**Riesgo:** aunque el control de acceso (punto 1) esté correcto — el
+usuario sí tiene alcance legítimo sobre ese Cliente — una pantalla que le
+permite **buscar/listar libremente** tarjetas o tarjetahabientes ajenos
+para completar un formulario (ej. elegir una "tarjeta destino" de un
+directorio de toda la empresa) expone más que lo necesario para la tarea:
+el operador ve PANs enmascarados y nombres de personas con las que no
+tiene relación directa, solo para escribir un número. Distinto del punto
+2 (fuga *entre* tenants): aquí el riesgo es sobre-exposición *dentro* del
+mismo tenant, por diseño de UI, no por un bug de autorización.
+**Mitigación de diseño:** cuando un formulario necesita referenciar un
+registro ajeno (ej. la tarjeta destino de una transferencia), resolverlo
+por un identificador que quien solicita ya debería tener (ej. los últimos
+4 dígitos que le dio el propio tarjetahabiente), mostrando una
+confirmación de una sola coincidencia — nunca un combo/lista navegable de
+todos los registros del Cliente. Ver
+`docs/feature/operacion-saldo-con-aprobacion/README.md`, sección
+"Captura de la tarjeta destino".

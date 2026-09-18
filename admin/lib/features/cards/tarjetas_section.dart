@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/payment_card.dart';
 import '../../core/models/session.dart';
 import '../../shared_widgets/breadcrumb_bar.dart';
+import '../balance_operations/balance_operation_repository.dart';
 import '../cardholders/cardholder_repository.dart';
 import '../clients/client_repository.dart';
 import '../ledger/ledger_repository.dart';
@@ -22,6 +23,7 @@ class TarjetasSection extends StatefulWidget {
     required this.cardholderRepository,
     required this.cardRepository,
     required this.ledgerRepository,
+    required this.balanceOperationRepository,
   });
 
   final Session session;
@@ -29,6 +31,7 @@ class TarjetasSection extends StatefulWidget {
   final CardholderRepository cardholderRepository;
   final CardRepository cardRepository;
   final LedgerRepository ledgerRepository;
+  final BalanceOperationRepository balanceOperationRepository;
 
   @override
   State<TarjetasSection> createState() => _TarjetasSectionState();
@@ -70,6 +73,7 @@ class _TarjetasSectionState extends State<TarjetasSection> {
                     cardRepository: widget.cardRepository,
                     cardholderRepository: widget.cardholderRepository,
                     ledgerRepository: widget.ledgerRepository,
+                    balanceOperationRepository: widget.balanceOperationRepository,
                     session: widget.session,
                     onChanged: (updated) => setState(() => _selected = updated),
                   )

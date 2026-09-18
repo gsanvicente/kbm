@@ -20,9 +20,17 @@
 - **Procesador de tarjetas**: sistema externo (ej. estilo
   Marqeta/Galileo) contra el que se reconcilia el saldo real. KBM mantiene
   un ledger propio y sincroniza con el procesador (modelo híbrido).
-- **Operación de saldo**: solicitud de carga, débito, transferencia,
-  bloqueo o desbloqueo sobre una Tarjeta. Tiene un estado
-  (`pending_approval → approved/rejected → executed/failed`).
+- **Operación de saldo**: solicitud de Dispersión, Deducción o
+  Transferencia sobre una Tarjeta (nombres visibles de los tipos técnicos
+  `load`/`debit`/`transfer` — ver
+  `docs/feature/operacion-saldo-con-aprobacion/README.md`, sección
+  "Nomenclatura"; bloqueo/desbloqueo es una acción directa aparte, ver
+  `docs/feature/bloqueo-de-tarjeta/`). Sin aprobación requerida pasa
+  directo de `pending_approval` a `executed`/`failed`; con aprobación
+  requerida, el Admin Cliente aprueba (→ `executed`/`failed`) o rechaza
+  (→ `rejected`). `approved` existe en el esquema para un futuro flujo
+  asíncrono, no se usa como estado visible todavía — ver
+  `docs/business/approval-policy.md`.
 - **Regla de aprobación**: configuración por Cliente que determina si un
   tipo de operación (y a partir de qué monto) requiere aprobación antes de
   ejecutarse.

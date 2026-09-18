@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
+import '../../core/models/balance_operation.dart';
 import '../../core/models/card_status.dart';
 import '../../core/models/cardholder.dart';
 import '../../core/models/claim_status.dart';
@@ -8,11 +9,17 @@ import '../../core/models/ledger_account.dart';
 import '../../core/models/ledger_entry.dart';
 import '../../core/models/ledger_entry_type.dart';
 import '../../core/models/movement_claim.dart';
+import '../../core/models/operation_status.dart';
+import '../../core/models/operation_type.dart';
 import '../../core/models/payment_card.dart';
 import '../../core/models/session.dart';
 import '../../core/models/shared/card_limit_exceeded_exception.dart';
 import '../../core/utils/currency_format.dart';
 import '../../core/utils/date_format.dart';
+import '../../shared_widgets/card_destination_field.dart';
+import '../../shared_widgets/currency_field.dart';
+import '../balance_operations/balance_operation_repository.dart';
+import '../balance_operations/operaciones_de_saldo_section.dart' show BalanceOperationTile;
 import '../cardholders/cardholder_repository.dart';
 import '../ledger/ledger_repository.dart';
 import 'card_repository.dart';
@@ -26,6 +33,7 @@ class CardDetailView extends StatefulWidget {
     required this.cardRepository,
     required this.cardholderRepository,
     required this.ledgerRepository,
+    required this.balanceOperationRepository,
     required this.session,
     required this.onChanged,
   });
@@ -35,6 +43,7 @@ class CardDetailView extends StatefulWidget {
   final CardRepository cardRepository;
   final CardholderRepository cardholderRepository;
   final LedgerRepository ledgerRepository;
+  final BalanceOperationRepository balanceOperationRepository;
   final Session session;
 
   /// Called after a successful assignment — see
@@ -58,7 +67,7 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
     super.initState();
     _cardholderName = widget.cardholderName;
     _ledgerFuture = widget.ledgerRepository.getByCard(_card.id);
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -69,6 +78,19 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
 
   bool get _canManage => widget.session.role.canManageCardholders;
   bool get _canOperate => widget.session.role.canOperateCards;
+
+  /// Called by the "Operaciones" tab after a balance operation actually
+  /// executes (never for pending_approval/failed, since those never
+  /// touch the ledger). Re-fetching feeds the same _ledgerFuture that
+  /// both "Resumen" and "Movimientos" already key their FutureBuilder
+  /// off of, so both refresh — not just the balance number. See
+  /// docs/feature/operacion-saldo-con-aprobacion/README.md, "Refresco
+  /// del saldo mostrado".
+  void _refreshLedger() {
+    setState(() {
+      _ledgerFuture = widget.ledgerRepository.getByCard(_card.id);
+    });
+  }
 
   bool get _canToggleBlock =>
       _card.cardholderId != null && (_card.status == CardStatus.active || _card.status == CardStatus.blocked);
@@ -131,6 +153,7 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
           tabs: const [
             Tab(text: 'Resumen'),
             Tab(text: 'Movimientos'),
+            Tab(text: 'Operaciones'),
           ],
         ),
         const Divider(height: 1),
@@ -149,6 +172,24 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
                     ledger: snapshot.data,
                     ledgerRepository: widget.ledgerRepository,
                     session: widget.session,
+                  );
+                },
+              ),
+              FutureBuilder<LedgerAccount?>(
+                future: _ledgerFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return _OperationsTab(
+                    card: _card,
+                    cardholderName: _cardholderName,
+                    ledger: snapshot.data,
+                    cardRepository: widget.cardRepository,
+                    cardholderRepository: widget.cardholderRepository,
+                    balanceOperationRepository: widget.balanceOperationRepository,
+                    session: widget.session,
+                    onExecuted: _refreshLedger,
                   );
                 },
               ),
@@ -763,6 +804,304 @@ class _MovementDetailDialogState extends State<_MovementDetailDialog> {
             style: TextStyle(color: Colors.grey.shade500, fontSize: 12.5, fontStyle: FontStyle.italic),
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// Historial de operaciones de saldo de esta tarjeta, con las acciones
+/// para solicitar una nueva — la tarjeta origen nunca se pregunta, es
+/// implícitamente la que ya se está viendo. Ver
+/// docs/feature/operacion-saldo-con-aprobacion/README.md.
+class _OperationsTab extends StatefulWidget {
+  const _OperationsTab({
+    required this.card,
+    required this.cardholderName,
+    required this.ledger,
+    required this.cardRepository,
+    required this.cardholderRepository,
+    required this.balanceOperationRepository,
+    required this.session,
+    required this.onExecuted,
+  });
+
+  final PaymentCard card;
+  final String? cardholderName;
+  final LedgerAccount? ledger;
+  final CardRepository cardRepository;
+  final CardholderRepository cardholderRepository;
+  final BalanceOperationRepository balanceOperationRepository;
+  final Session session;
+
+  /// Called after a balance operation actually executes — see
+  /// CardDetailView._refreshLedger, which this triggers.
+  final VoidCallback onExecuted;
+
+  @override
+  State<_OperationsTab> createState() => _OperationsTabState();
+}
+
+class _OperationsData {
+  _OperationsData(this.operations, this.siblingCards, this.cardholderNameById);
+  final List<BalanceOperation> operations;
+  final List<PaymentCard> siblingCards;
+  final Map<String, String> cardholderNameById;
+}
+
+class _OperationsTabState extends State<_OperationsTab> {
+  Future<_OperationsData>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.ledger != null) {
+      _future = _load();
+    }
+  }
+
+  Future<_OperationsData> _load() async {
+    final allOps = await widget.balanceOperationRepository.listByClients([widget.card.clientId]);
+    final siblingCards = await widget.cardRepository.listByClients([widget.card.clientId]);
+    final cardholders = await widget.cardholderRepository.listByClient(widget.card.clientId);
+    return _OperationsData(
+      allOps.where((op) => op.cardId == widget.card.id).toList(),
+      siblingCards,
+      {for (final c in cardholders) c.id: c.fullName},
+    );
+  }
+
+  void _reload() {
+    setState(() {
+      _future = _load();
+    });
+  }
+
+  Future<void> _openOperationDialog(OperationType type, _OperationsData data) async {
+    final eligibleDestinations = data.siblingCards
+        .where((c) => c.cardholderId != null && c.status != CardStatus.cancelled && c.id != widget.card.id)
+        .toList();
+
+    final result = await showDialog<BalanceOperation>(
+      context: context,
+      builder: (context) => _BalanceOperationDialog(
+        type: type,
+        card: widget.card,
+        cardholderName: widget.cardholderName,
+        destinationCandidates: eligibleDestinations,
+        cardholderNameById: data.cardholderNameById,
+        session: widget.session,
+        repository: widget.balanceOperationRepository,
+      ),
+    );
+    if (result == null) return;
+    if (!mounted) return;
+    _reload();
+    if (result.status == OperationStatus.executed) widget.onExecuted();
+
+    final message = switch (result.status) {
+      OperationStatus.executed => 'Operación ejecutada de inmediato.',
+      OperationStatus.pendingApproval => 'Operación registrada, queda pendiente de aprobación.',
+      OperationStatus.failed => 'Operación fallida: ${result.resolutionNotes}',
+      _ => 'Operación registrada.',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.ledger == null) {
+      return Center(
+        child: Text(
+          'Sin cuenta de saldo — no hay operaciones.',
+          style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontStyle: FontStyle.italic),
+        ),
+      );
+    }
+
+    return FutureBuilder<_OperationsData>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final data = snapshot.data!;
+        final canRequest = widget.session.role.canRequestBalanceOperations;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (canRequest)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: () => _openOperationDialog(OperationType.load, data),
+                      icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                      label: Text(OperationType.load.label),
+                    ),
+                    FilledButton.icon(
+                      onPressed: () => _openOperationDialog(OperationType.debit, data),
+                      icon: const Icon(Icons.remove_circle_outline_rounded, size: 18),
+                      label: Text(OperationType.debit.label),
+                    ),
+                    FilledButton.icon(
+                      onPressed: () => _openOperationDialog(OperationType.transfer, data),
+                      icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                      label: Text(OperationType.transfer.label),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Tu rol (${widget.session.role.label}) puede ver estas operaciones pero no solicitar nuevas.',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5, fontStyle: FontStyle.italic),
+                ),
+              ),
+            const Divider(height: 1),
+            Expanded(
+              child: data.operations.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Aún no hay operaciones de saldo sobre esta tarjeta.',
+                        style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(8),
+                      itemCount: data.operations.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, indent: 68),
+                      itemBuilder: (context, index) {
+                        final op = data.operations[index];
+                        PaymentCard? destination;
+                        if (op.destinationCardId != null) {
+                          final matches = data.siblingCards.where((c) => c.id == op.destinationCardId);
+                          destination = matches.isEmpty ? null : matches.first;
+                        }
+                        return BalanceOperationTile(
+                          operation: op,
+                          card: widget.card,
+                          destinationCard: destination,
+                          cardholderName: widget.cardholderName,
+                          clientName: '',
+                          currency: widget.ledger!.currency,
+                        );
+                      },
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _BalanceOperationDialog extends StatefulWidget {
+  const _BalanceOperationDialog({
+    required this.type,
+    required this.card,
+    required this.cardholderName,
+    required this.destinationCandidates,
+    required this.cardholderNameById,
+    required this.session,
+    required this.repository,
+  });
+
+  final OperationType type;
+  final PaymentCard card;
+  final String? cardholderName;
+  final List<PaymentCard> destinationCandidates;
+  final Map<String, String> cardholderNameById;
+  final Session session;
+  final BalanceOperationRepository repository;
+
+  @override
+  State<_BalanceOperationDialog> createState() => _BalanceOperationDialogState();
+}
+
+class _BalanceOperationDialogState extends State<_BalanceOperationDialog> {
+  double _amount = 0;
+  PaymentCard? _destination;
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _submit() async {
+    if (_amount <= 0) {
+      setState(() => _error = 'Ingresa un monto mayor a cero.');
+      return;
+    }
+    if (widget.type == OperationType.transfer && _destination == null) {
+      setState(() => _error = 'Escribe la terminación de una tarjeta destino válida.');
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final result = await widget.repository.request(
+      clientId: widget.card.clientId,
+      cardId: widget.card.id,
+      type: widget.type,
+      amount: _amount,
+      destinationCardId: widget.type == OperationType.transfer ? _destination!.id : null,
+      requestedByEmail: widget.session.email,
+    );
+    if (!mounted) return;
+    Navigator.pop(context, result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nueva operación'),
+      content: SizedBox(
+        width: 380,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                widget.type.label,
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: KoonsColors.navy),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${widget.cardholderName ?? '—'} · ${widget.card.maskedPan}',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
+              ),
+              const SizedBox(height: 20),
+              CurrencyField(onChanged: (value) => _amount = value, autofocus: true),
+              if (widget.type == OperationType.transfer) ...[
+                const SizedBox(height: 16),
+                CardDestinationField(
+                  candidates: widget.destinationCandidates,
+                  cardholderNameById: widget.cardholderNameById,
+                  onResolved: (card) => setState(() => _destination = card),
+                ),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!, style: TextStyle(color: Colors.red.shade700, fontSize: 12.5)),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(
+          onPressed: _busy ? null : _submit,
+          child: _busy
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Solicitar'),
+        ),
       ],
     );
   }

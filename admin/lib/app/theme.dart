@@ -64,9 +64,24 @@ ThemeData buildKbmAdminTheme() {
       style: FilledButton.styleFrom(
         backgroundColor: KoonsColors.blue,
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        // Horizontal was missing entirely (defaults to 0) — fine for the
+        // full-width login button, but every auto-sized FilledButton
+        // (Solicitar, Guardar, Asignar...) had its text touching the
+        // pill edges.
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     ),
     appBarTheme: const AppBarTheme(

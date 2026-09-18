@@ -188,12 +188,22 @@ CREATE TABLE balance_operations (
     card_id uuid NOT NULL REFERENCES cards(id),
     operation_type operation_type NOT NULL,
     amount numeric(18,2),
+    -- Only for operation_type = 'transfer' — the other card in the same
+    -- Cliente that receives the funds. See
+    -- docs/feature/operacion-saldo-con-aprobacion/README.md, "Destino de
+    -- una transferencia".
+    destination_card_id uuid REFERENCES cards(id),
     status operation_status NOT NULL DEFAULT 'pending_approval',
     requested_by uuid NOT NULL REFERENCES users(id),
-    approved_by uuid REFERENCES users(id),
+    -- Whoever resolved it, approving or rejecting — same naming as
+    -- movement_claims.resolved_by, not "approved_by": a rejection is
+    -- also a resolution.
+    resolved_by uuid REFERENCES users(id),
+    resolution_notes text,
     approval_rule_id uuid REFERENCES approval_rules(id),
     created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK ((operation_type = 'transfer') = (destination_card_id IS NOT NULL))
 );
 
 -- Transactional outbox: written in the same DB transaction as the state

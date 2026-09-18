@@ -3,6 +3,7 @@ import '../../core/models/ledger_account.dart';
 import '../../core/models/ledger_entry.dart';
 import '../../core/models/ledger_entry_type.dart';
 import '../../core/models/movement_claim.dart';
+import '../../core/models/shared/insufficient_funds_exception.dart';
 import '../../core/models/shared/not_found_exception.dart';
 import 'ledger_repository.dart';
 
@@ -12,20 +13,22 @@ import 'ledger_repository.dart';
 /// docs/business/saldo-y-ledger.md); claims are mutable, same rationale
 /// as FakeCardRepository.
 class FakeLedgerRepository implements LedgerRepository {
-  static const _accountsByCard = {
-    '40000000-0000-0000-0000-000000000001': LedgerAccount(
+  // Mutable (not static const) — postEntry() rewrites an account's
+  // cached balance in place as new entries are posted.
+  final _accountsByCard = {
+    '40000000-0000-0000-0000-000000000001': const LedgerAccount(
       id: '50000000-0000-0000-0000-000000000001',
       cardId: '40000000-0000-0000-0000-000000000001',
       currency: 'MXN',
       balance: 1250.00,
     ),
-    '40000000-0000-0000-0000-000000000002': LedgerAccount(
+    '40000000-0000-0000-0000-000000000002': const LedgerAccount(
       id: '50000000-0000-0000-0000-000000000002',
       cardId: '40000000-0000-0000-0000-000000000002',
       currency: 'MXN',
       balance: 340.50,
     ),
-    '40000000-0000-0000-0000-000000000004': LedgerAccount(
+    '40000000-0000-0000-0000-000000000004': const LedgerAccount(
       id: '50000000-0000-0000-0000-000000000004',
       cardId: '40000000-0000-0000-0000-000000000004',
       currency: 'MXN',
@@ -188,5 +191,38 @@ class FakeLedgerRepository implements LedgerRepository {
     );
     _claims[index] = updated;
     return updated;
+  }
+
+  @override
+  Future<LedgerEntry> postEntry({
+    required String ledgerAccountId,
+    required LedgerEntryType type,
+    required double amount,
+    String? description,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final cardId = _accountsByCard.entries
+        .firstWhere((e) => e.value.id == ledgerAccountId,
+            orElse: () => throw NotFoundException('Cuenta de saldo $ledgerAccountId no encontrada'))
+        .key;
+    final account = _accountsByCard[cardId]!;
+
+    final newBalance = type == LedgerEntryType.credit ? account.balance + amount : account.balance - amount;
+    if (newBalance < 0) {
+      throw InsufficientFundsException(currentBalance: account.balance, requestedAmount: amount);
+    }
+
+    final entry = LedgerEntry(
+      id: 'entry-${DateTime.now().microsecondsSinceEpoch}',
+      ledgerAccountId: ledgerAccountId,
+      type: type,
+      amount: amount,
+      balanceAfter: newBalance,
+      description: description,
+      createdAt: DateTime.now(),
+    );
+    _entries.add(entry);
+    _accountsByCard[cardId] = account.copyWith(balance: newBalance);
+    return entry;
   }
 }

@@ -14,11 +14,16 @@ class CardTile extends StatelessWidget {
     this.onTap,
     this.trailingLabel,
     this.ledgerAccount,
+    this.cardholderName,
   });
 
   final PaymentCard card;
   final VoidCallback? onTap;
   final String? trailingLabel;
+
+  /// null for a Disponible (unassigned) card — see
+  /// docs/business/tarjetas-y-asignacion.md.
+  final String? cardholderName;
 
   /// null means "no ledger account fetched/exists yet" — see
   /// docs/business/saldo-y-ledger.md. Only meaningful to show as an
@@ -86,6 +91,15 @@ class CardTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (cardholderName != null) ...[
+            Text(
+              cardholderName!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12.5),
+            ),
+            const SizedBox(height: 2),
+          ],
           Text(
             '${card.network.label} · Vence ${card.expiryLabel}',
             maxLines: 1,

@@ -19,8 +19,9 @@ enum Role {
 
   /// Editar/desactivar tarjetahabientes — ver
   /// docs/business/roles-and-permissions.md, sección "Gestión de
-  /// Tarjetahabientes". Operador gestiona saldos, no el perfil; Auditor es
-  /// de solo lectura por definición.
+  /// Tarjetahabientes". Operador gestiona saldos (ver
+  /// [canRequestBalanceOperations]), no el perfil del tarjetahabiente;
+  /// Auditor es de solo lectura por definición.
   bool get canManageCardholders => this == Role.superAdmin || this == Role.clientAdmin;
 
   /// Bloquear/desbloquear una tarjeta ya asignada — ver
@@ -40,4 +41,18 @@ enum Role {
   /// quien opera el día a día no decide el resultado de una disputa. Ver
   /// docs/business/reclamos-de-movimientos.md.
   bool get canResolveClaims => canManageCardholders;
+
+  /// Solicitar una Dispersión/Deducción/Transferencia — mismo grupo que
+  /// [canOperateCards] (Operador de Saldos: es justo su enfoque, ver
+  /// docs/business/roles-and-permissions.md). Solo Auditor no puede.
+  /// Nota histórica: el 2026-09-19 se restringió por error a Admin
+  /// Cliente+, contradiciendo esta regla ya documentada — se revirtió el
+  /// mismo día. Ver docs/feature/operacion-saldo-con-aprobacion/.
+  bool get canRequestBalanceOperations => canOperateCards;
+
+  /// Aprobar/rechazar una operación de saldo pendiente — mismo grupo que
+  /// [canManageCardholders]/[canResolveClaims]: separación deliberada
+  /// entre quien opera y quien autoriza. Ver
+  /// docs/business/approval-policy.md.
+  bool get canApproveBalanceOperations => canManageCardholders;
 }
