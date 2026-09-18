@@ -1,15 +1,25 @@
 import '../../core/models/cardholder.dart';
 import '../../core/models/id_document_type.dart';
+import '../../core/models/shared/cardholder_inactive_exception.dart';
 import '../../core/models/shared/not_found_exception.dart';
 import 'cardholder_repository.dart';
 
 /// In-memory stand-in for the cardholder endpoints — same seed data as
 /// backend/scripts/init-db/001_seed.sql (CURP/RFC values are fabricated,
 /// structurally plausible test data only). Mutable (unlike the other fake
-/// repositories) since docs/feature/detalle-y-gestion-tarjetahabiente/
-/// introduces real edit/deactivate actions. Changes live only for the
-/// current app session — expected fake-repository behavior, not a bug.
+/// repositories) since docs/feature/alta-y-gestion-de-tarjetahabientes/
+/// introduces real create/edit/deactivate actions. Changes live only for
+/// the current app session — expected fake-repository behavior, not a bug.
 class FakeCardholderRepository implements CardholderRepository {
+  FakeCardholderRepository({this.onDeactivated});
+
+  /// Hook invocado justo después de que `setActive(id, false)` aplica el
+  /// cambio — usado por `app.dart` para disparar el congelamiento de
+  /// tarjetas (`CardRepository.freezeAllForCardholder`) sin que este
+  /// repositorio dependa de `CardRepository` (evita una dependencia
+  /// circular, ver docs/business/desactivacion-de-tarjetahabientes.md).
+  final Future<void> Function(String cardholderId)? onDeactivated;
+
   final List<Cardholder> _cardholders = [
     Cardholder(
       id: '20000000-0000-0000-0000-000000000001',
@@ -98,12 +108,74 @@ class FakeCardholderRepository implements CardholderRepository {
   }
 
   @override
+  Future<Cardholder?> getById(String cardholderId) async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    for (final c in _cardholders) {
+      if (c.id == cardholderId) return c;
+    }
+    return null;
+  }
+
+  @override
+  Future<Cardholder> create(Cardholder draft) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final created = Cardholder(
+      id: 'cardholder-${DateTime.now().microsecondsSinceEpoch}',
+      clientId: draft.clientId,
+      fullName: draft.fullName,
+      idDocumentType: draft.idDocumentType,
+      idDocumentNumber: draft.idDocumentNumber,
+      curp: draft.curp,
+      rfc: draft.rfc,
+      dateOfBirth: draft.dateOfBirth,
+      nationality: draft.nationality,
+      addressStreet: draft.addressStreet,
+      addressNeighborhood: draft.addressNeighborhood,
+      addressCity: draft.addressCity,
+      addressState: draft.addressState,
+      addressPostalCode: draft.addressPostalCode,
+      addressCountry: draft.addressCountry,
+      isPoliticallyExposed: draft.isPoliticallyExposed,
+      email: draft.email,
+      phone: draft.phone,
+    );
+    _cardholders.add(created);
+    return created;
+  }
+
+  @override
   Future<Cardholder> update(Cardholder cardholder) async {
     await Future.delayed(const Duration(milliseconds: 200));
     final index = _cardholders.indexWhere((c) => c.id == cardholder.id);
     if (index == -1) throw NotFoundException('Tarjetahabiente ${cardholder.id} no encontrado');
-    _cardholders[index] = cardholder;
-    return cardholder;
+    final current = _cardholders[index];
+    if (!current.isActive) throw const CardholderInactiveException();
+    // clientId e isActive nunca vienen de `cardholder` — mover de Cliente
+    // sigue fuera de alcance, y activar/desactivar es una acción propia
+    // (ver setActive), no un efecto secundario de editar el expediente.
+    final merged = Cardholder(
+      id: current.id,
+      clientId: current.clientId,
+      isActive: current.isActive,
+      fullName: cardholder.fullName,
+      idDocumentType: cardholder.idDocumentType,
+      idDocumentNumber: cardholder.idDocumentNumber,
+      curp: cardholder.curp,
+      rfc: cardholder.rfc,
+      dateOfBirth: cardholder.dateOfBirth,
+      nationality: cardholder.nationality,
+      addressStreet: cardholder.addressStreet,
+      addressNeighborhood: cardholder.addressNeighborhood,
+      addressCity: cardholder.addressCity,
+      addressState: cardholder.addressState,
+      addressPostalCode: cardholder.addressPostalCode,
+      addressCountry: cardholder.addressCountry,
+      isPoliticallyExposed: cardholder.isPoliticallyExposed,
+      email: cardholder.email,
+      phone: cardholder.phone,
+    );
+    _cardholders[index] = merged;
+    return merged;
   }
 
   @override
@@ -113,6 +185,13 @@ class FakeCardholderRepository implements CardholderRepository {
     if (index == -1) throw NotFoundException('Tarjetahabiente $cardholderId no encontrado');
     final updated = _cardholders[index].copyWith(isActive: isActive);
     _cardholders[index] = updated;
+    if (!isActive) await onDeactivated?.call(cardholderId);
     return updated;
+  }
+
+  @override
+  Future<bool> isOperable(String cardholderId) async {
+    final cardholder = await getById(cardholderId);
+    return cardholder?.isActive ?? false;
   }
 }

@@ -91,14 +91,21 @@ políticas de autenticación".
 
 ## Dependencias (orden de construcción)
 Antes de implementar código de este portal, se construyen:
-1. CRUD de Clientes (crear una empresa desde cero — hoy solo existe
-   lectura de la jerarquía).
-2. CRUD de Tarjetahabientes (crear uno desde cero — hoy solo existe
-   editar/desactivar uno ya sembrado, y asignarle una tarjeta del pool).
+1. CRUD de Clientes — **diseño y documentación completos**, ver
+   `docs/feature/alta-y-gestion-de-clientes/`.
+2. CRUD de Tarjetahabientes — **diseño y documentación completos**, ver
+   `docs/feature/alta-y-gestion-de-tarjetahabientes/` (implementación
+   pendiente al momento de escribir esto).
 
 Esta documentación se escribe **antes** de esas dependencias a propósito,
 para no perder el diseño ya acordado — ver la regla MUST de
 documentación en el `README.md` raíz.
+
+## Nota para cuando se construya: login y Tarjetahabiente inactivo
+El login de este portal debe aplicar la misma regla de Capa 1 que ya se
+documentó para el staff: un Tarjetahabiente con `is_active = false` no
+debe poder iniciar sesión — ver
+`docs/business/desactivacion-de-tarjetahabientes.md`, "Enforcement".
 
 ## Fuera de alcance
 - Recargar la tarjeta con dinero propio (ej. desde una cuenta bancaria

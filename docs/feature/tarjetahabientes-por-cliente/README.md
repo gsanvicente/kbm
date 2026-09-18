@@ -29,16 +29,32 @@ UI.
    ("Clientes / {nombre del cliente}") para volver.
 3. Si el Cliente no tiene tarjetahabientes propios, se muestra un estado
    vacío explicativo en vez de una lista en blanco.
+4. Cada fila muestra, además del nombre, un **pill de estado**
+   ("Activo"/"Inactivo") y de "PEP" si corresponde, para identificar de
+   un vistazo quién no puede operar — ver
+   `docs/business/desactivacion-de-tarjetahabientes.md`.
+5. Un cuadro de filtros combinables (mismo patrón que
+   `docs/feature/listado-global-tarjetahabientes/`): **Estado**
+   (Activo/Inactivo) y **PEP** (Sí/No), ambos multiselección.
+6. Si el rol tiene `canManageCardholders`, un botón **"+ Nuevo
+   Tarjetahabiente"** — ver
+   `docs/feature/alta-y-gestion-de-tarjetahabientes/README.md`.
 
 ## Reglas de negocio
-Ninguna nueva — hereda la regla de visibilidad de
+Ninguna nueva sobre visibilidad — hereda la regla de
 `docs/business/roles-and-permissions.md`. Si el usuario pudo ver el
-Cliente en el listado anterior, puede ver sus Tarjetahabientes.
+Cliente en el listado anterior, puede ver sus Tarjetahabientes. Crear un
+Tarjetahabiente sí tiene su propia regla de rol — ver
+`docs/feature/alta-y-gestion-de-tarjetahabientes/README.md`.
 
 ## Casos borde / fuera de alcance
-- Buscar/filtrar tarjetahabientes: fuera de alcance.
+- Buscar por nombre desde este listado (a diferencia del filtro por
+  Estado/PEP, que sí existe aquí): fuera de alcance — la búsqueda por
+  nombre solo existe en
+  `docs/feature/listado-global-tarjetahabientes/` (ahí sí tiene sentido,
+  porque no se sabe de antemano el Cliente).
 - Ver el detalle completo y gestionar (editar/desactivar) un
-  tarjetahabiente: ver `docs/feature/detalle-y-gestion-tarjetahabiente/`
+  tarjetahabiente: ver `docs/feature/alta-y-gestion-de-tarjetahabientes/`
   (esta feature solo cubre el listado, no el detalle).
 - Navegar de un Tarjetahabiente a sus Tarjetas: es una feature futura, no
   esta.

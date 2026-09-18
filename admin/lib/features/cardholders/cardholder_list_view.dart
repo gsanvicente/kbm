@@ -2,18 +2,27 @@ import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
 import '../../core/models/cardholder.dart';
+import '../../core/models/session.dart';
+import '../../shared_widgets/multi_select_filter_button.dart';
+import 'cardholder_form_dialog.dart';
 import 'cardholder_repository.dart';
 
+/// Listado de Tarjetahabientes de un único Cliente — con filtros por
+/// Estado/PEP y, si el rol lo permite, el botón de alta. Ver
+/// docs/feature/tarjetahabientes-por-cliente/README.md y
+/// docs/feature/alta-y-gestion-de-tarjetahabientes/README.md.
 class CardholderListView extends StatefulWidget {
   const CardholderListView({
     super.key,
     required this.repository,
     required this.clientId,
+    required this.session,
     this.onSelect,
   });
 
   final CardholderRepository repository;
   final String clientId;
+  final Session session;
   final ValueChanged<Cardholder>? onSelect;
 
   @override
@@ -22,11 +31,43 @@ class CardholderListView extends StatefulWidget {
 
 class _CardholderListViewState extends State<CardholderListView> {
   late Future<List<Cardholder>> _future;
+  Set<bool> _statusFilter = {};
+  Set<bool> _pepFilter = {};
 
   @override
   void initState() {
     super.initState();
     _future = widget.repository.listByClient(widget.clientId);
+  }
+
+  void _reload() {
+    setState(() {
+      _future = widget.repository.listByClient(widget.clientId);
+    });
+  }
+
+  bool get _hasActiveFilters => _statusFilter.isNotEmpty || _pepFilter.isNotEmpty;
+
+  void _clearFilters() {
+    setState(() {
+      _statusFilter = {};
+      _pepFilter = {};
+    });
+  }
+
+  Future<void> _createCardholder() async {
+    final draft = await showDialog<Cardholder>(
+      context: context,
+      builder: (context) => CardholderFormDialog(clientId: widget.clientId),
+    );
+    if (draft == null) return;
+
+    await widget.repository.create(draft);
+    if (!mounted) return;
+    _reload();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Tarjetahabiente creado.')),
+    );
   }
 
   @override
@@ -42,33 +83,86 @@ class _CardholderListViewState extends State<CardholderListView> {
         }
 
         final cardholders = snapshot.data!;
-        if (cardholders.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.people_outline_rounded, size: 40, color: Colors.grey.shade400),
-                const SizedBox(height: 12),
-                Text(
-                  'Este cliente no tiene tarjetahabientes propios',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          );
-        }
+        final filtered = cardholders.where((c) {
+          if (_statusFilter.isNotEmpty && !_statusFilter.contains(c.isActive)) return false;
+          if (_pepFilter.isNotEmpty && !_pepFilter.contains(c.isPoliticallyExposed)) return false;
+          return true;
+        }).toList();
 
-        return ListView.separated(
-          padding: const EdgeInsets.all(8),
-          itemCount: cardholders.length,
-          separatorBuilder: (_, __) => const Divider(height: 1, indent: 68),
-          itemBuilder: (context, index) {
-            final cardholder = cardholders[index];
-            return CardholderTile(
-              cardholder: cardholder,
-              onTap: widget.onSelect != null ? () => widget.onSelect!(cardholder) : null,
-            );
-          },
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (cardholders.isNotEmpty || widget.session.role.canManageCardholders)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (cardholders.isNotEmpty) ...[
+                      MultiSelectFilterButton<bool>(
+                        label: 'Estado',
+                        options: const [true, false],
+                        optionLabel: (active) => active ? 'Activo' : 'Inactivo',
+                        selected: _statusFilter,
+                        onChanged: (next) => setState(() => _statusFilter = next),
+                      ),
+                      MultiSelectFilterButton<bool>(
+                        label: 'PEP',
+                        options: const [true, false],
+                        optionLabel: (pep) => pep ? 'Sí' : 'No',
+                        selected: _pepFilter,
+                        onChanged: (next) => setState(() => _pepFilter = next),
+                      ),
+                      if (_hasActiveFilters)
+                        TextButton(onPressed: _clearFilters, child: const Text('Limpiar filtros')),
+                    ],
+                    if (widget.session.role.canManageCardholders)
+                      FilledButton.icon(
+                        onPressed: _createCardholder,
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('Nuevo Tarjetahabiente'),
+                      ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: cardholders.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.people_outline_rounded, size: 40, color: Colors.grey.shade400),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Este cliente no tiene tarjetahabientes propios',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    )
+                  : filtered.isEmpty
+                      ? Center(
+                          child: Text(
+                            'Ningún tarjetahabiente coincide con los filtros',
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(8),
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1, indent: 68),
+                          itemBuilder: (context, index) {
+                            final cardholder = filtered[index];
+                            return CardholderTile(
+                              cardholder: cardholder,
+                              onTap: widget.onSelect != null ? () => widget.onSelect!(cardholder) : null,
+                            );
+                          },
+                        ),
+            ),
+          ],
         );
       },
     );

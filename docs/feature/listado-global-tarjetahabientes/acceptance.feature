@@ -35,3 +35,19 @@ Característica: Listado global de Tarjetahabientes
     Cuando escribo "Maria" en el buscador de nombre
     Y selecciono "Maria Gomez" de las sugerencias
     Entonces solo veo a "Maria Gomez" en el listado
+
+  Escenario: Filtrar el listado por Estado
+    Dado que "Juan Perez" está inactivo
+    Cuando selecciono "Inactivo" en el filtro de Estado
+    Entonces solo veo tarjetahabientes inactivos, incluido "Juan Perez"
+
+  Escenario: Filtrar el listado por PEP
+    Dado que inicié sesión como Super Admin en "Tarjetahabientes"
+    Cuando selecciono "Sí" en el filtro de PEP
+    Entonces solo veo tarjetahabientes marcados como Persona Políticamente Expuesta
+
+  Escenario: El listado muestra el estado de cada tarjetahabiente sin abrir su detalle
+    Dado que "Juan Perez" está inactivo y el resto están activos
+    Cuando veo el listado global de Tarjetahabientes
+    Entonces veo un pill "Inactivo" junto a "Juan Perez"
+    Y veo un pill "Activo" junto a los demás

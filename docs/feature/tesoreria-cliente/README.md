@@ -32,16 +32,18 @@ del lado del Cliente, no solo de la tarjeta.
 ## Dónde vive esto en la UI
 Cada Cliente ahora tiene su propia pantalla de detalle (antes, hacer clic
 en un Cliente llevaba directo a su listado de Tarjetahabientes) con dos
-pestañas:
-- **Tarjetahabientes**: el listado y flujo que ya existía
-  (`docs/feature/tarjetahabientes-por-cliente/`), sin cambios.
-- **Tesorería** (nueva): muestra el saldo de la Concentradora, y dos
-  secciones:
+pestañas, **Tesorería primero** (2026-09-19: se invirtió el orden
+original — el dinero es la pregunta más frecuente al entrar al detalle
+de una empresa, y mantiene la misma jerarquía de información que el
+Panel directivo, que también lidera con cifras antes que con personas):
+- **Tesorería**: muestra el saldo de la Concentradora, y dos secciones:
   - Historial de movimientos de la Concentradora (créditos por
     Deducciones/conciliaciones, débitos por Dispersiones).
   - Lista de depósitos de la Colectora (pendientes y conciliados), con
     un botón "Registrar depósito" y, por cada depósito pendiente, un
     botón "Conciliar" — ambos gateados por rol (ver más abajo).
+- **Tarjetahabientes**: el listado y flujo que ya existía
+  (`docs/feature/tarjetahabientes-por-cliente/`), sin cambios.
 
 ## Flujo principal
 1. Un Operador (o Admin Cliente/Super Admin) con alcance sobre el Cliente

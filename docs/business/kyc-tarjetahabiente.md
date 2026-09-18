@@ -15,14 +15,23 @@ porque "podrían servir algún día" — evitamos recolectar de más
 
 **Identificación legal**
 - `curp` — Clave Única de Registro de Población (18 caracteres).
+  **Requerido solo si `nationality` es "Mexicana"** (un extranjero no
+  tiene CURP) — opcional para cualquier otra nacionalidad.
 - `rfc` — Registro Federal de Contribuyentes (13 caracteres, persona
-  física), opcional — relevante si el tarjetahabiente requiere
+  física — distinto de los 12 de Cliente, que es persona moral),
+  opcional siempre — relevante si el tarjetahabiente requiere
   facturación o reporte fiscal.
 - `idDocumentType` / `idDocumentNumber` — tipo (INE, Pasaporte, Cédula
   profesional) + número del documento de identidad oficial. Reemplaza al
   campo genérico "documento" de la iteración anterior.
 - `dateOfBirth` — fecha de nacimiento.
-- `nationality` — nacionalidad.
+- `nationality` — nacionalidad, capturada con un **combo de una lista
+  curada** ("Mexicana", "Estadounidense", "Canadiense", "Española",
+  "Colombiana", "Argentina", "Otra"), no texto libre — evita variaciones
+  de captura ("mexicana" vs "Mexicana" vs "MEXICANA") que romperían la
+  regla de arriba sobre CURP. Ver
+  `docs/feature/alta-y-gestion-de-tarjetahabientes/README.md`, "Catálogo
+  de nacionalidades".
 
 **Domicilio** (requisito estándar de "comprobante de domicilio" en KYC)
 - Calle y número, colonia, ciudad, estado, código postal, país.
@@ -56,5 +65,7 @@ porque "podrían servir algún día" — evitamos recolectar de más
 - `docs/security/data-classification.md` — clasificación de estos campos
   como PII sensible.
 - `docs/security/compliance-notes.md` — LFPDPPP, no solo PCI-DSS.
-- `docs/feature/detalle-y-gestion-tarjetahabiente/` — dónde se ven y
-  editan estos campos.
+- `docs/feature/alta-y-gestion-de-tarjetahabientes/` — dónde se capturan,
+  ven y editan estos campos, y el formato/validación exacto de cada uno.
+- `docs/business/desactivacion-de-tarjetahabientes.md` — qué pasa con
+  este expediente y sus tarjetas al desactivar al tarjetahabiente.

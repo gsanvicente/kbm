@@ -15,3 +15,14 @@ Característica: Tarjetahabientes por Cliente
     Cuando hago clic en "Grupo Koons Holding"
     Entonces veo un mensaje indicando que no tiene tarjetahabientes propios,
       no una lista en blanco
+
+  Escenario: Filtrar por Estado dentro del listado de un Cliente
+    Dado que "Juan Perez" (de "Koons Subsidiaria A") está inactivo
+    Cuando veo el listado de Tarjetahabientes de "Koons Subsidiaria A"
+    Y selecciono "Inactivo" en el filtro de Estado
+    Entonces solo veo a "Juan Perez" en el listado
+
+  Escenario: Solo quien puede gestionar Tarjetahabientes ve el botón de alta
+    Dado que inicié sesión como Operador de "Koons Subsidiaria A"
+    Cuando veo el listado de Tarjetahabientes de "Koons Subsidiaria A"
+    Entonces no veo el botón "+ Nuevo Tarjetahabiente"

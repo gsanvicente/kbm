@@ -27,8 +27,19 @@ class _KbmAdminAppState extends State<KbmAdminApp> {
   // swapping these for the real HTTP-backed repositories.
   final _clientRepository = FakeClientRepository();
   late final _authController = AuthController(FakeAuthRepository(clientRepository: _clientRepository));
-  final _cardholderRepository = FakeCardholderRepository();
-  late final _cardRepository = FakeCardRepository(clientRepository: _clientRepository);
+  // `_cardholderRepository` invoca `_cardRepository` en su callback de
+  // desactivación, y `_cardRepository` recibe `_cardholderRepository` en
+  // su constructor — referencia mutua resuelta con `late final`: el
+  // closure de abajo no evalúa `_cardRepository` hasta que alguien
+  // realmente desactiva a un Tarjetahabiente, momento en el que ambos ya
+  // están construidos. Ver docs/business/desactivacion-de-tarjetahabientes.md.
+  late final FakeCardholderRepository _cardholderRepository = FakeCardholderRepository(
+    onDeactivated: (id) => _cardRepository.freezeAllForCardholder(id),
+  );
+  late final FakeCardRepository _cardRepository = FakeCardRepository(
+    clientRepository: _clientRepository,
+    cardholderRepository: _cardholderRepository,
+  );
   late final _ledgerRepository = FakeLedgerRepository(
     cardRepository: _cardRepository,
     clientRepository: _clientRepository,

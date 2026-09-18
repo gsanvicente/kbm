@@ -78,6 +78,18 @@
   (reversible por él mismo); "bloquear" lo hace el staff (Admin
   Cliente+) y siempre pesa más — el Tarjetahabiente no puede revertir un
   bloqueo del staff. Ver `docs/business/autoservicio-tarjetahabiente.md`.
+- **Motivo de bloqueo (`blocked_reason`)**: por qué una tarjeta está
+  `blocked` — `manual` (el staff la bloqueó directamente) o
+  `cardholder_inactive` (se bloqueó sola al desactivar a su
+  Tarjetahabiente). Solo la segunda no se puede desbloquear mientras el
+  Tarjetahabiente siga inactivo. Ver
+  `docs/business/tarjetas-y-asignacion.md`.
+- **Tarjetahabiente inactivo**: un Tarjetahabiente con `is_active =
+  false` — no se le pueden asignar tarjetas nuevas, no puede editarse su
+  expediente, y todas sus tarjetas sin bloqueo previo quedan bloqueadas.
+  A diferencia de Cliente, reactivarlo no desbloquea sus tarjetas
+  automáticamente. Ver
+  `docs/business/desactivacion-de-tarjetahabientes.md`.
 - **Rol**: perfil de acceso de un usuario administrativo/staff (Super
   Admin, Admin Cliente, Operador, Auditor). No confundir con el acceso de
   autoservicio del Tarjetahabiente, que es un plano de identidad distinto.

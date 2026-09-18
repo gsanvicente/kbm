@@ -181,8 +181,8 @@ class _ClientDetailViewState extends State<ClientDetailView> with SingleTickerPr
           labelColor: KoonsColors.navy,
           indicatorColor: KoonsColors.blue,
           tabs: const [
-            Tab(text: 'Tarjetahabientes'),
             Tab(text: 'Tesorería'),
+            Tab(text: 'Tarjetahabientes'),
           ],
         ),
         const Divider(height: 1),
@@ -190,15 +190,16 @@ class _ClientDetailViewState extends State<ClientDetailView> with SingleTickerPr
           child: TabBarView(
             controller: _tabController,
             children: [
-              CardholderListView(
-                repository: widget.cardholderRepository,
-                clientId: widget.client.id,
-                onSelect: widget.onSelectCardholder,
-              ),
               _TreasuryTab(
                 client: widget.client,
                 session: widget.session,
                 treasuryRepository: widget.treasuryRepository,
+              ),
+              CardholderListView(
+                repository: widget.cardholderRepository,
+                clientId: widget.client.id,
+                session: widget.session,
+                onSelect: widget.onSelectCardholder,
               ),
             ],
           ),

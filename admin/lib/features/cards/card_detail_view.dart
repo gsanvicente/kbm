@@ -14,6 +14,7 @@ import '../../core/models/operation_type.dart';
 import '../../core/models/payment_card.dart';
 import '../../core/models/session.dart';
 import '../../core/models/shared/card_limit_exceeded_exception.dart';
+import '../../core/models/shared/cardholder_inactive_exception.dart';
 import '../../core/utils/currency_format.dart';
 import '../../core/utils/date_format.dart';
 import '../../shared_widgets/card_destination_field.dart';
@@ -97,24 +98,36 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
 
   Future<void> _toggleBlocked() async {
     setState(() => _busy = true);
-    final updated = await widget.cardRepository.setBlocked(_card.id, _card.status != CardStatus.blocked);
-    if (!mounted) return;
-    setState(() {
-      _card = updated;
-      _busy = false;
-    });
-    widget.onChanged(updated);
+    try {
+      final updated = await widget.cardRepository.setBlocked(_card.id, _card.status != CardStatus.blocked);
+      if (!mounted) return;
+      setState(() {
+        _card = updated;
+        _busy = false;
+      });
+      widget.onChanged(updated);
+    } on CardholderInactiveException catch (e) {
+      setState(() => _busy = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   Future<void> _assign() async {
     setState(() => _busy = true);
-    final candidates = await widget.cardholderRepository.listByClient(_card.clientId);
+    // Un Tarjetahabiente inactivo no puede recibir tarjetas nuevas — ver
+    // docs/business/desactivacion-de-tarjetahabientes.md. Se filtra aquí
+    // (no solo se confía en el chequeo del repositorio) para no ofrecer
+    // una opción que de todas formas se va a rechazar.
+    final candidates = (await widget.cardholderRepository.listByClient(_card.clientId))
+        .where((c) => c.isActive)
+        .toList();
     if (!mounted) return;
     setState(() => _busy = false);
 
     if (candidates.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Este Cliente no tiene tarjetahabientes para asignar esta tarjeta.')),
+        const SnackBar(content: Text('Este Cliente no tiene tarjetahabientes activos para asignar esta tarjeta.')),
       );
       return;
     }
@@ -136,6 +149,10 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
       });
       widget.onChanged(updated);
     } on CardLimitExceededException catch (e) {
+      setState(() => _busy = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } on CardholderInactiveException catch (e) {
       setState(() => _busy = false);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));

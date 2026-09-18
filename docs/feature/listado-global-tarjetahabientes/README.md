@@ -24,17 +24,24 @@ Repositorio fake, mismo dataset que las demás features de tarjetahabiente.
 2. Ve una lista de todos los tarjetahabientes de los Clientes dentro de su
    alcance (misma regla de jerarquía que `panel-principal-admin`), con una
    columna/etiqueta indicando a qué Cliente pertenece cada uno.
-3. Puede acotar el listado con los mismos dos filtros, mismo componente
+3. Puede acotar el listado con filtros combinables, mismo componente
    reutilizable que `docs/feature/pool-y-asignacion-de-tarjetas/` (son
    filtros de cliente, nunca cambian qué tarjetahabientes están dentro de
    su alcance):
    - **Empresa** (multiselección, combo con casillas) — oculto si el
      usuario solo tiene acceso a un Cliente.
+   - **Estado** (Activo/Inactivo, multiselección) — para encontrar
+     rápido a quién no puede operar, ver
+     `docs/business/desactivacion-de-tarjetahabientes.md`.
+   - **PEP** (Sí/No, multiselección).
    - **Nombre**: cuadro de búsqueda con autocompletar — al elegir una
      sugerencia, el listado se acota a esa persona exacta.
    - Un botón "Limpiar filtros" aparece cuando hay alguno activo.
-4. Al hacer clic en uno, se abre su detalle — ver
-   `docs/feature/detalle-y-gestion-tarjetahabiente/`.
+4. Cada fila muestra un pill de Estado ("Activo"/"Inactivo") y de "PEP"
+   si corresponde, para identificar de un vistazo — mismo criterio que
+   `docs/feature/tarjetahabientes-por-cliente/`.
+5. Al hacer clic en uno, se abre su detalle — ver
+   `docs/feature/alta-y-gestion-de-tarjetahabientes/`.
 
 ## Reglas de negocio
 Ninguna nueva — el conjunto de tarjetahabientes visible es exactamente la

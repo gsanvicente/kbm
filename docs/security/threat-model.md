@@ -164,3 +164,25 @@ en el repositorio, en cada acción que mueve dinero o cambia estado
 Tarjetas, reclamos) — nunca solo en la UI, para cubrir a quien ya tenía
 sesión abierta. La capa (b) es la que realmente cierra este riesgo; la
 (a) por sí sola no basta.
+
+## 14. Un Tarjetahabiente inactivo cuyas tarjetas siguen operables
+**Riesgo:** análogo al punto 13, pero a nivel de persona en vez de
+empresa — si desactivar a un Tarjetahabiente solo cambia un flag
+cosmético sin afectar sus tarjetas, alguien que ya dejó de estar
+autorizado (ex-empleado, relación terminada) podría seguir gastando o
+alguien con sesión ya iniciada podría seguir asignándole tarjetas nuevas
+o desbloqueando las que tiene. Es, otra vez, un riesgo de **enforcement
+incompleto**, no de autorización rota.
+**Mitigación de diseño:** al desactivar, sus tarjetas sin bloqueo previo
+pasan de inmediato a `blocked` con `blocked_reason = cardholder_inactive`
+(efecto inmediato, no depende de que nadie vuelva a iniciar sesión).
+Además, verificación de `is_active` del Tarjetahabiente directamente en
+el repositorio, en cada acción relevante — `CardRepository.assign` (no
+se le puede asignar una tarjeta nueva) y `CardRepository.setBlocked` al
+desbloquear (no se puede revertir ningún bloqueo, sea cual sea su
+motivo, mientras siga inactivo) — nunca solo en la UI, para cubrir a
+quien ya tenía sesión abierta. A diferencia del punto 13, esta cascada es
+**deliberadamente asimétrica**: reactivar al Tarjetahabiente no
+desbloquea sus tarjetas automáticamente, para que ese paso quede sujeto a
+una revisión manual explícita — ver
+`docs/business/desactivacion-de-tarjetahabientes.md`.

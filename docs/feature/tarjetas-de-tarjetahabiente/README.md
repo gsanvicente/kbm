@@ -11,7 +11,7 @@ asignadas — tercer nivel de la jerarquía Cliente → Tarjetahabiente →
 Tarjeta — y permitir ver el detalle de cada una.
 
 ## Contexto / motivación
-Continuación de `docs/feature/detalle-y-gestion-tarjetahabiente/`. La
+Continuación de `docs/feature/alta-y-gestion-de-tarjetahabientes/`. La
 relación Tarjetahabiente-Tarjeta ya existe en el modelo de datos
 (`cards.cardholder_id`); esta feature solo la hace visible.
 

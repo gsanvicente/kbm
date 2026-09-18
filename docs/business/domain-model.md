@@ -70,6 +70,20 @@ erDiagram
   propaga en cascada a **todos** sus descendientes, y bloquea cualquier
   acción operativa dentro de ese alcance (no solo la visibilidad) — ver
   `docs/business/desactivacion-de-clientes.md`.
+- **`TARJETAHABIENTE.is_active`**, desde 2026-09-18: desactivar a un
+  Tarjetahabiente **no** es simétrico como la cascada de Cliente —
+  bloquea de inmediato (`blocked`) sus tarjetas sin bloqueo previo, pero
+  reactivar no las desbloquea automáticamente (requiere una acción manual
+  por tarjeta). Tampoco permite editar su expediente mientras está
+  inactivo (a diferencia de Cliente, que sí). Ver
+  `docs/business/desactivacion-de-tarjetahabientes.md`.
+- **`TARJETA.blocked_reason`**, desde 2026-09-18: distingue si una
+  tarjeta `blocked` lo está por acción manual del staff (`manual`) o
+  automáticamente por la desactivación de su Tarjetahabiente
+  (`cardholder_inactive`) — el segundo caso no puede desbloquearse
+  mientras el Tarjetahabiente siga inactivo, sin importar el rol de quien
+  lo intente. Ver `docs/business/tarjetas-y-asignacion.md`, "Motivo de
+  bloqueo".
 - **`APODERADO_LEGAL` y `BENEFICIARIO_CONTROLADOR`** son expedientes KYB
   del Cliente mismo (persona moral), no relacionados con `TARJETAHABIENTE`
   (persona física que usa una tarjeta) ni con `USUARIO` (quien opera la

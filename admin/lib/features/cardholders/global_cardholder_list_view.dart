@@ -37,6 +37,8 @@ class _GlobalCardholderListViewState extends State<GlobalCardholderListView> {
   late Future<(List<Client>, List<Cardholder>)> _future;
 
   Set<String> _clientFilter = {};
+  Set<bool> _statusFilter = {};
+  Set<bool> _pepFilter = {};
   Cardholder? _nameFilter;
   int _searchFieldGeneration = 0;
 
@@ -54,11 +56,14 @@ class _GlobalCardholderListViewState extends State<GlobalCardholderListView> {
     return (clients, cardholders);
   }
 
-  bool get _hasActiveFilters => _clientFilter.isNotEmpty || _nameFilter != null;
+  bool get _hasActiveFilters =>
+      _clientFilter.isNotEmpty || _statusFilter.isNotEmpty || _pepFilter.isNotEmpty || _nameFilter != null;
 
   void _clearFilters() {
     setState(() {
       _clientFilter = {};
+      _statusFilter = {};
+      _pepFilter = {};
       _nameFilter = null;
       _searchFieldGeneration++;
     });
@@ -81,6 +86,8 @@ class _GlobalCardholderListViewState extends State<GlobalCardholderListView> {
 
         final filtered = cardholders.where((c) {
           if (_clientFilter.isNotEmpty && !_clientFilter.contains(c.clientId)) return false;
+          if (_statusFilter.isNotEmpty && !_statusFilter.contains(c.isActive)) return false;
+          if (_pepFilter.isNotEmpty && !_pepFilter.contains(c.isPoliticallyExposed)) return false;
           if (_nameFilter != null && c.id != _nameFilter!.id) return false;
           return true;
         }).toList();
@@ -103,6 +110,20 @@ class _GlobalCardholderListViewState extends State<GlobalCardholderListView> {
                       selected: _clientFilter,
                       onChanged: (next) => setState(() => _clientFilter = next),
                     ),
+                  MultiSelectFilterButton<bool>(
+                    label: 'Estado',
+                    options: const [true, false],
+                    optionLabel: (active) => active ? 'Activo' : 'Inactivo',
+                    selected: _statusFilter,
+                    onChanged: (next) => setState(() => _statusFilter = next),
+                  ),
+                  MultiSelectFilterButton<bool>(
+                    label: 'PEP',
+                    options: const [true, false],
+                    optionLabel: (pep) => pep ? 'Sí' : 'No',
+                    selected: _pepFilter,
+                    onChanged: (next) => setState(() => _pepFilter = next),
+                  ),
                   CardholderSearchField(
                     key: ValueKey(_searchFieldGeneration),
                     candidates: cardholders,

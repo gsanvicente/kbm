@@ -26,6 +26,16 @@ Future<void> _goToSection(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+/// Taps a tab inside `ClientDetailView`'s TabBar by label — "Tarjetahabientes"
+/// and "Tesorería" also exist elsewhere (sidebar nav item, breadcrumb), so
+/// `find.text` alone is ambiguous here; scoping to `Tab` disambiguates.
+Future<void> _goToClientTab(WidgetTester tester, String label) async {
+  final finder = find.widgetWithText(Tab, label);
+  await tester.ensureVisible(finder);
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
 /// Opens a MultiSelectFilterButton combo (found by its current label, so
 /// pass the un-suffixed label e.g. "Estado", not "Estado (1)") and taps
 /// one checkbox option inside it. Leaves the menu open, same as a real
@@ -101,6 +111,7 @@ void main() {
 
     await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
 
     expect(find.text('Juan Perez'), findsOneWidget);
     expect(find.text('Ana Torres'), findsOneWidget);
@@ -120,6 +131,7 @@ void main() {
 
     await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Grupo Koons Holding');
+    await _goToClientTab(tester, 'Tarjetahabientes');
 
     expect(find.text('Este cliente no tiene tarjetahabientes propios'), findsOneWidget);
   });
@@ -181,6 +193,7 @@ void main() {
     await _login(tester, 'admin.subA@koons.test');
     await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
     await _goToSection(tester, 'Juan Perez');
 
     expect(find.widgetWithText(OutlinedButton, 'Editar'), findsOneWidget);
@@ -188,27 +201,53 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, 'Editar'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.widgetWithText(TextField, 'Teléfono'), '+1 809 000 0000');
+    await tester.enterText(find.widgetWithText(TextField, 'Teléfono'), '5512345678');
     await tester.tap(find.widgetWithText(FilledButton, 'Guardar'));
     await tester.pumpAndSettle();
 
-    expect(find.text('+1 809 000 0000'), findsOneWidget);
+    expect(find.text('5512345678'), findsOneWidget);
   });
 
-  testWidgets('Admin Cliente can deactivate a cardholder without approval', (tester) async {
+  testWidgets('Admin Cliente can deactivate a cardholder without approval, after confirming', (tester) async {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
     await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
     await _goToSection(tester, 'Juan Perez');
 
     expect(find.text('Activo'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Desactivar'));
     await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Desactivar'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Inactivo'), findsWidgets);
+  });
+
+  testWidgets('deactivating a cardholder freezes their active card, and editing is no longer available', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
+    await _goToSection(tester, 'Juan Perez');
+
+    expect(find.widgetWithText(OutlinedButton, 'Editar'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(OutlinedButton, 'Editar'), findsNothing);
+    expect(find.widgetWithText(OutlinedButton, 'Reactivar'), findsOneWidget);
+
+    await _goToSection(tester, '**** **** **** 1234');
+    expect(find.text('Bloqueada'), findsWidgets);
   });
 
   testWidgets('Auditor can see a cardholder but not manage them', (tester) async {
@@ -216,6 +255,7 @@ void main() {
     await tester.pumpAndSettle();
     await _login(tester, 'auditor.subA@koons.test');
     await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
     await _goToSection(tester, 'Juan Perez');
 
     expect(find.text('PERJ850312HDFRRN05'), findsOneWidget); // CURP
@@ -229,7 +269,7 @@ void main() {
     await _login(tester, 'super.admin@koons.test');
 
     await _goToSection(tester, 'Tarjetahabientes');
-    expect(find.text('PEP'), findsOneWidget); // Carlos Ruiz, in the list
+    expect(find.text('PEP'), findsNWidgets(2)); // filtro "PEP" + chip de Carlos Ruiz, in the list
 
     await _goToSection(tester, 'Carlos Ruiz');
     expect(find.text('PEP'), findsOneWidget); // header badge
@@ -242,6 +282,7 @@ void main() {
     await _login(tester, 'admin.subA@koons.test');
     await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
     await _goToSection(tester, 'Juan Perez');
 
     expect(find.text('**** **** **** 1234'), findsOneWidget);
@@ -253,6 +294,7 @@ void main() {
     await _login(tester, 'admin.subA@koons.test');
     await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
     await _goToSection(tester, 'Ana Torres');
 
     expect(find.text('Este tarjetahabiente no tiene tarjetas asignadas'), findsOneWidget);
@@ -1484,5 +1526,183 @@ void main() {
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
     expect(find.text('Email o contraseña incorrectos.'), findsNothing);
+  });
+
+  // --- Alta y gestión de Tarjetahabientes --------------------------------
+
+  testWidgets('Only Admin Cliente and Super Admin see the "Nuevo Tarjetahabiente" button', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test');
+
+    // Operador aterriza directo en "Clientes" (no tiene "Inicio").
+    await _goToSection(tester, 'Koons Subsidiaria A');
+
+    expect(find.widgetWithText(FilledButton, 'Nuevo Tarjetahabiente'), findsNothing);
+  });
+
+  testWidgets('Admin Cliente can create a new Tarjetahabiente from a Cliente\'s tab', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
+    await tester.tap(find.widgetWithText(FilledButton, 'Nuevo Tarjetahabiente'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'Nombre completo'), 'Pedro Nuevo');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de identificación'), 'INE9999999999999');
+    await tester.enterText(find.widgetWithText(TextField, 'CURP'), 'NUPE900101HDFXXX01');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Crear'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Crear'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pedro Nuevo'), findsOneWidget);
+  });
+
+  testWidgets('CURP is required only for Mexican nationality when creating a Tarjetahabiente', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
+    await tester.tap(find.widgetWithText(FilledButton, 'Nuevo Tarjetahabiente'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'Nombre completo'), 'Foreign Person');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de identificación'), 'PASSPORT123');
+    await tester.tap(find.widgetWithText(FilledButton, 'Crear'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('CURP es obligatorio'), findsOneWidget); // Mexicana por default, sin CURP
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Estadounidense').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Crear'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Foreign Person'), findsOneWidget); // ahora sí se crea, sin CURP
+  });
+
+  testWidgets('assigning a card excludes an inactive Tarjetahabiente from the picker', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
+    await _goToSection(tester, 'Koons Subsidiaria B');
+    await _goToClientTab(tester, 'Tarjetahabientes');
+    await _goToSection(tester, 'Carlos Ruiz');
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('breadcrumb-0')));
+    await tester.pumpAndSettle();
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 3002');
+    await tester.tap(find.widgetWithText(FilledButton, 'Asignar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assign-dropdown')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Carlos Ruiz'), findsNothing);
+    expect(find.text('Maria Gomez'), findsWidgets);
+  });
+
+  testWidgets('cannot unblock a card while its Tarjetahabiente is inactive', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
+    await _goToSection(tester, 'Koons Subsidiaria B');
+    await _goToClientTab(tester, 'Tarjetahabientes');
+    await _goToSection(tester, 'Carlos Ruiz');
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('breadcrumb-0')));
+    await tester.pumpAndSettle();
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 7890');
+    expect(find.text('Bloqueada'), findsWidgets);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Desbloquear'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('inactivo'), findsOneWidget);
+    expect(find.text('Bloqueada'), findsWidgets);
+  });
+
+  testWidgets('reactivating a Tarjetahabiente does not automatically unblock the card it froze', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
+    await _goToSection(tester, 'Juan Perez');
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Reactivar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Reactivar'));
+    await tester.pumpAndSettle();
+
+    await _goToSection(tester, '**** **** **** 1234');
+    expect(find.text('Bloqueada'), findsWidgets); // sigue bloqueada pese a reactivar
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Desbloquear'));
+    await tester.pumpAndSettle();
+    expect(find.text('Activa'), findsWidgets); // ahora sí se puede desbloquear manualmente
+  });
+
+  testWidgets('the per-Cliente Tarjetahabientes list can filter by Estado', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
+    await _goToSection(tester, 'Juan Perez');
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('breadcrumb-1')));
+    await tester.pumpAndSettle();
+    await _goToClientTab(tester, 'Tarjetahabientes');
+
+    await _toggleFilterOption(tester, 'Estado', 'Inactivo');
+    expect(find.text('Juan Perez'), findsOneWidget);
+    expect(find.text('Ana Torres'), findsNothing);
+  });
+
+  testWidgets('the global Tarjetahabientes list can filter by PEP', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Tarjetahabientes');
+    await _toggleFilterOption(tester, 'PEP', 'Sí');
+
+    expect(find.text('Carlos Ruiz'), findsOneWidget);
+    expect(find.text('Juan Perez'), findsNothing);
   });
 }

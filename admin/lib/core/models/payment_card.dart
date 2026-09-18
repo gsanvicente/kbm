@@ -1,3 +1,4 @@
+import 'card_blocked_reason.dart';
 import 'card_network.dart';
 import 'card_status.dart';
 
@@ -14,6 +15,14 @@ class PaymentCard {
   final CardStatus status;
   final DateTime? assignedAt;
 
+  /// Por qué está `blocked` — `null` para cualquier otro estado. Ver
+  /// docs/business/tarjetas-y-asignacion.md, "Motivo de bloqueo". Se
+  /// construye directamente (no vía [copyWith]) en `FakeCardRepository`
+  /// cada vez que cambia, para poder limpiarlo a `null` explícitamente al
+  /// desbloquear — mismo motivo por el que `Client.update()` no usa
+  /// `copyWith` (ver fake_client_repository.dart).
+  final CardBlockedReason? blockedReason;
+
   PaymentCard({
     required this.id,
     required this.clientId,
@@ -24,10 +33,15 @@ class PaymentCard {
     required this.expiryYear,
     required this.status,
     this.assignedAt,
+    this.blockedReason,
   }) : assert(
           (cardholderId == null) == (assignedAt == null),
           'cardholderId and assignedAt must both be null or both be set — '
           'see the matching CHECK constraint on backend cards table',
+        ),
+        assert(
+          status == CardStatus.blocked || blockedReason == null,
+          'blockedReason only makes sense when status is blocked',
         );
 
   bool get isAvailable => status == CardStatus.unassigned;
@@ -49,6 +63,12 @@ class PaymentCard {
       expiryYear: expiryYear,
       status: status ?? this.status,
       assignedAt: assignedAt ?? this.assignedAt,
+      // No hay parámetro `blockedReason` aquí a propósito — cambiar el
+      // motivo de bloqueo siempre se hace con una construcción directa
+      // (ver setBlocked/freezeAllForCardholder en FakeCardRepository),
+      // nunca con copyWith. Aquí solo se preserva si sigue bloqueada, o
+      // se limpia si el nuevo estado ya no lo es.
+      blockedReason: (status ?? this.status) == CardStatus.blocked ? blockedReason : null,
     );
   }
 }

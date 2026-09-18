@@ -27,6 +27,11 @@ pantalla nueva.
   `congelada`/`cancelada` quedan fuera de alcance (ver nota de negocio).
 - `CardRepository` (fake) gana un método `setBlocked`, análogo a
   `CardholderRepository.setActive`.
+- Desde `docs/feature/alta-y-gestion-de-tarjetahabientes/`, `setBlocked`
+  también guarda **por qué** se bloqueó (`blocked_reason: manual` cuando
+  es esta acción directa) y rechaza **desbloquear** si el Tarjetahabiente
+  dueño de la tarjeta está inactivo — ver
+  `docs/business/tarjetas-y-asignacion.md`, "Motivo de bloqueo".
 
 ## Flujo principal
 1. En el detalle de una tarjeta asignada, si el rol lo permite, aparece

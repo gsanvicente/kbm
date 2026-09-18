@@ -12,9 +12,9 @@ disponible → (asignación) → activa → bloqueada / congelada / cancelada
   está ligada a ningún Tarjetahabiente todavía — es el "lote de tarjetas
   disponibles" que un Admin puede repartir.
 - **Activa**: asignada a un Tarjetahabiente, en uso normal.
-- **Bloqueada**: asignada, pero deshabilitada temporalmente por el staff
-  (ver `docs/feature/bloqueo-de-tarjeta/`) — reversible, vuelve a
-  **Activa** al desbloquear.
+- **Bloqueada**: asignada, pero deshabilitada por el staff (ver
+  `docs/feature/bloqueo-de-tarjeta/`) — reversible, vuelve a **Activa**
+  al desbloquear, salvo la excepción de "Motivo de bloqueo" abajo.
 - **Congelada / Cancelada**: estados operativos aún no implementados
   (gestión de saldo, feature futura — ver
   `docs/feature/operacion-saldo-con-aprobacion/`).
@@ -25,6 +25,25 @@ tarjeta que llegó para Koons Subsidiaria A no puede asignarse a un
 tarjetahabiente de Subsidiaria B). Su `ledger_account` (cuenta de saldo)
 se crea **en el momento de la asignación**, no antes — no tiene sentido
 llevar saldo de algo que nadie tiene todavía.
+
+## Motivo de bloqueo
+
+Una tarjeta `blocked` guarda por qué se bloqueó, `blocked_reason`:
+
+- **`manual`**: alguien del staff la bloqueó directamente (ej. reporte de
+  robo/fraude) — ver `docs/feature/bloqueo-de-tarjeta/`. Cualquiera con
+  permiso de bloquear/desbloquear puede revertirlo.
+- **`cardholder_inactive`**: se bloqueó automáticamente porque su
+  Tarjetahabiente fue desactivado — ver
+  `docs/business/desactivacion-de-tarjetahabientes.md`. **No se puede
+  desbloquear mientras el Tarjetahabiente siga inactivo**, sin importar
+  el rol de quien lo intente; una vez reactivado el Tarjetahabiente, sí
+  se puede desbloquear, pero solo manualmente y una tarjeta a la vez —
+  reactivar no las desbloquea automáticamente.
+
+Desactivar a un Tarjetahabiente nunca sobrescribe un `blocked_reason`
+existente — si una tarjeta ya estaba bloqueada manualmente, conserva ese
+motivo aunque su Tarjetahabiente pase a inactivo después.
 
 ## Límite de tarjetas activas por Tarjetahabiente
 
@@ -38,6 +57,10 @@ límite configurado = sin restricción.
 Mismo criterio que gestionar Tarjetahabientes (ver
 `docs/business/roles-and-permissions.md`): Super Admin y Admin Cliente.
 Operador y Auditor pueden ver el estado de las tarjetas pero no asignar.
+Tampoco se puede asignar una tarjeta a un **Tarjetahabiente inactivo** —
+ver `docs/business/desactivacion-de-tarjetahabientes.md` — el selector de
+Tarjetahabiente al asignar solo ofrece a los activos del Cliente dueño de
+la tarjeta.
 
 ## Quién puede bloquear / desbloquear
 
@@ -48,7 +71,9 @@ roles). Solo **Auditor** no puede. Ver
 `docs/feature/bloqueo-de-tarjeta/README.md` para el alcance exacto de
 esta iteración (acción directa, sin flujo de aprobación todavía, aunque
 el modelo de datos ya lo soporta vía `approval_rules` para cuando exista
-la cola de Aprobaciones).
+la cola de Aprobaciones). Excepción: nadie, sin importar su rol, puede
+**desbloquear** una tarjeta mientras su Tarjetahabiente esté inactivo —
+ver "Motivo de bloqueo" arriba.
 
 ## Datos que se muestran (y los que no)
 

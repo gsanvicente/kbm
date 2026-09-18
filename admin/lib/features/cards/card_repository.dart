@@ -23,14 +23,26 @@ abstract class CardRepository {
   /// Asigna una tarjeta disponible ([cardId]) a [cardholderId]. Lanza
   /// [CardLimitExceededException] (ver core/models/shared) si el
   /// tarjetahabiente ya alcanzó el límite de tarjetas activas de su
-  /// Cliente. El llamador es responsable de que [cardholderId] pertenezca
-  /// al mismo Cliente que la tarjeta — ver
+  /// Cliente, o [CardholderInactiveException] si [cardholderId] está
+  /// inactivo (ver docs/business/desactivacion-de-tarjetahabientes.md). El
+  /// llamador es responsable de que [cardholderId] pertenezca al mismo
+  /// Cliente que la tarjeta — ver
   /// docs/feature/pool-y-asignacion-de-tarjetas/README.md.
   Future<PaymentCard> assign({required String cardId, required String cardholderId});
 
-  /// Bloquea ([blocked] = true) o desbloquea ([blocked] = false) una
-  /// tarjeta ya asignada. Acción directa en esta iteración — no pasa por
-  /// `approval_rules` todavía, ver
-  /// docs/feature/bloqueo-de-tarjeta/README.md.
+  /// Bloquea ([blocked] = true, motivo `manual`) o desbloquea ([blocked] =
+  /// false) una tarjeta ya asignada. Acción directa en esta iteración —
+  /// no pasa por `approval_rules` todavía, ver
+  /// docs/feature/bloqueo-de-tarjeta/README.md. Desbloquear lanza
+  /// [CardholderInactiveException] si el Tarjetahabiente dueño de la
+  /// tarjeta está inactivo, sin importar el motivo de bloqueo actual —
+  /// ver docs/business/tarjetas-y-asignacion.md, "Motivo de bloqueo".
   Future<PaymentCard> setBlocked(String cardId, bool blocked);
+
+  /// Bloquea, con motivo `cardholderInactive`, todas las tarjetas de
+  /// [cardholderId] que no estuvieran ya bloqueadas — llamado solo al
+  /// desactivar un Tarjetahabiente (ver
+  /// docs/business/desactivacion-de-tarjetahabientes.md). Una tarjeta que
+  /// ya estaba bloqueada (por el motivo que sea) no se toca.
+  Future<void> freezeAllForCardholder(String cardholderId);
 }

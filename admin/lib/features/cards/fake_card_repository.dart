@@ -1,9 +1,12 @@
+import '../../core/models/card_blocked_reason.dart';
 import '../../core/models/card_network.dart';
 import '../../core/models/card_status.dart';
 import '../../core/models/payment_card.dart';
 import '../../core/models/shared/card_limit_exceeded_exception.dart';
+import '../../core/models/shared/cardholder_inactive_exception.dart';
 import '../../core/models/shared/client_inactive_exception.dart';
 import '../../core/models/shared/not_found_exception.dart';
+import '../cardholders/cardholder_repository.dart';
 import '../clients/client_repository.dart';
 import 'card_repository.dart';
 
@@ -11,12 +14,20 @@ import 'card_repository.dart';
 /// backend/scripts/init-db/001_seed.sql. Mutable, same rationale as
 /// FakeCardholderRepository (see its doc comment).
 class FakeCardRepository implements CardRepository {
-  FakeCardRepository({required this.clientRepository});
+  FakeCardRepository({required this.clientRepository, required this.cardholderRepository});
 
   /// Para verificar, en `assign`/`setBlocked`, que el Cliente dueño de la
   /// tarjeta pueda operar — ver
   /// docs/business/desactivacion-de-clientes.md, "Capa 2".
   final ClientRepository clientRepository;
+
+  /// Para verificar que el Tarjetahabiente pueda operar — ver
+  /// docs/business/desactivacion-de-tarjetahabientes.md, "Capa 2". Una
+  /// sola dirección de dependencia (Card → Cardholder); el efecto
+  /// contrario (desactivar un Tarjetahabiente congela sus tarjetas) se
+  /// resuelve con un callback en `FakeCardholderRepository`, no aquí, para
+  /// no crear una dependencia circular entre ambos repositorios.
+  final CardholderRepository cardholderRepository;
 
   final List<PaymentCard> _cards = [
     PaymentCard(
@@ -51,6 +62,7 @@ class FakeCardRepository implements CardRepository {
       expiryYear: 2026,
       status: CardStatus.blocked,
       assignedAt: DateTime(2026, 1, 15),
+      blockedReason: CardBlockedReason.manual,
     ),
     // Available pool — Ana Torres (Subsidiaria A) intentionally has no
     // card yet, see docs/feature/tarjetas-de-tarjetahabiente/.
@@ -136,6 +148,9 @@ class FakeCardRepository implements CardRepository {
     if (!await clientRepository.isOperable(card.clientId)) {
       throw const ClientInactiveException();
     }
+    if (!await cardholderRepository.isOperable(cardholderId)) {
+      throw const CardholderInactiveException();
+    }
     if (!card.isAvailable) {
       throw StateError('La tarjeta ${card.maskedPan} ya no está disponible.');
     }
@@ -169,9 +184,50 @@ class FakeCardRepository implements CardRepository {
     if (card.cardholderId == null) {
       throw StateError('No se puede bloquear una tarjeta que no está asignada.');
     }
+    // Solo al desbloquear: bloquear más una tarjeta de alguien inactivo
+    // nunca es un problema, ver docs/business/tarjetas-y-asignacion.md.
+    if (!blocked && !await cardholderRepository.isOperable(card.cardholderId!)) {
+      throw const CardholderInactiveException();
+    }
 
-    final updated = card.copyWith(status: blocked ? CardStatus.blocked : CardStatus.active);
+    // Construcción directa, no `copyWith` — necesitamos poder limpiar
+    // `blockedReason` a `null` explícitamente al desbloquear, cosa que el
+    // patrón `??` de copyWith no permite (ver el doc del campo en
+    // payment_card.dart).
+    final updated = PaymentCard(
+      id: card.id,
+      clientId: card.clientId,
+      cardholderId: card.cardholderId,
+      maskedPan: card.maskedPan,
+      network: card.network,
+      expiryMonth: card.expiryMonth,
+      expiryYear: card.expiryYear,
+      status: blocked ? CardStatus.blocked : CardStatus.active,
+      assignedAt: card.assignedAt,
+      blockedReason: blocked ? CardBlockedReason.manual : null,
+    );
     _cards[index] = updated;
     return updated;
+  }
+
+  @override
+  Future<void> freezeAllForCardholder(String cardholderId) async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    for (var i = 0; i < _cards.length; i++) {
+      final card = _cards[i];
+      if (card.cardholderId != cardholderId || card.status == CardStatus.blocked) continue;
+      _cards[i] = PaymentCard(
+        id: card.id,
+        clientId: card.clientId,
+        cardholderId: card.cardholderId,
+        maskedPan: card.maskedPan,
+        network: card.network,
+        expiryMonth: card.expiryMonth,
+        expiryYear: card.expiryYear,
+        status: CardStatus.blocked,
+        assignedAt: card.assignedAt,
+        blockedReason: CardBlockedReason.cardholderInactive,
+      );
+    }
   }
 }

@@ -17,7 +17,7 @@ llegar a manos de un Tarjetahabiente dentro de KBM. Complementa
 
 ## Nota de alcance de esta iteración
 `CardRepository` fake, mutable (igual que `CardholderRepository` desde
-`docs/feature/detalle-y-gestion-tarjetahabiente/`). El pool de
+`docs/feature/alta-y-gestion-de-tarjetahabientes/`). El pool de
 disponibles es dato semilla fijo — ver
 `docs/business/tarjetas-y-asignacion.md` para por qué no hay pantalla de
 alta de tarjetas nuevas en esta iteración.
@@ -46,8 +46,9 @@ alta de tarjetas nuevas en esta iteración.
      para evitar coincidencias parciales ambiguas.
    - Un botón "Limpiar filtros" aparece cuando hay alguno activo.
 4. En una tarjeta **disponible**, si su rol lo permite, ve el botón
-   "Asignar": elige un Tarjetahabiente del mismo Cliente que la tarjeta,
-   y confirma.
+   "Asignar": elige un Tarjetahabiente **activo** del mismo Cliente que
+   la tarjeta, y confirma — los Tarjetahabientes inactivos no aparecen
+   como opción (ver `docs/business/desactivacion-de-tarjetahabientes.md`).
 5. Si el Tarjetahabiente elegido ya alcanzó el límite de tarjetas activas
    configurado para su Cliente, la asignación se rechaza con un mensaje
    explicando el límite — no se le oculta la opción, se le explica por

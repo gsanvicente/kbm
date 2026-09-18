@@ -72,22 +72,29 @@ operar en ningún nivel (ni su propio staff, ni un ancestro operando en
 su nombre) — ver `docs/business/desactivacion-de-clientes.md` para el
 detalle completo del enforcement.
 
-## Gestión de Tarjetahabientes (editar / desactivar)
+## Gestión de Tarjetahabientes (alta, edición, desactivación)
 
 Distinto de "ver" (todos los roles de staff pueden ver tarjetahabientes
-dentro de su alcance): **editar información** (nombre, documento,
-contacto) o **desactivar/reactivar** un tarjetahabiente está limitado a:
+dentro de su alcance): **dar de alta**, **editar información** (nombre,
+documento, contacto) o **desactivar/reactivar** un tarjetahabiente está
+limitado a:
 
 - **Super Admin** y **Admin Cliente** — coherente con que Admin Cliente ya
   tiene "gestionar tarjetahabientes" en su alcance en la tabla de arriba.
+  El alta siempre queda ligada al Cliente desde el que se crea (sin
+  selector de empresa aparte, a diferencia de Cliente).
 - **Operador** y **Auditor NO pueden** — el Operador gestiona *saldos*
   (operaciones de tarjeta), no el perfil del tarjetahabiente; el Auditor
   es de solo lectura por definición.
 
-Desactivar un tarjetahabiente **no** requiere aprobación (no es una
-`balance_operation`, no mueve dinero) — es una acción directa sujeta solo
-al chequeo de rol de arriba. Ver
-`docs/feature/detalle-y-gestion-tarjetahabiente/`.
+Ninguna de las tres requiere aprobación (no son `balance_operation`, no
+mueven dinero) — son acciones directas sujetas solo al chequeo de rol de
+arriba, aunque desactivar sí pide una **confirmación explícita** en la UI
+por su impacto (bloquea las tarjetas del tarjetahabiente). A diferencia de
+Cliente, un tarjetahabiente **inactivo no puede editarse** — el objetivo
+es no modificar un registro que podría ser evidencia de auditoría. Ver
+`docs/business/desactivacion-de-tarjetahabientes.md` y
+`docs/feature/alta-y-gestion-de-tarjetahabientes/`.
 
 ## Tesorería del Cliente (Cuenta Concentradora / Cuenta Colectora)
 
