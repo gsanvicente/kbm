@@ -105,3 +105,9 @@ Tarjetahabiente).
   tiene esa regla activada (bloquear/desbloquear siempre se ejecuta de
   inmediato). Activarla sin la cola de Aprobaciones dejaría la operación
   atascada sin forma de aprobarla.
+
+## Backend (diseñado, pendiente de implementar)
+`docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md` migra la
+fuente de verdad de Tarjetas y Ledger (saldo/movimientos) a un backend Go
+compartido entre `admin/` y `cardholder/` — el ciclo de vida y las reglas
+de esta página no cambian, solo dónde vive el dato.

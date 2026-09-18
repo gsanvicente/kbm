@@ -91,11 +91,18 @@ MVP en construcción — arquitectura y stack decididos (ver `docs/adr/`).
   con sistema de diseño propio (`docs/adr/0007-custom-design-system-koons-tokens.md`).
   Corre contra repositorios *fake* en memoria (no contra el backend real
   todavía) — ver la nota de alcance en cada feature doc.
-- **`backend/`**: solo scaffolding (entrypoints, esquema de base de datos,
-  seed de prueba) — sin casos de uso reales implementados aún. Bloqueado
-  para desarrollo real por la falta de Postgres local (ver siguiente
-  punto).
-- **`cardholder/`**: solo scaffolding, sin pantallas implementadas.
+- **`backend/`**: scaffolding contra Postgres (entrypoints, esquema,
+  seed) sin casos de uso reales, bloqueado por falta de Postgres local
+  (ver siguiente punto) — **más un backend en memoria diseñado, pendiente
+  de implementar** (`docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`)
+  para que `admin/` y `cardholder/` compartan Tarjetas/Ledger sin
+  necesitar Postgres/Docker todavía.
+- **`cardholder/`**: login, detalle de tarjeta y transferencia C2C
+  implementados (`docs/feature/transferencia-c2c-tarjetahabiente/`) —
+  hoy con repositorio fake propio, universo de datos independiente de
+  `admin/` (migración al backend en memoria de arriba: diseñada,
+  pendiente). Estado de cuenta, congelar/descongelar y reclamos siguen
+  pendientes (`docs/feature/portal-autoservicio-tarjetahabiente/`).
 
 **Entorno de desarrollo (en la máquina donde se hizo este trabajo):** Go y
 Flutter instalados en `/usr/local/{go,flutter}`. **Docker no está

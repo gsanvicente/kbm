@@ -24,18 +24,26 @@ abstract class LedgerRepository {
   Future<MovementClaim?> getClaim(String ledgerEntryId);
 
   /// Throws if [ledgerEntryId] already has a claim — 1:1 relationship,
-  /// see docs/business/reclamos-de-movimientos.md.
+  /// see docs/business/reclamos-de-movimientos.md. [cardId] is the card
+  /// the movement belongs to — the caller already knows it (it's viewing
+  /// that card's detail), and passing it explicitly lets an
+  /// HTTP-backed implementation verify the owning Cliente can operate
+  /// without needing a "which card owns this ledger entry" lookup the
+  /// backend doesn't expose. See
+  /// docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md.
   Future<MovementClaim> fileClaim({
     required String ledgerEntryId,
+    required String cardId,
     required String reason,
     required String requestedByEmail,
   });
 
   /// [inFavor] picks resolved_favor vs rejected. Never touches the
   /// underlying LedgerEntry — resolving a claim is a record of the
-  /// decision, not a financial operation.
+  /// decision, not a financial operation. [cardId] — ver [fileClaim].
   Future<MovementClaim> resolveClaim({
     required String claimId,
+    required String cardId,
     required bool inFavor,
     required String resolutionNotes,
     required String resolvedByEmail,

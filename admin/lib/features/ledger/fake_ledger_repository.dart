@@ -164,18 +164,9 @@ class FakeLedgerRepository implements LedgerRepository {
     return null;
   }
 
-  /// Resuelve a qué Cliente pertenece el movimiento [ledgerEntryId] y
-  /// verifica que pueda operar — ver
+  /// Verifica que el Cliente dueño de [cardId] pueda operar — ver
   /// docs/business/desactivacion-de-clientes.md, "Capa 2".
-  Future<bool> _isOperableForEntry(String ledgerEntryId) async {
-    final entry = _entries.firstWhere(
-      (e) => e.id == ledgerEntryId,
-      orElse: () => throw NotFoundException('Movimiento $ledgerEntryId no encontrado'),
-    );
-    final cardId = _accountsByCard.entries
-        .firstWhere((e) => e.value.id == entry.ledgerAccountId,
-            orElse: () => throw NotFoundException('Cuenta de saldo ${entry.ledgerAccountId} no encontrada'))
-        .key;
+  Future<bool> _isOperableForCard(String cardId) async {
     final card = await cardRepository.getById(cardId);
     if (card == null) return true; // no debería pasar, pero no bloquear por un dato inconsistente
     return clientRepository.isOperable(card.clientId);
@@ -184,11 +175,12 @@ class FakeLedgerRepository implements LedgerRepository {
   @override
   Future<MovementClaim> fileClaim({
     required String ledgerEntryId,
+    required String cardId,
     required String reason,
     required String requestedByEmail,
   }) async {
     await Future.delayed(const Duration(milliseconds: 200));
-    if (!await _isOperableForEntry(ledgerEntryId)) {
+    if (!await _isOperableForCard(cardId)) {
       throw const ClientInactiveException();
     }
     if (_claims.any((c) => c.ledgerEntryId == ledgerEntryId)) {
@@ -209,6 +201,7 @@ class FakeLedgerRepository implements LedgerRepository {
   @override
   Future<MovementClaim> resolveClaim({
     required String claimId,
+    required String cardId,
     required bool inFavor,
     required String resolutionNotes,
     required String resolvedByEmail,
@@ -216,7 +209,7 @@ class FakeLedgerRepository implements LedgerRepository {
     await Future.delayed(const Duration(milliseconds: 200));
     final index = _claims.indexWhere((c) => c.id == claimId);
     if (index == -1) throw NotFoundException('Reclamo $claimId no encontrado');
-    if (!await _isOperableForEntry(_claims[index].ledgerEntryId)) {
+    if (!await _isOperableForCard(cardId)) {
       throw const ClientInactiveException();
     }
     final updated = _claims[index].copyWith(

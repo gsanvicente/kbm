@@ -69,9 +69,15 @@ el destino de una transferencia C2C, bajo estas reglas estrictas:
 - Cualquier middleware de logging/observabilidad del backend debe excluir
   explícitamente el campo de PAN de cualquier log, traza o reporte de
   error — no es opcional, es la garantía central de esta ADR.
-- El almacén de hashes de PAN es un componente nuevo del backend real —
-  hoy no existe (todo el proyecto sigue en repositorios fake); se
-  documenta su diseño para cuando se implemente.
+- **Implementado** (2026-09-19, `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`):
+  el cálculo del HMAC y el almacén de hashes viven en el backend Go
+  compartido (`internal/adapters/memory/`, `crypto/hmac` +
+  `crypto/sha256`), no en ninguna app Flutter — corrige la primera
+  versión interina de
+  `docs/feature/transferencia-c2c-tarjetahabiente/README.md`, que a
+  falta de backend calculaba el HMAC dentro del repositorio fake de
+  `cardholder/`. Sigue siendo en memoria (sin Postgres todavía), no el
+  almacén persistente final.
 
 ## Alternativas consideradas
 - **Cifrado reversible en vez de hash**: descartado — no hay ningún caso

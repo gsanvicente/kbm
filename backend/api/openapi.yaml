@@ -1,15 +1,24 @@
 openapi: 3.0.3
 info:
   title: KBM API
-  version: 0.1.0
+  version: 0.2.0
   description: >
     Koons Balance Management API. Source of truth for the contract between
     the Go backend and the Flutter clients (kbm-admin, kbm-cardholder).
     Extended as each use case is implemented — kept in sync with
     internal/adapters/http/handler.
+
+
+    As of v0.2.0 (docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md),
+    this backend is a temporary in-memory implementation of a deliberately
+    small slice of the domain (cards, ledger, cardholder login/transfers)
+    — not the full backend described by internal/domain. Per that ADR, the
+    Dart clients for these paths are hand-written (package:http), not
+    generated from this spec — ADR-0006's generation step resumes once
+    this in-memory backend is replaced by the real Postgres-backed one.
 servers:
-  - url: http://localhost:8080
-    description: Local development
+  - url: http://127.0.0.1:8080
+    description: Local development (loopback only — never 0.0.0.0, see threat-model punto 15)
 paths:
   /healthz:
     get:
@@ -17,3 +26,292 @@ paths:
       responses:
         '200':
           description: OK
+
+  /v1/cardholder-sessions:
+    post:
+      summary: Login del plano de autoservicio del Tarjetahabiente
+      description: >
+        Mismo criterio que docs/feature/login-administrativo/README.md:
+        un solo mensaje de error genérico, nunca distingue email
+        inexistente, contraseña incorrecta, o Tarjetahabiente inactivo
+        (docs/business/desactivacion-de-tarjetahabientes.md, Capa 1).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Sesión creada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cardholderId: { type: string, format: uuid }
+                  email: { type: string }
+                  fullName: { type: string }
+        '401':
+          description: Credenciales inválidas, o Tarjetahabiente inactivo (mismo mensaje genérico)
+
+  /v1/cards:
+    get:
+      summary: Lista de tarjetas por Tarjetahabiente o por Cliente
+      description: >
+        Exactamente uno de los dos parámetros debe venir — usado tanto
+        por `admin/` (por Cliente, para el listado/pool) como por
+        `cardholder/` (por Tarjetahabiente, para "Mis tarjetas").
+      parameters:
+        - name: cardholder_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: client_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Card' }
+
+  /v1/cards/{cardId}:
+    get:
+      summary: Detalle de una tarjeta
+      parameters:
+        - name: cardId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Card' }
+        '404':
+          description: No existe
+
+  /v1/cards/{cardId}/assign:
+    post:
+      summary: Asigna una tarjeta disponible a un Tarjetahabiente
+      description: >
+        Ver docs/feature/pool-y-asignacion-de-tarjetas/README.md y
+        docs/business/desactivacion-de-tarjetahabientes.md (no se puede
+        asignar a un Tarjetahabiente inactivo).
+      parameters:
+        - name: cardId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cardholderId]
+              properties:
+                cardholderId: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Tarjeta asignada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Card' }
+        '409':
+          description: Tarjeta ya no disponible, límite de tarjetas activas alcanzado, o Tarjetahabiente inactivo
+
+  /v1/cards/{cardId}/block-status:
+    post:
+      summary: Bloquea o desbloquea una tarjeta ya asignada
+      description: >
+        Ver docs/feature/bloqueo-de-tarjeta/README.md. Desbloquear se
+        rechaza si el Tarjetahabiente dueño está inactivo, sin importar
+        el motivo de bloqueo actual — ver
+        docs/business/tarjetas-y-asignacion.md, "Motivo de bloqueo".
+      parameters:
+        - name: cardId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blocked]
+              properties:
+                blocked: { type: boolean }
+      responses:
+        '200':
+          description: Estado actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Card' }
+        '409':
+          description: No se puede desbloquear mientras el Tarjetahabiente esté inactivo
+
+  /v1/cards/{cardId}/ledger:
+    get:
+      summary: Saldo y movimientos de una tarjeta
+      parameters:
+        - name: cardId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  balance: { type: number, format: double }
+                  currency: { type: string, example: MXN }
+                  entries:
+                    type: array
+                    items: { $ref: '#/components/schemas/LedgerEntry' }
+
+  /v1/cards/{cardId}/ledger/operations:
+    post:
+      summary: Dispersión, Deducción o Transferencia solicitada por staff (admin)
+      description: >
+        Ejecuta de inmediato — la decisión de si una operación requería
+        aprobación (`approval_rules`) ya se resolvió del lado de `admin/`
+        antes de llamar aquí; este backend no conoce el concepto de
+        `pending_approval`, solo ejecuta movimientos de ledger. Ver
+        docs/feature/operacion-saldo-con-aprobacion/README.md.
+      parameters:
+        - name: cardId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, amount, requestedByEmail]
+              properties:
+                type: { type: string, enum: [load, debit, transfer] }
+                amount: { type: number, format: double }
+                destinationCardId: { type: string, format: uuid, description: Solo para type=transfer }
+                requestedByEmail: { type: string }
+      responses:
+        '200':
+          description: Ejecutada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LedgerEntry' }
+        '402':
+          description: Fondos insuficientes — ningún ledger se modifica
+
+  /v1/transfers/resolve:
+    post:
+      summary: Resuelve a qué tarjeta pertenece un número completo, para una transferencia C2C
+      description: >
+        Ver docs/feature/transferencia-c2c-tarjetahabiente/README.md y
+        docs/adr/0009-pan-hash-transit-for-c2c-transfers.md. El PAN
+        completo viaja aquí en claro (protegido solo por estar en
+        loopback en esta iteración; TLS en producción) y **nunca se
+        persiste ni se loguea** — el backend calcula su HMAC en memoria
+        para esta sola petición y lo descarta. `null`/`404` es la
+        respuesta genérica para cualquier motivo de no-match (formato
+        inválido, fuera del Cliente origen, es tu propia tarjeta) — nunca
+        se distingue el motivo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cardholderId, originCardId, pan]
+              properties:
+                cardholderId: { type: string, format: uuid }
+                originCardId: { type: string, format: uuid }
+                pan: { type: string, description: Número completo de la tarjeta destino, nunca persistido }
+      responses:
+        '200':
+          description: Destino encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cardId: { type: string, format: uuid }
+                  maskedPan: { type: string }
+                  cardholderName: { type: string }
+        '404':
+          description: Ningún destino válido (mensaje genérico, ver descripción)
+        '429':
+          description: >
+            Límite de 5 intentos fallidos alcanzado en esta sesión de
+            Tarjetahabiente — el formulario queda bloqueado hasta el
+            siguiente login. Ver threat-model punto 12.
+
+  /v1/transfers/execute:
+    post:
+      summary: Ejecuta una transferencia C2C ya confirmada por el Tarjetahabiente
+      description: >
+        Débito inmediato en origen, crédito inmediato en destino — nunca
+        pasa por `approval_rules`, nunca toca una Cuenta Concentradora.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [originCardId, destinationCardId, amount]
+              properties:
+                originCardId: { type: string, format: uuid }
+                destinationCardId: { type: string, format: uuid }
+                amount: { type: number, format: double }
+      responses:
+        '204':
+          description: Transferencia aplicada
+        '402':
+          description: Fondos insuficientes — ningún ledger se modifica
+
+components:
+  schemas:
+    Card:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clientId: { type: string, format: uuid }
+        cardholderId: { type: string, format: uuid, nullable: true }
+        maskedPan: { type: string, example: "**** **** **** 1234" }
+        network: { type: string, enum: [visa, mastercard] }
+        expiryMonth: { type: integer }
+        expiryYear: { type: integer }
+        status: { type: string, enum: [unassigned, active, blocked] }
+        blockedReason: { type: string, enum: [manual, cardholder_inactive], nullable: true }
+        assignedAt: { type: string, format: date-time, nullable: true }
+    LedgerEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [credit, debit] }
+        amount: { type: number, format: double }
+        balanceAfter: { type: number, format: double }
+        description: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    Error:
+      type: object
+      properties:
+        message: { type: string }
+        limit:
+          type: integer
+          nullable: true
+          description: Solo presente en el 409 de límite de tarjetas activas alcanzado.

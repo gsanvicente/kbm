@@ -31,9 +31,15 @@ Característica: Transferencia C2C del Tarjetahabiente
     Entonces ve el mismo mensaje de error genérico, sin indicar el motivo específico
 
   Escenario: Límite de intentos fallidos bloquea intentos repetidos
-    Dado que "Juan Perez" ya intentó varios números de tarjeta sin éxito
-    Cuando excede el límite de intentos permitido
-    Entonces el formulario se bloquea temporalmente antes de aceptar un nuevo intento
+    Dado que "Juan Perez" ya lleva 4 intentos fallidos en su sesión
+    Cuando falla un quinto intento
+    Entonces el formulario queda bloqueado hasta que "Juan Perez" vuelva a iniciar sesión
+
+  Escenario: Transferir a otra tarjeta propia tampoco resuelve ningún destino
+    Dado que "Sofia Ramirez" tiene dos tarjetas propias
+    Cuando escribe el número completo de su otra tarjeta como destino
+    Entonces no se encuentra ninguna coincidencia
+    Y el mensaje de error es el mismo que si el número no existiera en absoluto
 
   Escenario: Transferencia con saldo insuficiente falla sin tocar ningún ledger
     Dado que la tarjeta de "Juan Perez" tiene saldo de 50

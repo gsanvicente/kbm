@@ -20,7 +20,10 @@ llegar a manos de un Tarjetahabiente dentro de KBM. Complementa
 `docs/feature/alta-y-gestion-de-tarjetahabientes/`). El pool de
 disponibles es dato semilla fijo — ver
 `docs/business/tarjetas-y-asignacion.md` para por qué no hay pantalla de
-alta de tarjetas nuevas en esta iteración.
+alta de tarjetas nuevas en esta iteración. **Diseñado, pendiente**:
+`CardRepository` migra a un backend Go compartido con `cardholder/` —
+ver `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md` —
+sin cambios en esta pantalla, la interfaz no cambia.
 
 ## Flujo principal
 1. El usuario entra a "Tarjetas" desde el menú principal.

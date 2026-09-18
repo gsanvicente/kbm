@@ -190,3 +190,22 @@ quien ya tenía sesión abierta. A diferencia del punto 13, esta cascada es
 desbloquea sus tarjetas automáticamente, para que ese paso quede sujeto a
 una revisión manual explícita — ver
 `docs/business/desactivacion-de-tarjetahabientes.md`.
+
+## 15. Backend compartido en memoria expuesto más allá de localhost, o con CORS abierto
+**Riesgo:** `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`
+introduce un proceso Go real (no solo repositorios fake dentro de cada
+app Flutter) que recibe el PAN completo en claro
+(`docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`) en el cuerpo de
+`/v1/transfers/resolve`. Dos formas concretas de que esto salga mal: (a)
+el servidor escucha en `0.0.0.0` en vez de `127.0.0.1` y queda alcanzable
+desde otras máquinas en la misma red; (b) CORS configurado con `*` en vez
+de una lista explícita de orígenes, lo que permitiría a JavaScript de
+**cualquier sitio web** que un navegador tenga abierto hacerle peticiones
+a este backend si alguna vez quedara accesible fuera de loopback.
+**Mitigación de diseño:** el servidor solo escucha en `127.0.0.1` (nunca
+`0.0.0.0`) — no está pensado para exponerse fuera de la máquina de
+desarrollo. CORS restringido explícitamente a los dos orígenes de
+desarrollo de Flutter web (`http://127.0.0.1:8765`, `http://127.0.0.1:8766`),
+nunca un wildcard. Code review de `internal/adapters/http` debe verificar
+ambos puntos como criterio de aceptación — ver
+`backend/docs/tdr/0003-in-memory-repository-adapter.md`.

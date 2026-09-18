@@ -29,20 +29,33 @@ lib/
   shared_widgets/
 ```
 
-## Setup (Flutter SDK not yet installed on this machine)
-
-This scaffolding was created by hand (no `flutter` binary available at
-scaffold time). Once the Flutter SDK is installed, generate the platform
-folders (android/ios/web) without touching the existing `lib/` structure:
+## Setup
 
 ```
-flutter create --platforms=web,android,ios .
 flutter pub get
-flutter run -d chrome
+flutter run -d web-server --web-port=8765 --web-hostname=127.0.0.1
 ```
+
+Cards and Ledger need `../backend`'s shared in-memory process running on
+`127.0.0.1:8080` first — see `../backend/README.md`. Without it, the app
+still launches but any screen touching cards/balances will fail to load.
+Every other domain (Clientes, Tarjetahabientes, Tesorería, Aprobaciones,
+Reclamos) stays 100% in-memory Dart, no backend needed — see
+`../docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`.
+
+`flutter test` never needs the backend running: `KbmAdminApp()` (no
+`backendClient` passed) builds Cards/Ledger against the same in-memory
+Fakes as before — required because `TestWidgetsFlutterBinding`
+intercepts all `HttpClient` traffic and always returns 400, so a real
+backend is impossible to exercise from a widget test. `main.dart` is the
+only place that passes a real `KbmBackendClient`.
 
 ## API contract
 
-Consumes `../backend/api/openapi.yaml`. Generate the Dart client (e.g. via
-`openapi-generator`) into `lib/core/api/` rather than hand-writing HTTP
-calls.
+Consumes `../backend/api/openapi.yaml`. As of ADR-0010, `HttpCardRepository`
+and `HttpLedgerRepository` (`lib/features/cards/http_card_repository.dart`,
+`lib/features/ledger/http_ledger_repository.dart`) are hand-written against
+`package:http` — a documented, temporary exception to the "generate from
+OpenAPI" rule (`../docs/adr/0006-openapi-contract.md`), scoped to this
+interim in-memory backend. Client generation resumes once the real
+Postgres-backed backend replaces it.

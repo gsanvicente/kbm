@@ -485,6 +485,7 @@ class _MovementsTabState extends State<_MovementsTab> {
       context: context,
       builder: (context) => _MovementDetailDialog(
         entry: entry,
+        cardId: widget.ledger!.cardId,
         currency: widget.ledger!.currency,
         claim: _claims[entry.id],
         ledgerRepository: widget.ledgerRepository,
@@ -598,6 +599,7 @@ class _ClaimBadge extends StatelessWidget {
 class _MovementDetailDialog extends StatefulWidget {
   const _MovementDetailDialog({
     required this.entry,
+    required this.cardId,
     required this.currency,
     required this.claim,
     required this.ledgerRepository,
@@ -606,6 +608,7 @@ class _MovementDetailDialog extends StatefulWidget {
   });
 
   final LedgerEntry entry;
+  final String cardId;
   final String currency;
   final MovementClaim? claim;
   final LedgerRepository ledgerRepository;
@@ -640,6 +643,7 @@ class _MovementDetailDialogState extends State<_MovementDetailDialog> {
     setState(() => _busy = true);
     final claim = await widget.ledgerRepository.fileClaim(
       ledgerEntryId: widget.entry.id,
+      cardId: widget.cardId,
       reason: _reasonController.text.trim(),
       requestedByEmail: widget.session.email,
     );
@@ -657,6 +661,7 @@ class _MovementDetailDialogState extends State<_MovementDetailDialog> {
     setState(() => _busy = true);
     final claim = await widget.ledgerRepository.resolveClaim(
       claimId: _claim!.id,
+      cardId: widget.cardId,
       inFavor: _resolvingFavor,
       resolutionNotes: _notesController.text.trim(),
       resolvedByEmail: widget.session.email,

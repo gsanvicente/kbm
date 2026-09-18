@@ -32,6 +32,10 @@ pantalla nueva.
   es esta acción directa) y rechaza **desbloquear** si el Tarjetahabiente
   dueño de la tarjeta está inactivo — ver
   `docs/business/tarjetas-y-asignacion.md`, "Motivo de bloqueo".
+- **Diseñado, pendiente**: `CardRepository` migra a un backend Go
+  compartido con `cardholder/`, ver
+  `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md` — sin
+  cambios en esta pantalla.
 
 ## Flujo principal
 1. En el detalle de una tarjeta asignada, si el rol lo permite, aparece

@@ -204,6 +204,14 @@ Ver `docs/business/approval-policy.md`,
 `docs/business/roles-and-permissions.md` y
 `docs/business/desactivacion-de-clientes.md` — no se repiten aquí.
 
+## Backend (diseñado, pendiente)
+`LedgerRepository` migra a un backend Go compartido con `cardholder/` —
+ver `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md` — la
+decisión de si una operación requiere aprobación sigue resolviéndose del
+lado de `admin/` (`approval_rules` no forma parte de ese backend
+compartido); el backend solo ejecuta el movimiento de ledger una vez que
+`admin/` ya decidió que debe ejecutarse. Sin cambios en esta pantalla.
+
 ## Casos borde / fuera de alcance
 - Qué pasa si el Cliente dueño de la tarjeta no tiene ningún Admin Cliente
   activo — ya cubierto por la herencia de jerarquía existente, no es un

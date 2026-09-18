@@ -90,21 +90,23 @@ el futuro app móvil) sigue siendo lo que hay hoy — ver
 políticas de autenticación".
 
 ## Dependencias (orden de construcción)
-Antes de implementar código de este portal, se construyen:
-1. CRUD de Clientes — **diseño y documentación completos**, ver
+Antes de implementar código de este portal, se construyeron:
+1. CRUD de Clientes — **implementado**, ver
    `docs/feature/alta-y-gestion-de-clientes/`.
-2. CRUD de Tarjetahabientes — **diseño y documentación completos**, ver
-   `docs/feature/alta-y-gestion-de-tarjetahabientes/` (implementación
-   pendiente al momento de escribir esto).
+2. CRUD de Tarjetahabientes — **implementado**, ver
+   `docs/feature/alta-y-gestion-de-tarjetahabientes/`.
 
-Esta documentación se escribe **antes** de esas dependencias a propósito,
-para no perder el diseño ya acordado — ver la regla MUST de
-documentación en el `README.md` raíz.
+Con ambas dependencias resueltas, se implementó (2026-09-19) el mínimo de
+este portal necesario para la Transferencia C2C — ver "Estado" en
+`docs/feature/portal-autoservicio-tarjetahabiente/README.md` para el
+detalle exacto de qué sigue pendiente (estado de cuenta, congelar/
+descongelar, reclamos).
 
-## Nota para cuando se construya: login y Tarjetahabiente inactivo
-El login de este portal debe aplicar la misma regla de Capa 1 que ya se
+## Login y Tarjetahabiente inactivo (implementado)
+El login de este portal aplica la misma regla de Capa 1 que ya se
 documentó para el staff: un Tarjetahabiente con `is_active = false` no
-debe poder iniciar sesión — ver
+puede iniciar sesión — mismo mensaje genérico que una contraseña
+incorrecta, nunca distingue el motivo. Ver
 `docs/business/desactivacion-de-tarjetahabientes.md`, "Enforcement".
 
 ## Fuera de alcance

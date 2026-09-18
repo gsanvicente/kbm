@@ -1,0 +1,1 @@
+enum LedgerEntryType { credit, debit }
