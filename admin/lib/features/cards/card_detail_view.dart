@@ -18,6 +18,7 @@ import '../../core/models/shared/cardholder_inactive_exception.dart';
 import '../../core/utils/currency_format.dart';
 import '../../core/utils/date_format.dart';
 import '../../shared_widgets/card_destination_field.dart';
+import '../../shared_widgets/confirm_dialog.dart';
 import '../../shared_widgets/currency_field.dart';
 import '../balance_operations/balance_operation_repository.dart';
 import '../balance_operations/operaciones_de_saldo_section.dart' show BalanceOperationTile;
@@ -97,6 +98,17 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
       _card.cardholderId != null && (_card.status == CardStatus.active || _card.status == CardStatus.blocked);
 
   Future<void> _toggleBlocked() async {
+    final blocking = _card.status != CardStatus.blocked;
+    final confirmed = await showConfirmDialog(
+      context,
+      title: blocking ? 'Bloquear tarjeta' : 'Desbloquear tarjeta',
+      message: blocking
+          ? '¿Deseas bloquear la tarjeta ${_card.maskedPan}? Dejará de poder usarse hasta que la desbloquees.'
+          : '¿Deseas desbloquear la tarjeta ${_card.maskedPan}? Podrá volver a usarse de inmediato.',
+      destructive: blocking,
+    );
+    if (!confirmed) return;
+
     setState(() => _busy = true);
     try {
       final updated = await widget.cardRepository.setBlocked(_card.id, _card.status != CardStatus.blocked);

@@ -11,6 +11,8 @@ import '../../core/models/operation_status.dart';
 import '../../core/models/operation_type.dart';
 import '../../core/models/payment_card.dart';
 import '../../core/models/session.dart';
+import '../../core/utils/currency_format.dart';
+import '../../shared_widgets/confirm_dialog.dart';
 import '../../shared_widgets/multi_select_filter_button.dart';
 import '../cardholders/cardholder_repository.dart';
 import '../cards/card_repository.dart';
@@ -197,7 +199,21 @@ class _PendingOperationsTabState extends State<_PendingOperationsTab> {
     });
   }
 
-  Future<void> _approve(BalanceOperation op) async {
+  Future<void> _approve(
+    BalanceOperation op, {
+    required String clientName,
+    required String currency,
+    String? maskedPan,
+  }) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Aprobar ${op.type.label.toLowerCase()}',
+      message: '¿Deseas aprobar esta ${op.type.label} de ${formatCurrency(op.amount, currency)} '
+          '${maskedPan != null ? 'a la tarjeta $maskedPan ' : ''}del Cliente $clientName? '
+          'Se ejecutará de inmediato.',
+    );
+    if (!confirmed) return;
+
     setState(() => _busyOperationId = op.id);
     final result = await widget.balanceOperationRepository.approve(
       operationId: op.id,
@@ -293,7 +309,12 @@ class _PendingOperationsTabState extends State<_PendingOperationsTab> {
                                         IconButton(
                                           tooltip: 'Aprobar',
                                           icon: Icon(Icons.check_circle_outline_rounded, color: Colors.green.shade700),
-                                          onPressed: () => _approve(op),
+                                          onPressed: () => _approve(
+                                            op,
+                                            clientName: clientNameById[op.clientId] ?? '—',
+                                            currency: data.ledgerAccounts[op.cardId]?.currency ?? 'MXN',
+                                            maskedPan: cardById[op.cardId]?.maskedPan,
+                                          ),
                                         ),
                                         IconButton(
                                           tooltip: 'Rechazar',
@@ -518,7 +539,15 @@ class _PendingDepositsTabState extends State<_PendingDepositsTab> {
     });
   }
 
-  Future<void> _reconcile(CollectorDeposit deposit) async {
+  Future<void> _reconcile(CollectorDeposit deposit, {required String clientName, required String currency}) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Conciliar depósito',
+      message: '¿Deseas conciliar el depósito de ${formatCurrency(deposit.amount, currency)} '
+          'del Cliente $clientName? El saldo quedará disponible de inmediato en su Cuenta Concentradora.',
+    );
+    if (!confirmed) return;
+
     await widget.treasuryRepository.reconcileDeposit(
       depositId: deposit.id,
       reconciledByEmail: widget.session.email,
@@ -575,7 +604,11 @@ class _PendingDepositsTabState extends State<_PendingDepositsTab> {
                           currency: 'MXN',
                           clientName: data.clientNameById[deposit.clientId] ?? '—',
                           canReconcile: canReconcile,
-                          onReconcile: () => _reconcile(deposit),
+                          onReconcile: () => _reconcile(
+                            deposit,
+                            clientName: data.clientNameById[deposit.clientId] ?? '—',
+                            currency: 'MXN',
+                          ),
                         );
                       },
                     ),

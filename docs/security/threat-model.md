@@ -112,7 +112,11 @@ saldo de la Concentradora nunca cambia por el solo hecho de registrar un
 depósito. Sigue siendo un control manual (no hay verificación bancaria
 real en esta iteración, ver "Fuera de alcance" en
 `docs/feature/tesoreria-cliente/README.md`), pero exige una segunda
-persona antes de que el dinero sea utilizable.
+persona antes de que el dinero sea utilizable. Desde 2026-09-19, esa
+segunda persona también debe confirmar explícitamente antes de conciliar
+— ver `docs/business/confirmaciones-de-accion.md` — para reducir el
+riesgo de conciliar por error un depósito que todavía no debería
+liberarse.
 
 ## 11. PAN completo en tránsito para transferencias C2C de Tarjetahabiente
 **Riesgo:** desde `docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`,

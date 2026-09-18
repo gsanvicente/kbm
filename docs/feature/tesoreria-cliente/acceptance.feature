@@ -10,12 +10,19 @@ Característica: Tesorería del Cliente (Cuenta Concentradora y Cuenta Colectora
     Entonces el depósito queda en estado "pending"
     Y el saldo de la Cuenta Concentradora de "Koons Subsidiaria A" no cambia
 
-  Escenario: Conciliar un depósito lo mueve a la Concentradora
+  Escenario: Conciliar un depósito lo mueve a la Concentradora, tras confirmar
     Dado que existe un depósito en estado "pending" de 1000 en la Colectora de "Koons Subsidiaria A"
     Y "Carlos" es Admin Cliente de "Koons Subsidiaria A"
-    Cuando "Carlos" concilia ese depósito
+    Cuando "Carlos" pulsa "Conciliar" y confirma el diálogo
     Entonces el depósito queda en estado "reconciled"
     Y el saldo de la Cuenta Concentradora de "Koons Subsidiaria A" aumenta en 1000
+
+  Escenario: Cancelar la confirmación de conciliar no mueve nada
+    Dado que existe un depósito en estado "pending" de 1000 en la Colectora de "Koons Subsidiaria A"
+    Y "Carlos" es Admin Cliente de "Koons Subsidiaria A"
+    Cuando "Carlos" pulsa "Conciliar" y cancela el diálogo
+    Entonces el depósito sigue en estado "pending"
+    Y el saldo de la Cuenta Concentradora de "Koons Subsidiaria A" no cambia
 
   Escenario: Operador no puede conciliar un depósito
     Dado que existe un depósito en estado "pending" en la Colectora de "Koons Subsidiaria A"

@@ -463,6 +463,8 @@ void main() {
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Bloquear'));
     await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Bloqueada'), findsWidgets);
     expect(find.widgetWithText(OutlinedButton, 'Desbloquear'), findsOneWidget);
@@ -477,6 +479,8 @@ void main() {
     await _goToSection(tester, '**** **** **** 7890'); // Carlos Ruiz, seeded as blocked
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Desbloquear'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
     await tester.pumpAndSettle();
 
     expect(find.text('Activa'), findsWidgets);
@@ -910,6 +914,8 @@ void main() {
 
     await tester.tap(find.byTooltip('Aprobar'));
     await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('aprobada y ejecutada'), findsOneWidget);
     expect(find.textContaining('Deducción: **** **** **** 1234'), findsNothing);
@@ -1022,6 +1028,8 @@ void main() {
     expect(find.text('\$10,000.00 MXN'), findsNWidgets(2));
     await tester.tap(find.widgetWithText(OutlinedButton, 'Conciliar'));
     await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('conciliado'), findsOneWidget);
     expect(find.text('Conciliado'), findsOneWidget);
@@ -1079,6 +1087,8 @@ void main() {
     // this queue, sorted most-recent-first — the one just requested
     // (DateTime.now()) always sorts ahead of the seeded one (2026-01-21).
     await tester.tap(find.byTooltip('Aprobar').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
     await tester.pumpAndSettle();
 
     await _goToSection(tester, 'Clientes');
@@ -1234,6 +1244,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Conciliar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('conciliado'), findsOneWidget);
@@ -1640,6 +1652,8 @@ void main() {
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Desbloquear'));
     await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('inactivo'), findsOneWidget);
     expect(find.text('Bloqueada'), findsWidgets);
@@ -1668,6 +1682,8 @@ void main() {
     expect(find.text('Bloqueada'), findsWidgets); // sigue bloqueada pese a reactivar
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Desbloquear'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
     await tester.pumpAndSettle();
     expect(find.text('Activa'), findsWidgets); // ahora sí se puede desbloquear manualmente
   });
@@ -1704,5 +1720,67 @@ void main() {
 
     expect(find.text('Carlos Ruiz'), findsOneWidget);
     expect(find.text('Juan Perez'), findsNothing);
+  });
+
+  // --- Diálogos de confirmación en acciones de alto impacto --------------
+
+  testWidgets('cancelling the approve confirmation leaves the operation pending', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Operaciones de saldo');
+    expect(find.textContaining('Deducción: **** **** **** 1234'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Aprobar'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Deseas aprobar'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Cancelar'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Deducción: **** **** **** 1234'), findsOneWidget);
+  });
+
+  testWidgets('cancelling the reconcile confirmation leaves the deposit pending', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tesorería');
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Conciliar'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Deseas conciliar'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Cancelar'));
+    await tester.pumpAndSettle();
+
+    // El botón "Conciliar" solo se muestra mientras el depósito sigue
+    // pendiente (ver DepositTile) — sigue ahí, no se reemplazó por el
+    // chip "Conciliado".
+    expect(find.widgetWithText(OutlinedButton, 'Conciliar'), findsOneWidget);
+    expect(find.text('\$10,000.00 MXN'), findsNWidgets(2)); // sin cambios
+  });
+
+  testWidgets('cancelling the block confirmation leaves the card active', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test');
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 1234'); // Juan Perez, active
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Bloquear'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Deseas bloquear'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Cancelar'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(OutlinedButton, 'Bloquear'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Desbloquear'), findsNothing);
   });
 }

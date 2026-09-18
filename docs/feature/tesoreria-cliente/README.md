@@ -53,7 +53,9 @@ Panel directivo, que también lidera con cifras antes que con personas):
 2. El depósito aparece en la lista de la Colectora en estado "Pendiente"
    — el saldo de la Concentradora **no cambia todavía**.
 3. Un Admin Cliente o Super Admin revisa el depósito pendiente y pulsa
-   "Conciliar". El depósito pasa a "Conciliado" y el saldo de la
+   "Conciliar" — se le pide confirmar antes de aplicarlo (ver
+   `docs/business/confirmaciones-de-accion.md`, no hay forma de deshacer
+   una vez conciliado). El depósito pasa a "Conciliado" y el saldo de la
    Concentradora aumenta por ese monto — recién ahí queda disponible
    para Dispersiones.
 4. Desde ese momento, una Dispersión sobre cualquier tarjeta de ese

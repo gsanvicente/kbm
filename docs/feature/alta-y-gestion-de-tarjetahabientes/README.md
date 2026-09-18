@@ -1,8 +1,8 @@
 # Alta, edición y desactivación de Tarjetahabientes
 
-- Estado: **Diseño completo, implementación pendiente** (2026-09-18,
-  ampliado sobre lo que antes era "Detalle y gestión de Tarjetahabiente" —
-  ver "Historial" abajo) — depende de que exista el CRUD de Clientes
+- Estado: **Implementado** (diseñado y ampliado 2026-09-18 sobre lo que
+  antes era "Detalle y gestión de Tarjetahabiente" — ver "Historial"
+  abajo — implementado el mismo día) — dependía del CRUD de Clientes
   (`docs/feature/alta-y-gestion-de-clientes/`), ya construido.
 - ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 (control

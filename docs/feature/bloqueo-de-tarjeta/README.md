@@ -37,9 +37,11 @@ pantalla nueva.
 1. En el detalle de una tarjeta asignada, si el rol lo permite, aparece
    un botón "Bloquear" (si está activa) o "Desbloquear" (si está
    bloqueada).
-2. Al confirmar, el estado de la tarjeta cambia de inmediato — se refleja
-   en el badge de la tarjeta grande y en cualquier listado que la
-   muestre.
+2. Al tocarlo, se pide confirmar explícitamente (2026-09-19, ver
+   `docs/business/confirmaciones-de-accion.md`) — el mensaje incluye la
+   terminación de la tarjeta y qué va a pasar. Al confirmar, el estado de
+   la tarjeta cambia de inmediato — se refleja en el badge de la tarjeta
+   grande y en cualquier listado que la muestre.
 3. Si el rol no lo permite (Auditor), no ve el botón, igual que ya pasa
    con "Asignar" en `docs/feature/pool-y-asignacion-de-tarjetas/`.
 

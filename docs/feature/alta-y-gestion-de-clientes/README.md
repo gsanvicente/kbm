@@ -1,10 +1,9 @@
 # Alta, edición y desactivación de Clientes
 
-- Estado: **Diseño completo, implementación pendiente** (2026-09-17,
-  ampliado 2026-09-17 con edición y desactivación) — es la primera pieza
-  a construir de la fase actual (antes que el CRUD de Tarjetahabientes y
-  que el portal de autoservicio, que dependen de que existan Clientes
-  reales creados por este flujo).
+- Estado: **Implementado** (diseñado 2026-09-17, ampliado el mismo día
+  con edición y desactivación, implementado 2026-09-17/18) — fue la
+  primera pieza construida de esta fase, prerrequisito del CRUD de
+  Tarjetahabientes y del portal de autoservicio.
 - ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 (control
   de acceso), 2 (fuga de datos entre tenants) y 13 (enforcement de

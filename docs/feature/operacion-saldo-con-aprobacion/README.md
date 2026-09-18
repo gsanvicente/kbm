@@ -135,12 +135,16 @@ distintos, ni siquiera entre padre e hija.
    para el Admin Cliente correspondiente (o el de una empresa ancestro,
    por herencia de jerarquía).
 5. El Admin Cliente aprueba o rechaza desde ahí:
-   - Aprobar → se intenta ejecutar en el momento (incluida la Concentradora
-     si aplica). Si hay saldo suficiente en todos los lados que aplican,
-     pasa a `executed` y se escribe el ledger. Si no, pasa a `failed` con
-     el motivo, y ningún ledger se toca.
-   - Rechazar → pasa a `rejected` (requiere un motivo breve). Ningún
+   - Aprobar → pide confirmación explícita primero (ver
+     `docs/business/confirmaciones-de-accion.md`, se ejecuta de inmediato
+     y no tiene forma de deshacerse), luego se intenta ejecutar en el
+     momento (incluida la Concentradora si aplica). Si hay saldo
+     suficiente en todos los lados que aplican, pasa a `executed` y se
+     escribe el ledger. Si no, pasa a `failed` con el motivo, y ningún
      ledger se toca.
+   - Rechazar → pasa a `rejected` (requiere un motivo breve, que ya
+     cumple el propósito de una confirmación — ver
+     `docs/business/confirmaciones-de-accion.md`). Ningún ledger se toca.
 6. La pestaña "Operaciones" de la tarjeta y la pestaña "Historial
    completo" del hub muestran exactamente los mismos datos (el historial
    sin restringir a una tarjeta) — mismo repositorio, sin duplicar

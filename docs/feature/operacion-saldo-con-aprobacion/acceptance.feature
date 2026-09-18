@@ -72,6 +72,18 @@ Característica: Operación de saldo con aprobación configurable
     Entonces la operación pasa a estado "failed"
     Y no se registra ningún movimiento en el ledger
 
+  Escenario: Aprobar pide confirmación explícita antes de ejecutar
+    Dado que existe una operación en estado "pending_approval" sobre una tarjeta de "Koons Subsidiaria A"
+    Y "Carlos" es Admin Cliente de "Koons Subsidiaria A"
+    Cuando "Carlos" pulsa "Aprobar"
+    Entonces se le pide confirmar antes de ejecutar la operación
+
+  Escenario: Cancelar la confirmación de aprobar deja la operación pendiente
+    Dado que existe una operación en estado "pending_approval" sobre una tarjeta de "Koons Subsidiaria A"
+    Y "Carlos" es Admin Cliente de "Koons Subsidiaria A"
+    Cuando "Carlos" pulsa "Aprobar" y cancela el diálogo
+    Entonces la operación sigue en estado "pending_approval"
+
   Escenario: Escribir los últimos 4 dígitos de una tarjeta del mismo Cliente resuelve el destino
     Dado que estoy en la pestaña "Operaciones" de la tarjeta de "Maria Gomez" en "Koons Subsidiaria B"
     Y "Carlos Ruiz" tiene una tarjeta activa terminación 7890 en "Koons Subsidiaria B"

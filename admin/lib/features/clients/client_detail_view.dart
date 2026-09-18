@@ -10,6 +10,7 @@ import '../../core/models/ledger_entry_type.dart';
 import '../../core/models/session.dart';
 import '../../core/utils/currency_format.dart';
 import '../../core/utils/date_format.dart';
+import '../../shared_widgets/confirm_dialog.dart';
 import '../../shared_widgets/currency_field.dart';
 import '../cardholders/cardholder_list_view.dart';
 import '../cardholders/cardholder_repository.dart';
@@ -267,7 +268,15 @@ class _TreasuryTabState extends State<_TreasuryTab> {
     );
   }
 
-  Future<void> _reconcile(CollectorDeposit deposit) async {
+  Future<void> _reconcile(CollectorDeposit deposit, {required String currency}) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Conciliar depósito',
+      message: '¿Deseas conciliar el depósito de ${formatCurrency(deposit.amount, currency)} '
+          'de ${widget.client.name}? El saldo quedará disponible de inmediato en su Cuenta Concentradora.',
+    );
+    if (!confirmed) return;
+
     await widget.treasuryRepository.reconcileDeposit(
       depositId: deposit.id,
       reconciledByEmail: widget.session.email,
@@ -390,7 +399,7 @@ class _TreasuryTabState extends State<_TreasuryTab> {
                           currency: concentrator?.currency ?? 'MXN',
                           clientName: '',
                           canReconcile: canReconcile,
-                          onReconcile: () => _reconcile(deposit),
+                          onReconcile: () => _reconcile(deposit, currency: concentrator?.currency ?? 'MXN'),
                         ),
                     ],
                   ),
