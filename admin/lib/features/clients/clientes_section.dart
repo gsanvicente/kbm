@@ -7,11 +7,12 @@ import '../../core/models/session.dart';
 import '../../shared_widgets/breadcrumb_bar.dart';
 import '../balance_operations/balance_operation_repository.dart';
 import '../cardholders/cardholder_detail_view.dart';
-import '../cardholders/cardholder_list_view.dart';
 import '../cardholders/cardholder_repository.dart';
 import '../cards/card_detail_view.dart';
 import '../cards/card_repository.dart';
 import '../ledger/ledger_repository.dart';
+import '../treasury/treasury_repository.dart';
+import 'client_detail_view.dart';
 import 'client_list_view.dart';
 import 'client_repository.dart';
 
@@ -29,6 +30,7 @@ class ClientesSection extends StatefulWidget {
     required this.cardRepository,
     required this.ledgerRepository,
     required this.balanceOperationRepository,
+    required this.treasuryRepository,
   });
 
   final Session session;
@@ -37,6 +39,7 @@ class ClientesSection extends StatefulWidget {
   final CardRepository cardRepository;
   final LedgerRepository ledgerRepository;
   final BalanceOperationRepository balanceOperationRepository;
+  final TreasuryRepository treasuryRepository;
 
   @override
   State<ClientesSection> createState() => _ClientesSectionState();
@@ -121,10 +124,12 @@ class _ClientesSectionState extends State<ClientesSection> {
       );
     }
     if (client != null) {
-      return CardholderListView(
-        repository: widget.cardholderRepository,
-        clientId: client.id,
-        onSelect: (selected) => setState(() => _selectedCardholder = selected),
+      return ClientDetailView(
+        client: client,
+        session: widget.session,
+        cardholderRepository: widget.cardholderRepository,
+        treasuryRepository: widget.treasuryRepository,
+        onSelectCardholder: (selected) => setState(() => _selectedCardholder = selected),
       );
     }
     return ClientListView(

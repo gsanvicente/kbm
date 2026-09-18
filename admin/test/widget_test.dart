@@ -67,6 +67,7 @@ void main() {
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
 
+    await _goToSection(tester, 'Clientes'); // Admin Cliente lands on "Inicio" first now
     expect(find.text('Koons Subsidiaria A'), findsOneWidget);
     expect(find.text('Grupo Koons Holding'), findsNothing);
   });
@@ -76,6 +77,7 @@ void main() {
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
 
+    await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Koons Subsidiaria A');
 
     expect(find.text('Juan Perez'), findsOneWidget);
@@ -94,6 +96,7 @@ void main() {
     await tester.pumpAndSettle();
     await _login(tester, 'super.admin@koons.test');
 
+    await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Grupo Koons Holding');
 
     expect(find.text('Este cliente no tiene tarjetahabientes propios'), findsOneWidget);
@@ -154,6 +157,7 @@ void main() {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
+    await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Juan Perez');
 
@@ -173,6 +177,7 @@ void main() {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
+    await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Juan Perez');
 
@@ -213,6 +218,7 @@ void main() {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
+    await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Juan Perez');
 
@@ -223,6 +229,7 @@ void main() {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
+    await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Ana Torres');
 
@@ -625,33 +632,39 @@ void main() {
     expect(find.textContaining('no puede resolver reclamos'), findsOneWidget);
   });
 
-  testWidgets('Operaciones de saldo shows the seeded pending Deducción', (tester) async {
+  testWidgets('Historial completo shows the seeded pending Deducción', (tester) async {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
 
     await _goToSection(tester, 'Operaciones de saldo');
+    await tester.tap(find.text('Historial completo'));
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('Deducción: **** **** **** 1234'), findsOneWidget);
     expect(find.text('Pendiente de aprobación'), findsOneWidget);
   });
 
-  testWidgets('the Empresa filter in Operaciones de saldo is hidden for a single-client role', (tester) async {
+  testWidgets('the Empresa filter in Historial completo is hidden for a single-client role', (tester) async {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
 
     await _goToSection(tester, 'Operaciones de saldo');
+    await tester.tap(find.text('Historial completo'));
+    await tester.pumpAndSettle();
 
     expect(find.widgetWithText(OutlinedButton, 'Empresa'), findsNothing);
   });
 
-  testWidgets('Operaciones de saldo has no creation button — it is history-only', (tester) async {
+  testWidgets('Historial completo has no creation button — it is history-only', (tester) async {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
     await _login(tester, 'super.admin@koons.test');
 
     await _goToSection(tester, 'Operaciones de saldo');
+    await tester.tap(find.text('Historial completo'));
+    await tester.pumpAndSettle();
 
     expect(find.widgetWithText(FilledButton, 'Nueva operación'), findsNothing);
     expect(find.byType(FilledButton), findsNothing);
@@ -828,7 +841,7 @@ void main() {
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
 
-    await _goToSection(tester, 'Aprobaciones');
+    await _goToSection(tester, 'Operaciones de saldo');
     expect(find.textContaining('Deducción: **** **** **** 1234'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Aprobar'));
@@ -843,7 +856,7 @@ void main() {
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
 
-    await _goToSection(tester, 'Aprobaciones');
+    await _goToSection(tester, 'Operaciones de saldo');
     await tester.tap(find.byTooltip('Rechazar'));
     await tester.pumpAndSettle();
 
@@ -860,11 +873,323 @@ void main() {
     await tester.pumpAndSettle();
     await _login(tester, 'operador.subA@koons.test');
 
-    await _goToSection(tester, 'Aprobaciones');
+    await _goToSection(tester, 'Operaciones de saldo');
 
     expect(find.textContaining('Deducción: **** **** **** 1234'), findsOneWidget);
     expect(find.byTooltip('Aprobar'), findsNothing);
     expect(find.byTooltip('Rechazar'), findsNothing);
     expect(find.textContaining('no aprobar ni rechazar'), findsOneWidget);
+  });
+
+  testWidgets('the Tesorería tab shows the Concentradora balance and the seeded pending deposit', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToSection(tester, 'Tesorería');
+
+    expect(find.text('\$10,000.00 MXN'), findsOneWidget);
+    expect(find.textContaining('Referencia: SPEI-DEMO-001'), findsOneWidget);
+    // super.admin can reconcile, so the row shows the action button
+    // instead of a passive "Pendiente" badge — see the dedicated
+    // Auditor/Operador tests below for the read-only badge case.
+    expect(find.widgetWithText(OutlinedButton, 'Conciliar'), findsOneWidget);
+  });
+
+  testWidgets('Operador can register a deposit, which stays pending and does not move the Concentradora',
+      (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test');
+
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToSection(tester, 'Tesorería');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Registrar depósito'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Monto'), '250000'); // $2,500.00
+    await tester.enterText(find.widgetWithText(TextField, 'Referencia / folio bancario'), 'SPEI-TEST-1');
+    await tester.tap(find.widgetWithText(FilledButton, 'Registrar'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('pendiente de conciliar'), findsOneWidget);
+    expect(find.textContaining('Referencia: SPEI-TEST-1'), findsOneWidget);
+    expect(find.text('\$10,000.00 MXN'), findsOneWidget); // Concentradora unchanged
+  });
+
+  testWidgets('Auditor cannot register a deposit', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'auditor.subA@koons.test');
+
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToSection(tester, 'Tesorería');
+
+    expect(find.widgetWithText(FilledButton, 'Registrar depósito'), findsNothing);
+    expect(find.textContaining('no registrar nuevos'), findsOneWidget);
+  });
+
+  testWidgets('Operador cannot reconcile a pending deposit', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test');
+
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToSection(tester, 'Tesorería');
+
+    expect(find.textContaining('Referencia: SPEI-DEMO-001'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Conciliar'), findsNothing);
+  });
+
+  testWidgets('Admin Cliente can reconcile a deposit, increasing the Concentradora balance', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToSection(tester, 'Tesorería');
+
+    // Admin Cliente sees the same figure twice: the header chip (their
+    // own Concentradora) and the Tesorería body.
+    expect(find.text('\$10,000.00 MXN'), findsNWidgets(2));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Conciliar'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('conciliado'), findsOneWidget);
+    expect(find.text('Conciliado'), findsOneWidget);
+    expect(find.text('\$15,000.00 MXN'), findsOneWidget); // Tesorería body updates immediately
+    // The header chip was fetched once at login — it does not live-refresh.
+    expect(find.text('\$10,000.00 MXN'), findsOneWidget);
+  });
+
+  testWidgets('a Dispersión larger than the Concentradora balance fails, without touching the card',
+      (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 1234'); // Juan Perez, balance 1250.00
+    await _goToSection(tester, 'Operaciones');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Dispersión'));
+    await tester.pumpAndSettle();
+    // Concentradora de Koons Subsidiaria A only has 10,000.00.
+    await tester.enterText(find.widgetWithText(TextField, 'Monto'), '1500000'); // $15,000.00
+    await tester.tap(find.widgetWithText(FilledButton, 'Solicitar'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('fallida'), findsOneWidget);
+    expect(find.text('Fallida'), findsOneWidget);
+
+    await _goToSection(tester, 'Resumen');
+    expect(find.text('\$1,250.00 MXN'), findsOneWidget); // unchanged
+
+    await _goToSection(tester, 'Clientes'); // permanent sidebar item
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToSection(tester, 'Tesorería');
+    expect(find.text('\$10,000.00 MXN'), findsOneWidget); // unchanged
+  });
+
+  testWidgets('approving a Deducción credits the Concentradora', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test'); // can both request and approve
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 1234');
+    await _goToSection(tester, 'Operaciones');
+    await tester.tap(find.widgetWithText(FilledButton, 'Deducción'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Monto'), '5000'); // $50.00, no rule => pending
+    await tester.tap(find.widgetWithText(FilledButton, 'Solicitar'));
+    await tester.pumpAndSettle();
+
+    await _goToSection(tester, 'Operaciones de saldo');
+    // The seeded pending Deducción (200.00) on the same card is also in
+    // this queue, sorted most-recent-first — the one just requested
+    // (DateTime.now()) always sorts ahead of the seeded one (2026-01-21).
+    await tester.tap(find.byTooltip('Aprobar').first);
+    await tester.pumpAndSettle();
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToSection(tester, 'Tesorería');
+    expect(find.text('\$10,050.00 MXN'), findsOneWidget); // 10,000.00 + 50.00
+  });
+
+  testWidgets('a transfer between two cards of the same Cliente never touches the Concentradora', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 5678'); // Maria Gomez, Subsidiaria B
+    await _goToSection(tester, 'Operaciones');
+    await tester.tap(find.widgetWithText(FilledButton, 'Transferencia'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Monto'), '10000'); // $100.00
+    await tester.enterText(find.widgetWithText(TextField, 'Tarjeta destino (últimos 4 dígitos)'), '7890');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Solicitar'));
+    await tester.pumpAndSettle();
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria B');
+    await _goToSection(tester, 'Tesorería');
+    expect(find.text('\$10,000.00 MXN'), findsOneWidget); // untouched
+  });
+
+  testWidgets('Admin Cliente sees their own Concentradora balance in the header', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    // Lands on "Inicio" (Panel directivo) by default, whose own KPI card
+    // shows the same figure as the header chip — see
+    // docs/feature/panel-directivo/README.md.
+    expect(find.text('\$10,000.00 MXN'), findsNWidgets(2));
+  });
+
+  testWidgets('Super Admin sees no balance in the header — no empresa propia to show', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    expect(find.byTooltip('Saldo de la Cuenta Concentradora de tu empresa'), findsNothing);
+  });
+
+  testWidgets('Operador and Auditor see no balance indicator in the header', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test');
+
+    expect(find.byTooltip('Saldo de la Cuenta Concentradora de tu empresa'), findsNothing);
+  });
+
+  // --- Panel directivo ("Inicio") — docs/feature/panel-directivo/ -------
+
+  testWidgets('Super Admin lands on Inicio and sees KPIs aggregated across all Clientes', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    expect(find.text('Inicio'), findsNWidgets(2)); // sidebar item + header title
+    expect(find.text('\$20,000.00 MXN'), findsOneWidget); // Concentradoras: 10,000 (subA) + 10,000 (subB)
+    expect(find.text('\$1,665.50 MXN'), findsOneWidget); // tarjetas: 1250.00 + 340.50 + 75.00
+  });
+
+  testWidgets('Admin Cliente of the parent company sees a Desglose por empresa with its filiales', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.holding@koons.test');
+
+    expect(find.text('Desglose por empresa'), findsOneWidget);
+    expect(find.text('Grupo Koons Holding'), findsOneWidget);
+    expect(find.text('Koons Subsidiaria A'), findsOneWidget);
+    expect(find.text('Koons Subsidiaria B'), findsOneWidget);
+  });
+
+  testWidgets('Admin Cliente without filiales sees Inicio scoped only to their own Cliente', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    expect(find.text('\$1,250.00 MXN'), findsOneWidget); // saldo en tarjetas: solo la 1234 de subA
+    expect(find.text('Desglose por empresa'), findsNothing); // sin filiales, no hay nada que comparar
+    expect(find.text('1 depósito(s)'), findsOneWidget);
+    expect(find.text('1 operación(es)'), findsOneWidget);
+  });
+
+  testWidgets('Operador and Auditor never see "Inicio" — they keep landing on Clientes', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test');
+
+    expect(find.text('Inicio'), findsNothing);
+    expect(find.text('Koons Subsidiaria A'), findsOneWidget); // ya aterrizó en Clientes
+  });
+
+  testWidgets('tapping a pending operation under "Requiere tu atención" navigates to Operaciones de saldo',
+      (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    expect(find.text('Requiere tu atención'), findsOneWidget);
+    await tester.tap(find.text('Deducción pendiente de aprobación'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Operaciones de saldo'), findsNWidgets(2)); // sidebar item + header title
+  });
+
+  testWidgets('Inicio shows the volumen chart with its synthetic-data disclosure', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    expect(find.text('Volumen de operaciones — últimas 12 semanas'), findsOneWidget);
+    expect(find.textContaining('Dato ilustrativo'), findsOneWidget);
+    expect(find.text('Dispersión'), findsOneWidget);
+    expect(find.text('Transferencia'), findsOneWidget);
+  });
+
+  // --- "Operaciones de saldo" como hub (Pendientes + Depósitos + Historial) ---
+
+  testWidgets('Operaciones de saldo hub has Pendientes, Depósitos por conciliar and Historial completo tabs',
+      (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Operaciones de saldo');
+    expect(find.text('Historial completo'), findsOneWidget); // las 3 pestañas están montadas
+    expect(find.textContaining('Deducción: **** **** **** 1234'), findsOneWidget); // pestaña 0 por defecto
+
+    await tester.tap(find.text('Depósitos por conciliar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Referencia: SPEI-DEMO-001'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Conciliar'), findsOneWidget);
+  });
+
+  testWidgets('Admin Cliente can reconcile a deposit from the Operaciones de saldo hub too', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Operaciones de saldo');
+    await tester.tap(find.text('Depósitos por conciliar'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Conciliar'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('conciliado'), findsOneWidget);
+
+    // Mismo saldo actualizado visible desde Tesorería — sigue siendo el
+    // otro entry point para la misma acción, no se rompió al agregar el
+    // del hub.
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToSection(tester, 'Tesorería');
+    expect(find.text('\$15,000.00 MXN'), findsOneWidget); // 10,000 + 5,000
+  });
+
+  testWidgets('tapping a pending deposit under "Requiere tu atención" opens the Depósitos por conciliar tab',
+      (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    expect(find.text('Depósito pendiente de conciliar'), findsOneWidget);
+    await tester.tap(find.text('Depósito pendiente de conciliar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Operaciones de saldo'), findsNWidgets(2)); // sidebar item + header title
+    expect(find.text('Referencia: SPEI-DEMO-001'), findsOneWidget); // aterrizó directo en la pestaña de depósitos
   });
 }

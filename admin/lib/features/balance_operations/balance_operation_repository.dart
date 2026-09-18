@@ -1,4 +1,5 @@
 import '../../core/models/balance_operation.dart';
+import '../../core/models/movement_trend_point.dart';
 import '../../core/models/operation_type.dart';
 
 abstract class BalanceOperationRepository {
@@ -6,6 +7,14 @@ abstract class BalanceOperationRepository {
   /// — the "Operaciones de saldo" history. See
   /// docs/feature/operacion-saldo-con-aprobacion/README.md.
   Future<List<BalanceOperation>> listByClients(List<String> clientIds);
+
+  /// Volumen semanal ejecutado (Dispersión/Deducción/Transferencia) de
+  /// las últimas 12 semanas para [clientIds] — solo para el Panel
+  /// directivo (docs/feature/panel-directivo/README.md). Deliberadamente
+  /// separado de [listByClients]: es un dato de flujo agregado, no el
+  /// historial operativo, y en un backend real sería su propia
+  /// consulta/reporte, no una reutilización directa del historial.
+  Future<List<MovementTrendPoint>> getWeeklyTrend(List<String> clientIds);
 
   /// Just the pending ones — the "Aprobaciones" queue.
   Future<List<BalanceOperation>> listPendingByClients(List<String> clientIds);

@@ -206,6 +206,54 @@ CREATE TABLE balance_operations (
     CHECK ((operation_type = 'transfer') = (destination_card_id IS NOT NULL))
 );
 
+CREATE TYPE collector_deposit_status AS ENUM ('pending', 'reconciled');
+
+-- The real pooled account behind a Client's Dispersiones/Deducciones —
+-- 1:1 with a client, never with a card. See
+-- docs/business/tesoreria-cliente.md.
+CREATE TABLE concentrator_accounts (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id uuid NOT NULL UNIQUE REFERENCES clients(id),
+    currency text NOT NULL DEFAULT 'MXN',
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Same append-only pattern as ledger_entries, one level up (Cliente
+-- instead of Tarjeta). A Dispersión debits this, a Deducción credits it;
+-- a reconciled collector_deposit also credits it. Transferencia never
+-- touches it (internal to the client's own pool already).
+CREATE TABLE concentrator_entries (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    concentrator_account_id uuid NOT NULL REFERENCES concentrator_accounts(id),
+    entry_type ledger_entry_type NOT NULL,
+    amount numeric(18,2) NOT NULL CHECK (amount > 0),
+    balance_after numeric(18,2) NOT NULL,
+    description text,
+    related_operation_id uuid,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER concentrator_entries_no_update
+    BEFORE UPDATE OR DELETE ON concentrator_entries
+    FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+
+-- The Cuenta Colectora's deposits — registering one never moves the
+-- Concentradora's balance by itself; only reconciling does. See
+-- docs/business/tesoreria-cliente.md, "El flujo de fondeo: dos pasos, no
+-- uno" for why this is deliberately not a single step.
+CREATE TABLE collector_deposits (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id uuid NOT NULL REFERENCES clients(id),
+    amount numeric(18,2) NOT NULL CHECK (amount > 0),
+    reference text NOT NULL,
+    status collector_deposit_status NOT NULL DEFAULT 'pending',
+    registered_by uuid NOT NULL REFERENCES users(id),
+    reconciled_by uuid REFERENCES users(id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    reconciled_at timestamptz,
+    CHECK ((status = 'reconciled') = (reconciled_by IS NOT NULL AND reconciled_at IS NOT NULL))
+);
+
 -- Transactional outbox: written in the same DB transaction as the state
 -- change it describes, so an event is never lost even if the queue/broker
 -- is down. Relayed by cmd/worker via internal/adapters/outbox.
@@ -238,6 +286,8 @@ CREATE INDEX ON ledger_entries (ledger_account_id);
 CREATE INDEX ON movement_claims (status);
 CREATE INDEX ON balance_operations (client_id, status);
 CREATE INDEX ON audit_log (entity_type, entity_id);
+CREATE INDEX ON concentrator_entries (concentrator_account_id);
+CREATE INDEX ON collector_deposits (client_id, status);
 
 -- Row-Level Security: enabled here, policies to be added alongside the
 -- Postgres adapter once the session GUC (app.accessible_client_ids) is
@@ -251,3 +301,6 @@ ALTER TABLE balance_operations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE approval_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE client_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE movement_claims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE concentrator_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE concentrator_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE collector_deposits ENABLE ROW LEVEL SECURITY;

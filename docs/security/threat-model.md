@@ -95,3 +95,17 @@ confirmación de una sola coincidencia — nunca un combo/lista navegable de
 todos los registros del Cliente. Ver
 `docs/feature/operacion-saldo-con-aprobacion/README.md`, sección
 "Captura de la tarjeta destino".
+
+## 10. Confiar en un depósito declarado sin verificación independiente
+**Riesgo:** quien registra un depósito en la Cuenta Colectora
+(`docs/business/tesoreria-cliente.md`) puede declarar un monto que nunca
+llegó realmente — si esa misma persona también pudiera conciliarlo hacia
+la Concentradora, el dinero quedaría disponible para dispersar sin que
+nadie más lo haya confirmado.
+**Mitigación de diseño:** registrar y conciliar son pasos separados con
+roles distintos (Operador+ registra, solo Admin Cliente+ concilia) — el
+saldo de la Concentradora nunca cambia por el solo hecho de registrar un
+depósito. Sigue siendo un control manual (no hay verificación bancaria
+real en esta iteración, ver "Fuera de alcance" en
+`docs/feature/tesoreria-cliente/README.md`), pero exige una segunda
+persona antes de que el dinero sea utilizable.

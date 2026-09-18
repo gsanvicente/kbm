@@ -1,27 +1,144 @@
 import 'package:flutter/material.dart';
 
+import '../../app/theme.dart';
 import '../../core/models/balance_operation.dart';
 import '../../core/models/cardholder.dart';
 import '../../core/models/client.dart';
+import '../../core/models/collector_deposit.dart';
+import '../../core/models/collector_deposit_status.dart';
 import '../../core/models/ledger_account.dart';
 import '../../core/models/operation_status.dart';
+import '../../core/models/operation_type.dart';
 import '../../core/models/payment_card.dart';
 import '../../core/models/session.dart';
+import '../../shared_widgets/multi_select_filter_button.dart';
 import '../cardholders/cardholder_repository.dart';
 import '../cards/card_repository.dart';
 import '../clients/client_repository.dart';
 import '../ledger/ledger_repository.dart';
+import '../treasury/deposit_tile.dart';
+import '../treasury/treasury_repository.dart';
 import 'balance_operation_repository.dart';
 import 'operaciones_de_saldo_section.dart';
 
-/// Cola de operaciones `pending_approval` dentro del alcance del usuario.
-/// Visible para todos (Auditor y Operador incluidos, de solo lectura),
-/// pero solo Admin Cliente+ ve los botones de aprobar/rechazar. El
-/// historial completo vive en OperacionesDeSaldoSection. Ver
+/// Hub de todo lo relacionado a operaciones de saldo, con tres pestañas:
+/// pendientes de aprobación, depósitos de Colectora pendientes de
+/// conciliar, e historial completo (cualquier estado, con filtros —
+/// antes una sección aparte, "Operaciones de saldo"; se fusionó aquí
+/// 2026-09-17 porque tener dos ítems de menú separados sobre lo mismo no
+/// aportaba, y ahora es un solo punto de entrada para todo lo de
+/// operaciones/depósitos). Aprobar y conciliar son acciones de negocio
+/// distintas a propósito (aprobar autoriza una ejecución; conciliar
+/// confirma un hecho externo — ver docs/security/threat-model.md punto
+/// 10), por eso viven en pestañas separadas y no en una sola lista
+/// mezclada. Conciliar sigue disponible también desde la Tesorería de
+/// cada Cliente — ver docs/feature/tesoreria-cliente/README.md, "Dos
+/// entry points para conciliar". Ver
 /// docs/feature/operacion-saldo-con-aprobacion/README.md.
 class AprobacionesSection extends StatefulWidget {
   const AprobacionesSection({
     super.key,
+    required this.session,
+    required this.clientRepository,
+    required this.cardholderRepository,
+    required this.cardRepository,
+    required this.ledgerRepository,
+    required this.balanceOperationRepository,
+    required this.treasuryRepository,
+    this.initialTabIndex = 0,
+  });
+
+  final Session session;
+  final ClientRepository clientRepository;
+  final CardholderRepository cardholderRepository;
+  final CardRepository cardRepository;
+  final LedgerRepository ledgerRepository;
+  final BalanceOperationRepository balanceOperationRepository;
+  final TreasuryRepository treasuryRepository;
+
+  /// 0 = Pendientes de aprobación, 1 = Depósitos por conciliar, 2 =
+  /// Historial completo — usado por el hipervínculo de "Requiere tu
+  /// atención" en el Panel directivo para abrir directo en la pestaña
+  /// relevante (nunca apunta a la 2, nada la enlaza todavía). Ver
+  /// docs/feature/panel-directivo/README.md.
+  final int initialTabIndex;
+
+  @override
+  State<AprobacionesSection> createState() => _AprobacionesSectionState();
+}
+
+class _AprobacionesSectionState extends State<AprobacionesSection> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this, initialIndex: widget.initialTabIndex);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          TabBar(
+            controller: _tabController,
+            labelColor: KoonsColors.navy,
+            indicatorColor: KoonsColors.blue,
+            tabs: const [
+              Tab(text: 'Pendientes de aprobación'),
+              Tab(text: 'Depósitos por conciliar'),
+              Tab(text: 'Historial completo'),
+            ],
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _PendingOperationsTab(
+                  session: widget.session,
+                  clientRepository: widget.clientRepository,
+                  cardholderRepository: widget.cardholderRepository,
+                  cardRepository: widget.cardRepository,
+                  ledgerRepository: widget.ledgerRepository,
+                  balanceOperationRepository: widget.balanceOperationRepository,
+                ),
+                _PendingDepositsTab(
+                  session: widget.session,
+                  clientRepository: widget.clientRepository,
+                  treasuryRepository: widget.treasuryRepository,
+                ),
+                _FullHistoryTab(
+                  session: widget.session,
+                  clientRepository: widget.clientRepository,
+                  cardholderRepository: widget.cardholderRepository,
+                  cardRepository: widget.cardRepository,
+                  ledgerRepository: widget.ledgerRepository,
+                  balanceOperationRepository: widget.balanceOperationRepository,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Cola de operaciones `pending_approval` dentro del alcance del usuario.
+/// Visible para todos (Auditor y Operador incluidos, de solo lectura),
+/// pero solo Admin Cliente+ ve los botones de aprobar/rechazar. El
+/// historial completo vive en OperacionesDeSaldoSection.
+class _PendingOperationsTab extends StatefulWidget {
+  const _PendingOperationsTab({
     required this.session,
     required this.clientRepository,
     required this.cardholderRepository,
@@ -38,19 +155,22 @@ class AprobacionesSection extends StatefulWidget {
   final BalanceOperationRepository balanceOperationRepository;
 
   @override
-  State<AprobacionesSection> createState() => _AprobacionesSectionState();
+  State<_PendingOperationsTab> createState() => _PendingOperationsTabState();
 }
 
+/// Compartida entre `_PendingOperationsTab` (solo pendientes) y
+/// `_FullHistoryTab` (cualquier estado) — mismo shape, distinto método de
+/// repositorio usado para poblar [operations].
 class _ScopeData {
-  _ScopeData(this.clients, this.cardholders, this.cards, this.ledgerAccounts, this.pending);
+  _ScopeData(this.clients, this.cardholders, this.cards, this.ledgerAccounts, this.operations);
   final List<Client> clients;
   final List<Cardholder> cardholders;
   final List<PaymentCard> cards;
   final Map<String, LedgerAccount> ledgerAccounts;
-  final List<BalanceOperation> pending;
+  final List<BalanceOperation> operations;
 }
 
-class _AprobacionesSectionState extends State<AprobacionesSection> {
+class _PendingOperationsTabState extends State<_PendingOperationsTab> {
   late Future<_ScopeData> _future;
   bool _busyId(String id) => _busyOperationId == id;
   String? _busyOperationId;
@@ -115,9 +235,7 @@ class _AprobacionesSectionState extends State<AprobacionesSection> {
   Widget build(BuildContext context) {
     final canApprove = widget.session.role.canApproveBalanceOperations;
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: FutureBuilder<_ScopeData>(
+    return FutureBuilder<_ScopeData>(
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
@@ -143,7 +261,7 @@ class _AprobacionesSectionState extends State<AprobacionesSection> {
                 ),
               ),
             Expanded(
-              child: data.pending.isEmpty
+              child: data.operations.isEmpty
                   ? Center(
                       child: Text(
                         'No hay operaciones pendientes de aprobación.',
@@ -152,10 +270,10 @@ class _AprobacionesSectionState extends State<AprobacionesSection> {
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.all(8),
-                      itemCount: data.pending.length,
+                      itemCount: data.operations.length,
                       separatorBuilder: (_, __) => const Divider(height: 1, indent: 68),
                       itemBuilder: (context, index) {
-                        final op = data.pending[index];
+                        final op = data.operations[index];
                         final busy = _busyId(op.id);
                         return BalanceOperationTile(
                           operation: op,
@@ -192,7 +310,279 @@ class _AprobacionesSectionState extends State<AprobacionesSection> {
           ],
         );
       },
-      ),
+    );
+  }
+}
+
+/// Historial de solo lectura de operaciones de saldo (cualquier estado)
+/// dentro del alcance del usuario — crear una operación nueva se hace
+/// desde la tarjeta específica (pestaña "Operaciones" de
+/// CardDetailView), nunca desde aquí. Antes vivía en una sección aparte
+/// ("Operaciones de saldo"); se fusionó a esta pestaña 2026-09-17, ver el
+/// comentario de AprobacionesSection.
+class _FullHistoryTab extends StatefulWidget {
+  const _FullHistoryTab({
+    required this.session,
+    required this.clientRepository,
+    required this.cardholderRepository,
+    required this.cardRepository,
+    required this.ledgerRepository,
+    required this.balanceOperationRepository,
+  });
+
+  final Session session;
+  final ClientRepository clientRepository;
+  final CardholderRepository cardholderRepository;
+  final CardRepository cardRepository;
+  final LedgerRepository ledgerRepository;
+  final BalanceOperationRepository balanceOperationRepository;
+
+  @override
+  State<_FullHistoryTab> createState() => _FullHistoryTabState();
+}
+
+class _FullHistoryTabState extends State<_FullHistoryTab> {
+  late Future<_ScopeData> _future;
+
+  Set<OperationType> _typeFilter = {};
+  Set<OperationStatus> _statusFilter = {};
+  Set<String> _clientFilter = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<_ScopeData> _load() async {
+    final clients = await widget.clientRepository.listAccessibleClients(widget.session);
+    final clientIds = clients.map((c) => c.id).toList();
+    final cardholders = await widget.cardholderRepository.listByClients(clientIds);
+    final cards = await widget.cardRepository.listByClients(clientIds);
+    final ledgerAccounts = await widget.ledgerRepository.getByCards(cards.map((c) => c.id).toList());
+    final operations = await widget.balanceOperationRepository.listByClients(clientIds);
+    return _ScopeData(clients, cardholders, cards, ledgerAccounts, operations);
+  }
+
+  bool get _hasActiveFilters => _typeFilter.isNotEmpty || _statusFilter.isNotEmpty || _clientFilter.isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_ScopeData>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error al cargar operaciones: ${snapshot.error}'));
+        }
+        final data = snapshot.data!;
+        final clientNameById = {for (final c in data.clients) c.id: c.name};
+        final cardById = {for (final c in data.cards) c.id: c};
+        final cardholderNameById = {for (final c in data.cardholders) c.id: c.fullName};
+
+        final filtered = data.operations.where((op) {
+          if (_typeFilter.isNotEmpty && !_typeFilter.contains(op.type)) return false;
+          if (_statusFilter.isNotEmpty && !_statusFilter.contains(op.status)) return false;
+          if (_clientFilter.isNotEmpty && !_clientFilter.contains(op.clientId)) return false;
+          return true;
+        }).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  MultiSelectFilterButton<OperationType>(
+                    label: 'Tipo',
+                    options: OperationType.values,
+                    optionLabel: (t) => t.label,
+                    selected: _typeFilter,
+                    onChanged: (next) => setState(() => _typeFilter = next),
+                  ),
+                  MultiSelectFilterButton<OperationStatus>(
+                    label: 'Estado',
+                    options: OperationStatus.values,
+                    optionLabel: (s) => s.label,
+                    selected: _statusFilter,
+                    onChanged: (next) => setState(() => _statusFilter = next),
+                  ),
+                  if (data.clients.length > 1)
+                    MultiSelectFilterButton<String>(
+                      label: 'Empresa',
+                      options: data.clients.map((c) => c.id).toList(),
+                      optionLabel: (id) => clientNameById[id] ?? '—',
+                      selected: _clientFilter,
+                      onChanged: (next) => setState(() => _clientFilter = next),
+                    ),
+                  if (_hasActiveFilters)
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _typeFilter = {};
+                        _statusFilter = {};
+                        _clientFilter = {};
+                      }),
+                      child: const Text('Limpiar filtros'),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: filtered.isEmpty
+                  ? Center(
+                      child: Text(
+                        data.operations.isEmpty
+                            ? 'Aún no hay operaciones de saldo. Se solicitan desde el detalle de cada tarjeta.'
+                            : 'Ninguna operación coincide con los filtros',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(8),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, indent: 68),
+                      itemBuilder: (context, index) {
+                        final op = filtered[index];
+                        return BalanceOperationTile(
+                          operation: op,
+                          card: cardById[op.cardId],
+                          destinationCard: op.destinationCardId != null ? cardById[op.destinationCardId] : null,
+                          cardholderName: cardById[op.cardId]?.cardholderId != null
+                              ? cardholderNameById[cardById[op.cardId]!.cardholderId]
+                              : null,
+                          clientName: clientNameById[op.clientId] ?? '—',
+                          currency: data.ledgerAccounts[op.cardId]?.currency ?? 'MXN',
+                        );
+                      },
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _PendingDepositsTab extends StatefulWidget {
+  const _PendingDepositsTab({
+    required this.session,
+    required this.clientRepository,
+    required this.treasuryRepository,
+  });
+
+  final Session session;
+  final ClientRepository clientRepository;
+  final TreasuryRepository treasuryRepository;
+
+  @override
+  State<_PendingDepositsTab> createState() => _PendingDepositsTabState();
+}
+
+class _DepositsScopeData {
+  _DepositsScopeData(this.clientNameById, this.pending);
+  final Map<String, String> clientNameById;
+  final List<CollectorDeposit> pending;
+}
+
+class _PendingDepositsTabState extends State<_PendingDepositsTab> {
+  late Future<_DepositsScopeData> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<_DepositsScopeData> _load() async {
+    final clients = await widget.clientRepository.listAccessibleClients(widget.session);
+    final pending = <CollectorDeposit>[];
+    for (final client in clients) {
+      final deposits = await widget.treasuryRepository.listCollectorDeposits(client.id);
+      pending.addAll(deposits.where((d) => d.status == CollectorDepositStatus.pending));
+    }
+    pending.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return _DepositsScopeData({for (final c in clients) c.id: c.name}, pending);
+  }
+
+  void _reload() {
+    setState(() {
+      _future = _load();
+    });
+  }
+
+  Future<void> _reconcile(CollectorDeposit deposit) async {
+    await widget.treasuryRepository.reconcileDeposit(
+      depositId: deposit.id,
+      reconciledByEmail: widget.session.email,
+    );
+    if (!mounted) return;
+    _reload();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Depósito conciliado — saldo disponible en la Concentradora.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canReconcile = widget.session.role.canReconcileDeposits;
+
+    return FutureBuilder<_DepositsScopeData>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error al cargar depósitos: ${snapshot.error}'));
+        }
+        final data = snapshot.data!;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!canReconcile)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Text(
+                  'Tu rol (${widget.session.role.label}) puede ver esta cola pero no conciliar depósitos.',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5, fontStyle: FontStyle.italic),
+                ),
+              ),
+            Expanded(
+              child: data.pending.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No hay depósitos pendientes de conciliar.',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(8),
+                      itemCount: data.pending.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, indent: 68),
+                      itemBuilder: (context, index) {
+                        final deposit = data.pending[index];
+                        return DepositTile(
+                          deposit: deposit,
+                          currency: 'MXN',
+                          clientName: data.clientNameById[deposit.clientId] ?? '—',
+                          canReconcile: canReconcile,
+                          onReconcile: () => _reconcile(deposit),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

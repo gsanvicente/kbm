@@ -6,7 +6,9 @@ import '../features/balance_operations/fake_balance_operation_repository.dart';
 import '../features/cardholders/fake_cardholder_repository.dart';
 import '../features/cards/fake_card_repository.dart';
 import '../features/clients/fake_client_repository.dart';
+import '../features/dashboard/fake_dashboard_repository.dart';
 import '../features/ledger/fake_ledger_repository.dart';
+import '../features/treasury/fake_treasury_repository.dart';
 import 'admin_shell.dart';
 import 'auth_controller.dart';
 import 'theme.dart';
@@ -28,7 +30,18 @@ class _KbmAdminAppState extends State<KbmAdminApp> {
   final _cardholderRepository = FakeCardholderRepository();
   final _cardRepository = FakeCardRepository();
   final _ledgerRepository = FakeLedgerRepository();
-  late final _balanceOperationRepository = FakeBalanceOperationRepository(ledgerRepository: _ledgerRepository);
+  final _treasuryRepository = FakeTreasuryRepository();
+  late final _balanceOperationRepository = FakeBalanceOperationRepository(
+    ledgerRepository: _ledgerRepository,
+    treasuryRepository: _treasuryRepository,
+  );
+  late final _dashboardRepository = FakeDashboardRepository(
+    clientRepository: _clientRepository,
+    cardRepository: _cardRepository,
+    ledgerRepository: _ledgerRepository,
+    treasuryRepository: _treasuryRepository,
+    balanceOperationRepository: _balanceOperationRepository,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +63,8 @@ class _KbmAdminAppState extends State<KbmAdminApp> {
             cardRepository: _cardRepository,
             ledgerRepository: _ledgerRepository,
             balanceOperationRepository: _balanceOperationRepository,
+            treasuryRepository: _treasuryRepository,
+            dashboardRepository: _dashboardRepository,
             authController: _authController,
           );
         },

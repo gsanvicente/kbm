@@ -6,11 +6,29 @@ Característica: Operación de saldo con aprobación configurable
 
   Escenario: Operación sin aprobación requerida se ejecuta de inmediato
     Dado que "Koons Subsidiaria A" no requiere aprobación para operaciones de tipo "load"
+    Y la Cuenta Concentradora de "Koons Subsidiaria A" tiene saldo suficiente
     Y "Ana" es Operador de "Koons Subsidiaria A"
     Cuando "Ana" solicita una Dispersión de 100 desde el detalle de una tarjeta de "Koons Subsidiaria A"
     Entonces la operación queda en estado "executed"
     Y se registra un movimiento en el ledger de esa tarjeta
+    Y el saldo de la Cuenta Concentradora de "Koons Subsidiaria A" disminuye en 100
     Y el saldo mostrado en la pestaña "Resumen" de esa tarjeta se actualiza sin recargar la pantalla
+
+  Escenario: Una Dispersión sin saldo suficiente en la Concentradora falla, sin tocar la tarjeta
+    Dado que la Cuenta Concentradora de "Koons Subsidiaria A" tiene saldo de 50
+    Y "Koons Subsidiaria A" no requiere aprobación para operaciones de tipo "load"
+    Y "Ana" es Operador de "Koons Subsidiaria A"
+    Cuando "Ana" solicita una Dispersión de 100 desde el detalle de una tarjeta de "Koons Subsidiaria A"
+    Entonces la operación queda en estado "failed"
+    Y el saldo de esa tarjeta no cambia
+    Y el saldo de la Cuenta Concentradora no cambia
+
+  Escenario: Una Deducción regresa el dinero a la Cuenta Concentradora
+    Dado que "Koons Subsidiaria A" no requiere aprobación para operaciones de tipo "debit"
+    Y "Ana" es Operador de "Koons Subsidiaria A"
+    Cuando "Ana" solicita una Deducción de 50 desde el detalle de una tarjeta de "Koons Subsidiaria A"
+    Entonces la operación queda en estado "executed"
+    Y el saldo de la Cuenta Concentradora de "Koons Subsidiaria A" aumenta en 50
 
   Escenario: Operación por encima del umbral requiere aprobación
     Dado que "Koons Subsidiaria A" requiere aprobación para transferencias mayores a 500
@@ -66,17 +84,18 @@ Característica: Operación de saldo con aprobación configurable
     Cuando escribo "1234" en el campo de tarjeta destino de una Transferencia
     Entonces no se encuentra ninguna coincidencia dentro de "Koons Subsidiaria B"
 
-  Escenario: Una transferencia mueve saldo entre dos tarjetas del mismo Cliente
+  Escenario: Una transferencia mueve saldo entre dos tarjetas del mismo Cliente sin tocar la Concentradora
     Dado que "Maria Gomez" y "Carlos Ruiz" tienen tarjetas activas de "Koons Subsidiaria B"
     Y "Koons Subsidiaria B" no requiere aprobación para transferencias de 100
     Cuando un Operador transfiere 100 desde la tarjeta de "Maria Gomez" hacia la terminación 7890
     Entonces el saldo de "Maria Gomez" disminuye en 100
     Y el saldo de "Carlos Ruiz" aumenta en 100
+    Y el saldo de la Cuenta Concentradora de "Koons Subsidiaria B" no cambia
 
   Escenario: Operador no puede aprobar ni rechazar
     Dado que inicié sesión como Operador
     Y existe una operación en estado "pending_approval" dentro de mi alcance
-    Cuando veo la sección "Aprobaciones"
+    Cuando veo la sección "Operaciones de saldo", pestaña "Pendientes de aprobación"
     Entonces veo la operación pero no los botones de aprobar o rechazar
 
   Escenario: Auditor solo puede consultar
@@ -95,3 +114,12 @@ Característica: Operación de saldo con aprobación configurable
     Y "Marta" es Operador de "Koons Subsidiaria A"
     Cuando "Marta" intenta abrir el detalle de una tarjeta de "Koons Subsidiaria B"
     Entonces no tiene acceso a esa tarjeta en absoluto
+
+  Escenario: "Operaciones de saldo" es un hub con tres pestañas
+    Dado que "Carlos" es Admin Cliente de "Koons Subsidiaria A"
+    Y existe una operación en estado "pending_approval" y un depósito en estado "pending" en su alcance
+    Cuando "Carlos" entra a la sección "Operaciones de saldo"
+    Entonces ve la operación pendiente en la pestaña "Pendientes de aprobación"
+    Y ve el depósito pendiente en la pestaña "Depósitos por conciliar"
+    Y puede conciliar ese depósito desde ahí sin salir a la Tesorería del Cliente
+    Y ve el historial completo de operaciones (cualquier estado) en la pestaña "Historial completo"

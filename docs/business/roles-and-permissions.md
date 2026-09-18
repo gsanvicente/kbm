@@ -54,6 +54,24 @@ Desactivar un tarjetahabiente **no** requiere aprobación (no es una
 al chequeo de rol de arriba. Ver
 `docs/feature/detalle-y-gestion-tarjetahabiente/`.
 
+## Tesorería del Cliente (Cuenta Concentradora / Cuenta Colectora)
+
+Ver `docs/business/tesoreria-cliente.md` para el detalle funcional. Resumen de permisos:
+
+- **Ver** saldo y movimientos de ambas cuentas: cualquier rol de staff
+  dentro de su alcance, incluido Auditor (solo lectura).
+- **Registrar un depósito** en la Colectora: Operador de Saldos, Admin
+  Cliente, Super Admin — mismo grupo que ya solicita operaciones de
+  saldo, es la misma naturaleza operativa.
+- **Conciliar** un depósito (Colectora → Concentradora): solo Admin
+  Cliente y Super Admin — separación deliberada, quien registra un
+  depósito no necesariamente es quien confirma que es real y ya está
+  disponible para dispersar. Disponible desde dos lugares (Tesorería del
+  Cliente y la pestaña "Depósitos por conciliar" del hub "Operaciones de
+  saldo") — mismo permiso, misma acción, ver
+  `docs/feature/tesoreria-cliente/README.md`, "Dos entry points para
+  conciliar".
+
 ## Gestión de Tarjetas (asignar del pool de disponibles)
 
 Mismo criterio que la gestión de Tarjetahabientes: **Super Admin** y
@@ -62,6 +80,22 @@ Tarjetahabiente; Operador y Auditor solo ven el estado de las tarjetas.
 Ver `docs/business/tarjetas-y-asignacion.md` para el ciclo de vida
 completo y el límite configurable de tarjetas activas por
 Tarjetahabiente.
+
+## Panel directivo ("Inicio")
+
+Ver `docs/feature/panel-directivo/README.md` para el detalle funcional.
+Resumen de permisos:
+
+- **Super Admin** y **Admin Cliente** aterrizan en "Inicio" al iniciar
+  sesión y son los únicos que ven ese ítem en el menú lateral
+  (`Role.canViewExecutiveDashboard`, mismo grupo que
+  `canManageCardholders`) — es un resumen ejecutivo pensado para quien
+  gestiona la estructura de la empresa.
+- **Operador** y **Auditor** no tienen esta pantalla — siguen aterrizando
+  en "Clientes", igual que antes de que existiera este panel.
+- El alcance de datos sigue la misma regla de herencia jerárquica de
+  arriba: Super Admin ve todas las empresas, Admin Cliente ve su empresa
+  más sus descendientes.
 
 ## Plano de autoservicio (Tarjetahabiente)
 

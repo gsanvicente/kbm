@@ -34,6 +34,16 @@
 - **Regla de aprobación**: configuración por Cliente que determina si un
   tipo de operación (y a partir de qué monto) requiere aprobación antes de
   ejecutarse.
+- **Cuenta Concentradora**: pool de dinero real de un Cliente (1:1, uno
+  por Cliente) — de ahí sale el dinero de cada Dispersión y ahí regresa
+  el de cada Deducción. Ver `docs/business/tesoreria-cliente.md`.
+- **Cuenta Colectora**: punto de entrada para depósitos externos de un
+  Cliente, antes de conciliarse hacia la Concentradora — un depósito
+  registrado ahí no está disponible para dispersar hasta conciliarse.
+  Ver `docs/business/tesoreria-cliente.md`.
+- **Panel directivo**: pantalla de inicio ("Inicio") con un resumen
+  ejecutivo de saldos, pendientes y actividad, solo para Super Admin y
+  Admin Cliente. Ver `docs/feature/panel-directivo/README.md`.
 - **Rol**: perfil de acceso de un usuario administrativo/staff (Super
   Admin, Admin Cliente, Operador, Auditor). No confundir con el acceso de
   autoservicio del Tarjetahabiente, que es un plano de identidad distinto.

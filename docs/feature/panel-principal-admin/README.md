@@ -25,11 +25,14 @@ sin funcionalidad todavía, para dejar visible la forma final del panel.
 
 ## Flujo principal
 1. Tras el login, el usuario llega al panel con una barra de navegación
-   lateral (secciones del dominio) y la sección "Clientes" seleccionada
-   por defecto.
-2. Se lista cada Cliente visible para el usuario: el suyo propio, más
-   todos sus descendientes en la jerarquía (ver regla de herencia en
-   `docs/business/roles-and-permissions.md`).
+   lateral (secciones del dominio). La sección seleccionada por defecto
+   depende del rol: Super Admin y Admin Cliente aterrizan en "Inicio"
+   (ver `docs/feature/panel-directivo/README.md`); Operador y Auditor
+   siguen aterrizando en "Clientes", como en la versión original de este
+   flujo.
+2. Desde "Clientes" se lista cada Cliente visible para el usuario: el
+   suyo propio, más todos sus descendientes en la jerarquía (ver regla de
+   herencia en `docs/business/roles-and-permissions.md`).
 3. Un botón de cierre de sesión regresa al login.
 
 ## Reglas de negocio

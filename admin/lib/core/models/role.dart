@@ -55,4 +55,22 @@ enum Role {
   /// entre quien opera y quien autoriza. Ver
   /// docs/business/approval-policy.md.
   bool get canApproveBalanceOperations => canManageCardholders;
+
+  /// Registrar un depósito en la Cuenta Colectora — mismo grupo que
+  /// [canRequestBalanceOperations] (misma naturaleza operativa). Ver
+  /// docs/business/tesoreria-cliente.md.
+  bool get canRegisterCollectorDeposits => canOperateCards;
+
+  /// Conciliar un depósito (Colectora → Concentradora) — mismo grupo que
+  /// [canApproveBalanceOperations]: separación deliberada, quien registra
+  /// un depósito no necesariamente es quien confirma que ya está
+  /// disponible para dispersar. Ver docs/business/tesoreria-cliente.md.
+  bool get canReconcileDeposits => canManageCardholders;
+
+  /// Ver el Panel directivo ("Inicio") — mismo grupo que
+  /// [canManageCardholders]: es un resumen ejecutivo pensado para quien
+  /// gestiona la estructura de la empresa, no para el uso operativo del
+  /// día a día. Operador y Auditor siguen aterrizando en "Clientes". Ver
+  /// docs/feature/panel-directivo/README.md.
+  bool get canViewExecutiveDashboard => canManageCardholders;
 }

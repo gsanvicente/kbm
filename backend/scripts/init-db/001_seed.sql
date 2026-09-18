@@ -116,3 +116,21 @@ INSERT INTO balance_operations (id, client_id, card_id, operation_type, amount, 
 INSERT INTO client_settings (client_id, max_active_cards_per_cardholder) VALUES
     ('00000000-0000-0000-0000-000000000002', 1),
     ('00000000-0000-0000-0000-000000000003', 2);
+
+-- Each Client's own Cuenta Concentradora — see
+-- docs/business/tesoreria-cliente.md. Seeded with a healthy starting
+-- balance so demo/test Dispersiones don't fail for insufficient funds
+-- at the Concentradora right out of the box.
+INSERT INTO concentrator_accounts (id, client_id, currency) VALUES
+    ('90000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'MXN'),
+    ('90000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', 'MXN');
+
+INSERT INTO concentrator_entries (id, concentrator_account_id, entry_type, amount, balance_after, description) VALUES
+    ('91000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000001', 'credit', 10000.00, 10000.00, 'Saldo inicial de demo'),
+    ('91000000-0000-0000-0000-000000000002', '90000000-0000-0000-0000-000000000002', 'credit', 10000.00, 10000.00, 'Saldo inicial de demo');
+
+-- Demo: a deposit still pending reconciliation in Subsidiaria A's
+-- Colectora, so the "Tesorería" tab has something to show/conciliate on
+-- first load — same rationale as the seeded pending balance_operation.
+INSERT INTO collector_deposits (id, client_id, amount, reference, status, registered_by) VALUES
+    ('92000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 5000.00, 'SPEI-DEMO-001', 'pending', '10000000-0000-0000-0000-000000000004');

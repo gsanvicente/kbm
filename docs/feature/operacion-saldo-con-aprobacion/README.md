@@ -36,6 +36,10 @@ nunca visible en la UI.
 ## Contexto / motivación
 Ver `docs/business/approval-policy.md` para el modelo completo. Esta
 feature es el primer caso de uso "de escritura" real del sistema.
+Depende de `docs/feature/tesoreria-cliente/` para la Cuenta Concentradora
+que ahora respalda cada Dispersión/Deducción (ver "Flujo principal" más
+abajo) — sin esa cuenta fondeada, una Dispersión no tiene de dónde
+salir.
 
 ## Dónde vive esto en la UI (revisado 2026-09-19)
 **Ya no hay un formulario global que primero te hace elegir una tarjeta
@@ -49,13 +53,40 @@ operaciones de saldo se solicitan **desde ahí**, en una tercera pestaña
   `docs/business/roles-and-permissions.md`): **Dispersión**, **Deducción**,
   **Transferencia**. La tarjeta origen nunca se pregunta — es,
   implícitamente, la tarjeta que ya se está viendo.
-- "Operaciones de saldo" (ítem del menú principal) sigue existiendo como
-  **historial de solo lectura** entre todas las tarjetas del alcance del
-  usuario, con los mismos filtros de Tipo/Estado/Empresa — pero ya no
-  tiene un botón para crear una operación ahí. Crear siempre pasa por la
-  tarjeta específica, para que el origen nunca sea ambiguo y para no
+- El historial de solo lectura de **esa tarjeta** vive ahí mismo, en esa
+  pestaña "Operaciones" — para el historial **global** (todas las
+  tarjetas del alcance del usuario), ver la siguiente sección.
+
+## "Operaciones de saldo" es un hub con tres pestañas (revisado 2026-09-17)
+Un solo ítem de menú, "Operaciones de saldo", concentra todo lo
+relacionado a operaciones y depósitos — antes eran **dos** ítems
+separados ("Operaciones de saldo" como historial, "Aprobaciones" como
+cola de pendientes); se fusionaron porque tener dos entradas de menú
+sobre el mismo dominio no aportaba claridad. Sus tres pestañas:
+- **Pendientes de aprobación**: la cola de `BalanceOperation` en
+  `pending_approval` dentro del alcance del usuario (antes era todo el
+  contenido de "Aprobaciones").
+- **Depósitos por conciliar**: la cola de `CollectorDeposit` en `pending`
+  de la Cuenta Colectora de cada Cliente en el alcance del usuario — ver
+  `docs/business/tesoreria-cliente.md` y
+  `docs/feature/tesoreria-cliente/README.md`.
+- **Historial completo**: cualquier operación, cualquier estado, con los
+  filtros de Tipo/Estado/Empresa — el antiguo contenido de la sección
+  separada "Operaciones de saldo". Sigue sin tener botón para crear una
+  operación ahí: crear siempre pasa por la tarjeta específica (ver
+  sección anterior), para que el origen nunca sea ambiguo y para no
   necesitar un selector de "tarjeta origen" que obligaría a buscar entre
-  todas las tarjetas del Cliente (ver la siguiente sección).
+  todas las tarjetas del Cliente.
+
+"Pendientes de aprobación" y "Depósitos por conciliar" se mantienen en
+pestañas separadas (no una sola lista mezclada) a propósito: aprobar
+autoriza que se ejecute una operación, mientras que conciliar confirma
+que un depósito externo realmente llegó — son acciones de negocio
+distintas (ver `docs/security/threat-model.md` punto 10), no solo dos
+"colas de pendientes" intercambiables. Conciliar un depósito sigue siendo
+posible también desde la Tesorería de ese Cliente específico — ver "Dos
+entry points para conciliar" en
+`docs/feature/tesoreria-cliente/README.md`.
 
 ## Captura de la tarjeta destino (transferencias)
 Un selector tipo combo que liste todas las tarjetas del Cliente para
@@ -93,21 +124,27 @@ distintos, ni siquiera entre padre e hija.
    `docs/business/approval-policy.md` para el default cuando no hay regla
    configurada.
 3. Sin aprobación requerida → se ejecuta de inmediato: se escribe el/los
-   movimiento(s) en el ledger (dos movimientos para una transferencia:
-   débito en origen, crédito en destino).
+   movimiento(s) en el ledger — **desde que existe la Cuenta
+   Concentradora** (`docs/business/tesoreria-cliente.md`), una Dispersión
+   también debita la Concentradora del Cliente (puede fallar aquí por
+   fondos insuficientes en la Concentradora, no solo en la tarjeta) y una
+   Deducción también la acredita. Una Transferencia sigue sin tocarla —
+   ver "Fondos insuficientes" más abajo.
 4. Con aprobación requerida → la operación queda `pending_approval` y
-   aparece en "Aprobaciones" para el Admin Cliente correspondiente (o el
-   de una empresa ancestro, por herencia de jerarquía).
-5. El Admin Cliente aprueba o rechaza desde "Aprobaciones":
-   - Aprobar → se intenta ejecutar en el momento. Si hay saldo suficiente,
+   aparece en "Operaciones de saldo" → pestaña "Pendientes de aprobación"
+   para el Admin Cliente correspondiente (o el de una empresa ancestro,
+   por herencia de jerarquía).
+5. El Admin Cliente aprueba o rechaza desde ahí:
+   - Aprobar → se intenta ejecutar en el momento (incluida la Concentradora
+     si aplica). Si hay saldo suficiente en todos los lados que aplican,
      pasa a `executed` y se escribe el ledger. Si no, pasa a `failed` con
-     el motivo, y el ledger no se toca.
-   - Rechazar → pasa a `rejected` (requiere un motivo breve). El ledger no
-     se toca.
-6. La pestaña "Operaciones" de la tarjeta y el listado global
-   "Operaciones de saldo" muestran exactamente los mismos datos (el
-   global sin restringir a una tarjeta) — mismo repositorio, sin
-   duplicar lógica.
+     el motivo, y ningún ledger se toca.
+   - Rechazar → pasa a `rejected` (requiere un motivo breve). Ningún
+     ledger se toca.
+6. La pestaña "Operaciones" de la tarjeta y la pestaña "Historial
+   completo" del hub muestran exactamente los mismos datos (el historial
+   sin restringir a una tarjeta) — mismo repositorio, sin duplicar
+   lógica.
 7. Si la operación se ejecutó (no si quedó `pending_approval` ni si
    `failed`), la pestaña "Resumen" de esa misma tarjeta refresca su
    saldo automáticamente — no hace falta salir y volver a entrar al
@@ -134,11 +171,20 @@ vivo como moneda con 2 decimales (ej. escribir "12345" se ve como
 `CurrencyField` en `admin/lib/shared_widgets/`.
 
 ## Fondos insuficientes
-Un Deducción o el lado "origen" de una Transferencia nunca deja el saldo
-en negativo. Se valida en el momento exacto en que se intentaría escribir
+Ninguna cuenta involucrada (tarjeta o Concentradora) se deja nunca en
+negativo. Se valida en el momento exacto en que se intentaría escribir
 el movimiento (al solicitar, si no requiere aprobación; al aprobar, si sí
 la requería) — no al momento de llenar el formulario, porque el saldo
 puede cambiar entre que se solicita y se aprueba.
+
+- **Deducción**: puede fallar por saldo insuficiente en la tarjeta.
+- **Transferencia**: puede fallar por saldo insuficiente en la tarjeta
+  origen (no toca la Concentradora).
+- **Dispersión**: puede fallar por saldo insuficiente en la
+  **Concentradora** del Cliente — nunca en la tarjeta (recibir dinero
+  nunca falla del lado de la tarjeta). Se debita la Concentradora
+  primero; si eso falla, la tarjeta nunca se toca — mismo principio de
+  "nunca dejar un movimiento a medias" que ya aplicaba a Transferencia.
 
 ## Reglas de negocio
 Ver `docs/business/approval-policy.md` y

@@ -1,11 +1,15 @@
+import 'dart:math' as math;
+
 import '../../core/models/approval_rule.dart';
 import '../../core/models/balance_operation.dart';
 import '../../core/models/ledger_entry_type.dart';
+import '../../core/models/movement_trend_point.dart';
 import '../../core/models/operation_status.dart';
 import '../../core/models/operation_type.dart';
 import '../../core/models/shared/insufficient_funds_exception.dart';
 import '../../core/models/shared/not_found_exception.dart';
 import '../ledger/ledger_repository.dart';
+import '../treasury/treasury_repository.dart';
 import 'balance_operation_repository.dart';
 
 /// In-memory stand-in for balance operations — same approval_rules and
@@ -15,9 +19,13 @@ import 'balance_operation_repository.dart';
 /// repository is where this iteration's business rules actually live,
 /// there's no real backend yet.
 class FakeBalanceOperationRepository implements BalanceOperationRepository {
-  FakeBalanceOperationRepository({required this.ledgerRepository});
+  FakeBalanceOperationRepository({required this.ledgerRepository, required this.treasuryRepository});
 
   final LedgerRepository ledgerRepository;
+
+  /// Backs every Dispersión (debits it) and Deducción (credits it) — see
+  /// docs/business/tesoreria-cliente.md. Transferencia never touches it.
+  final TreasuryRepository treasuryRepository;
 
   static const _rules = [
     ApprovalRule(
@@ -60,6 +68,60 @@ class FakeBalanceOperationRepository implements BalanceOperationRepository {
     ),
   ];
 
+  // --- Panel directivo: volumen semanal (dato sintético) ---------------
+  //
+  // Deliberadamente separado de `_operations` (arriba): nunca se mezcla
+  // con el historial real que alimenta "Operaciones de saldo" o
+  // "Aprobaciones". Fechas fijas (no `DateTime.now()`) para que sea
+  // determinista en tests; la ventana termina cerca del "hoy" de esta
+  // demo (2026-09-17) para que el Panel directivo se vea vigente — ver
+  // "Visión futura" en docs/feature/panel-directivo/README.md sobre por
+  // qué esto desaparece en cuanto haya backend real.
+  static final List<DateTime> _trendWeeks = List.generate(
+    12,
+    (i) => DateTime(2026, 6, 29).add(Duration(days: i * 7)),
+  );
+
+  static final Map<String, List<(double, double, double)>> _syntheticWeeklyVolume = _generateSyntheticTrend();
+
+  static Map<String, List<(double, double, double)>> _generateSyntheticTrend() {
+    final random = math.Random(20260917); // semilla fija, ver nota arriba
+    const clientIds = [
+      '00000000-0000-0000-0000-000000000002',
+      '00000000-0000-0000-0000-000000000003',
+    ];
+    return {
+      for (final clientId in clientIds)
+        clientId: List.generate(_trendWeeks.length, (_) {
+          final dispersion = 3000 + random.nextInt(5000);
+          final deduccion = 1500 + random.nextInt(3000);
+          final transferencia = random.nextBool() ? 500 + random.nextInt(2000) : 0;
+          return (dispersion.toDouble(), deduccion.toDouble(), transferencia.toDouble());
+        }),
+    };
+  }
+
+  @override
+  Future<List<MovementTrendPoint>> getWeeklyTrend(List<String> clientIds) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    return List.generate(_trendWeeks.length, (i) {
+      var dispersion = 0.0, deduccion = 0.0, transferencia = 0.0;
+      for (final clientId in clientIds) {
+        final volumes = _syntheticWeeklyVolume[clientId];
+        if (volumes == null) continue;
+        dispersion += volumes[i].$1;
+        deduccion += volumes[i].$2;
+        transferencia += volumes[i].$3;
+      }
+      return MovementTrendPoint(
+        weekStart: _trendWeeks[i],
+        dispersion: dispersion,
+        deduccion: deduccion,
+        transferencia: transferencia,
+      );
+    });
+  }
+
   bool _needsApproval({required String clientId, required OperationType type, required double amount}) {
     ApprovalRule? rule;
     for (final r in _rules) {
@@ -81,6 +143,19 @@ class FakeBalanceOperationRepository implements BalanceOperationRepository {
 
       switch (op.type) {
         case OperationType.load:
+          final concentrator = await treasuryRepository.getConcentratorAccount(op.clientId);
+          if (concentrator == null) {
+            throw NotFoundException('El Cliente ${op.clientId} no tiene Cuenta Concentradora');
+          }
+          // Debit the Concentradora first — if it doesn't have enough,
+          // this throws before the card is ever touched, same
+          // never-leave-it-half-done principle as Transferencia below.
+          await treasuryRepository.postConcentratorEntry(
+            concentratorAccountId: concentrator.id,
+            type: LedgerEntryType.debit,
+            amount: op.amount,
+            description: 'Dispersión a tarjeta',
+          );
           await ledgerRepository.postEntry(
             ledgerAccountId: sourceAccount.id,
             type: LedgerEntryType.credit,
@@ -93,6 +168,19 @@ class FakeBalanceOperationRepository implements BalanceOperationRepository {
             type: LedgerEntryType.debit,
             amount: op.amount,
             description: 'Débito',
+          );
+          final concentrator = await treasuryRepository.getConcentratorAccount(op.clientId);
+          if (concentrator == null) {
+            throw NotFoundException('El Cliente ${op.clientId} no tiene Cuenta Concentradora');
+          }
+          // Crediting the Concentradora never fails for insufficient
+          // funds (only debits can), so this is safe to do after the
+          // card's own debit already succeeded.
+          await treasuryRepository.postConcentratorEntry(
+            concentratorAccountId: concentrator.id,
+            type: LedgerEntryType.credit,
+            amount: op.amount,
+            description: 'Deducción devuelta a la Concentradora',
           );
         case OperationType.transfer:
           final destinationAccount = await ledgerRepository.getByCard(op.destinationCardId!);

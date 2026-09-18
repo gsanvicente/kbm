@@ -1,49 +1,57 @@
 import 'package:flutter/material.dart';
 
+import '../core/models/concentrator_account.dart';
 import '../core/models/session.dart';
+import '../core/utils/currency_format.dart';
 import '../features/balance_operations/aprobaciones_section.dart';
 import '../features/balance_operations/balance_operation_repository.dart';
-import '../features/balance_operations/operaciones_de_saldo_section.dart';
 import '../features/cardholders/cardholder_repository.dart';
 import '../features/cardholders/tarjetahabientes_section.dart';
 import '../features/cards/card_repository.dart';
 import '../features/cards/tarjetas_section.dart';
 import '../features/clients/client_repository.dart';
+import '../features/dashboard/dashboard_repository.dart';
+import '../features/dashboard/dashboard_section.dart';
 import '../features/ledger/ledger_repository.dart';
 import '../features/clients/clientes_section.dart';
+import '../features/treasury/treasury_repository.dart';
 import 'auth_controller.dart';
 import 'theme.dart';
 
-enum _Section { clientes, tarjetahabientes, tarjetas, operaciones, aprobaciones }
+enum _Section { inicio, clientes, tarjetahabientes, tarjetas, aprobaciones }
 
 extension on _Section {
   String get label {
     switch (this) {
+      case _Section.inicio:
+        return 'Inicio';
       case _Section.clientes:
         return 'Clientes';
       case _Section.tarjetahabientes:
         return 'Tarjetahabientes';
       case _Section.tarjetas:
         return 'Tarjetas';
-      case _Section.operaciones:
-        return 'Operaciones de saldo';
+      // Hub de pendientes de aprobación + depósitos por conciliar +
+      // historial completo — ver AprobacionesSection. Absorbió la
+      // antigua sección "Operaciones de saldo" el 2026-09-17 (dos ítems
+      // de menú sobre lo mismo no aportaba).
       case _Section.aprobaciones:
-        return 'Aprobaciones';
+        return 'Operaciones de saldo';
     }
   }
 
   IconData get icon {
     switch (this) {
+      case _Section.inicio:
+        return Icons.dashboard_rounded;
       case _Section.clientes:
         return Icons.corporate_fare_rounded;
       case _Section.tarjetahabientes:
         return Icons.people_alt_rounded;
       case _Section.tarjetas:
         return Icons.credit_card_rounded;
-      case _Section.operaciones:
-        return Icons.swap_horiz_rounded;
       case _Section.aprobaciones:
-        return Icons.fact_check_rounded;
+        return Icons.swap_horiz_rounded;
     }
   }
 
@@ -58,6 +66,8 @@ class AdminShell extends StatefulWidget {
     required this.cardRepository,
     required this.ledgerRepository,
     required this.balanceOperationRepository,
+    required this.treasuryRepository,
+    required this.dashboardRepository,
     required this.authController,
   });
 
@@ -67,6 +77,8 @@ class AdminShell extends StatefulWidget {
   final CardRepository cardRepository;
   final LedgerRepository ledgerRepository;
   final BalanceOperationRepository balanceOperationRepository;
+  final TreasuryRepository treasuryRepository;
+  final DashboardRepository dashboardRepository;
   final AuthController authController;
 
   @override
@@ -74,7 +86,22 @@ class AdminShell extends StatefulWidget {
 }
 
 class _AdminShellState extends State<AdminShell> {
-  _Section _selected = _Section.clientes;
+  late _Section _selected;
+
+  /// 0 = Operaciones de saldo, 1 = Depósitos por conciliar — solo lo
+  /// mueve el hipervínculo de "Requiere tu atención" en Inicio; entrar a
+  /// "Aprobaciones" desde el sidebar siempre reinicia a 0. Ver
+  /// AprobacionesSection.initialTabIndex.
+  int _aprobacionesTabIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Solo los roles con Panel directivo aterrizan en "Inicio" — Operador
+    // y Auditor siguen aterrizando en "Clientes". Ver
+    // docs/feature/panel-directivo/README.md.
+    _selected = widget.session.role.canViewExecutiveDashboard ? _Section.inicio : _Section.clientes;
+  }
 
   String get _initials {
     final email = widget.session.email;
@@ -87,8 +114,14 @@ class _AdminShellState extends State<AdminShell> {
       body: Row(
         children: [
           _Sidebar(
+            session: widget.session,
             selected: _selected,
-            onSelect: (section) => setState(() => _selected = section),
+            onSelect: (section) => setState(() {
+              _selected = section;
+              // Entrar por el sidebar siempre abre la primera pestaña —
+              // solo el link desde Inicio decide abrir la de depósitos.
+              if (section == _Section.aprobaciones) _aprobacionesTabIndex = 0;
+            }),
           ),
           Expanded(
             child: Column(
@@ -97,6 +130,7 @@ class _AdminShellState extends State<AdminShell> {
                   title: _selected.label,
                   session: widget.session,
                   initials: _initials,
+                  treasuryRepository: widget.treasuryRepository,
                   onLogout: widget.authController.logout,
                 ),
                 Expanded(
@@ -115,6 +149,15 @@ class _AdminShellState extends State<AdminShell> {
 
   Widget _buildBody() {
     switch (_selected) {
+      case _Section.inicio:
+        return DashboardSection(
+          session: widget.session,
+          dashboardRepository: widget.dashboardRepository,
+          onNavigateToAprobaciones: (tabIndex) => setState(() {
+            _selected = _Section.aprobaciones;
+            _aprobacionesTabIndex = tabIndex;
+          }),
+        );
       case _Section.clientes:
         return ClientesSection(
           session: widget.session,
@@ -123,6 +166,7 @@ class _AdminShellState extends State<AdminShell> {
           cardRepository: widget.cardRepository,
           ledgerRepository: widget.ledgerRepository,
           balanceOperationRepository: widget.balanceOperationRepository,
+          treasuryRepository: widget.treasuryRepository,
         );
       case _Section.tarjetahabientes:
         return TarjetahabientesSection(
@@ -142,15 +186,6 @@ class _AdminShellState extends State<AdminShell> {
           ledgerRepository: widget.ledgerRepository,
           balanceOperationRepository: widget.balanceOperationRepository,
         );
-      case _Section.operaciones:
-        return OperacionesDeSaldoSection(
-          session: widget.session,
-          clientRepository: widget.clientRepository,
-          cardholderRepository: widget.cardholderRepository,
-          cardRepository: widget.cardRepository,
-          ledgerRepository: widget.ledgerRepository,
-          balanceOperationRepository: widget.balanceOperationRepository,
-        );
       case _Section.aprobaciones:
         return AprobacionesSection(
           session: widget.session,
@@ -159,19 +194,27 @@ class _AdminShellState extends State<AdminShell> {
           cardRepository: widget.cardRepository,
           ledgerRepository: widget.ledgerRepository,
           balanceOperationRepository: widget.balanceOperationRepository,
+          treasuryRepository: widget.treasuryRepository,
+          initialTabIndex: _aprobacionesTabIndex,
         );
     }
   }
 }
 
 class _Sidebar extends StatelessWidget {
-  const _Sidebar({required this.selected, required this.onSelect});
+  const _Sidebar({required this.session, required this.selected, required this.onSelect});
 
+  final Session session;
   final _Section selected;
   final ValueChanged<_Section> onSelect;
 
   @override
   Widget build(BuildContext context) {
+    // "Inicio" (Panel directivo) solo para quien puede verlo — ver
+    // docs/feature/panel-directivo/README.md.
+    final visibleSections = _Section.values
+        .where((s) => s != _Section.inicio || session.role.canViewExecutiveDashboard)
+        .toList();
     return Container(
       width: 248,
       color: KoonsColors.sidebarBackground,
@@ -206,7 +249,7 @@ class _Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          for (final section in _Section.values)
+          for (final section in visibleSections)
             _SidebarItem(
               section: section,
               isSelected: section == selected,
@@ -271,12 +314,14 @@ class _TopBar extends StatelessWidget {
     required this.title,
     required this.session,
     required this.initials,
+    required this.treasuryRepository,
     required this.onLogout,
   });
 
   final String title;
   final Session session;
   final String initials;
+  final TreasuryRepository treasuryRepository;
   final VoidCallback onLogout;
 
   @override
@@ -306,6 +351,14 @@ class _TopBar extends StatelessWidget {
                   ?.copyWith(fontWeight: FontWeight.w600, color: KoonsColors.navy),
             ),
           ),
+          // Admin Cliente only — Super Admin has no empresa propia
+          // (session.clientId is null) and no Concentradora belongs to
+          // it directly yet. See docs/feature/tesoreria-cliente/README.md,
+          // "Indicador de saldo en el encabezado".
+          if (session.role.canManageCardholders && session.clientId != null) ...[
+            _ConcentratorBalanceChip(clientId: session.clientId!, treasuryRepository: treasuryRepository),
+            const SizedBox(width: 16),
+          ],
           CircleAvatar(
             radius: 15,
             backgroundColor: KoonsColors.blue,
@@ -359,6 +412,61 @@ class _TopBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Saldo de la Concentradora de la propia empresa de un Admin Cliente —
+/// puramente informativo (nunca un botón, no navega a Tesorería). Se
+/// obtiene una sola vez al montar, no se refresca en vivo si se hace una
+/// operación en otra pantalla durante la misma sesión — ver
+/// docs/feature/tesoreria-cliente/README.md, "Indicador de saldo en el
+/// encabezado".
+class _ConcentratorBalanceChip extends StatefulWidget {
+  const _ConcentratorBalanceChip({required this.clientId, required this.treasuryRepository});
+
+  final String clientId;
+  final TreasuryRepository treasuryRepository;
+
+  @override
+  State<_ConcentratorBalanceChip> createState() => _ConcentratorBalanceChipState();
+}
+
+class _ConcentratorBalanceChipState extends State<_ConcentratorBalanceChip> {
+  late final Future<ConcentratorAccount?> _future = widget.treasuryRepository.getConcentratorAccount(widget.clientId);
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<ConcentratorAccount?>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done || snapshot.data == null) {
+          return const SizedBox.shrink();
+        }
+        final account = snapshot.data!;
+        return Tooltip(
+          message: 'Saldo de la Cuenta Concentradora de tu empresa',
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: KoonsColors.blue.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: KoonsColors.blue.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.account_balance_rounded, size: 16, color: KoonsColors.blue),
+                const SizedBox(width: 8),
+                Text(
+                  formatCurrency(account.balance, account.currency),
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: KoonsColors.navy),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
