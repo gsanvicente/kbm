@@ -26,6 +26,8 @@ erDiagram
     TARJETA ||--|| PAN_HASH : "tiene (solo hash, nunca el PAN)"
     TARJETA ||--o{ TRANSFERENCIA_C2C : "origen/destino"
     CARDHOLDER_USER ||--o{ TRANSFERENCIA_C2C : "solicita"
+    CLIENTE ||--o{ APODERADO_LEGAL : "tiene (uno principal, otros opcionales)"
+    CLIENTE ||--o{ BENEFICIARIO_CONTROLADOR : "tiene (uno mayoritario, otros opcionales)"
 ```
 
 ## Notas de lectura
@@ -63,3 +65,16 @@ erDiagram
   solicita un `CARDHOLDER_USER` (no un `USUARIO` de staff), nunca pasa
   por `REGLA_APROBACION`, y nunca toca `CUENTA_CONCENTRADORA`. Ver
   `docs/business/autoservicio-tarjetahabiente.md`.
+- **`CLIENTE.is_active`** ya existía en el esquema, pero desde
+  2026-09-17 tiene comportamiento real: desactivar un Cliente se
+  propaga en cascada a **todos** sus descendientes, y bloquea cualquier
+  acción operativa dentro de ese alcance (no solo la visibilidad) — ver
+  `docs/business/desactivacion-de-clientes.md`.
+- **`APODERADO_LEGAL` y `BENEFICIARIO_CONTROLADOR`** son expedientes KYB
+  del Cliente mismo (persona moral), no relacionados con `TARJETAHABIENTE`
+  (persona física que usa una tarjeta) ni con `USUARIO` (quien opera la
+  consola) — son tres roles de persona completamente distintos que
+  pueden coincidir o no en la vida real. Cada Cliente en la jerarquía
+  (raíz o filial) tiene su propio expediente completo, sin heredar del
+  padre — cada filial es su propia entidad legal. Ver
+  `docs/business/kyb-cliente.md`.

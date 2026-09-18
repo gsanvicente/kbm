@@ -3,8 +3,11 @@ import '../../core/models/ledger_account.dart';
 import '../../core/models/ledger_entry.dart';
 import '../../core/models/ledger_entry_type.dart';
 import '../../core/models/movement_claim.dart';
+import '../../core/models/shared/client_inactive_exception.dart';
 import '../../core/models/shared/insufficient_funds_exception.dart';
 import '../../core/models/shared/not_found_exception.dart';
+import '../cards/card_repository.dart';
+import '../clients/client_repository.dart';
 import 'ledger_repository.dart';
 
 /// In-memory stand-in for the ledger endpoints — same seed data as
@@ -13,6 +16,16 @@ import 'ledger_repository.dart';
 /// docs/business/saldo-y-ledger.md); claims are mutable, same rationale
 /// as FakeCardRepository.
 class FakeLedgerRepository implements LedgerRepository {
+  FakeLedgerRepository({required this.cardRepository, required this.clientRepository});
+
+  /// Para resolver, en `fileClaim`/`resolveClaim`, a qué Cliente
+  /// pertenece la tarjeta de un movimiento — `LedgerAccount` solo conoce
+  /// el `cardId`, no el `clientId` directamente.
+  final CardRepository cardRepository;
+
+  /// Para verificar que ese Cliente pueda operar — ver
+  /// docs/business/desactivacion-de-clientes.md, "Capa 2".
+  final ClientRepository clientRepository;
   // Mutable (not static const) — postEntry() rewrites an account's
   // cached balance in place as new entries are posted.
   final _accountsByCard = {
@@ -151,6 +164,23 @@ class FakeLedgerRepository implements LedgerRepository {
     return null;
   }
 
+  /// Resuelve a qué Cliente pertenece el movimiento [ledgerEntryId] y
+  /// verifica que pueda operar — ver
+  /// docs/business/desactivacion-de-clientes.md, "Capa 2".
+  Future<bool> _isOperableForEntry(String ledgerEntryId) async {
+    final entry = _entries.firstWhere(
+      (e) => e.id == ledgerEntryId,
+      orElse: () => throw NotFoundException('Movimiento $ledgerEntryId no encontrado'),
+    );
+    final cardId = _accountsByCard.entries
+        .firstWhere((e) => e.value.id == entry.ledgerAccountId,
+            orElse: () => throw NotFoundException('Cuenta de saldo ${entry.ledgerAccountId} no encontrada'))
+        .key;
+    final card = await cardRepository.getById(cardId);
+    if (card == null) return true; // no debería pasar, pero no bloquear por un dato inconsistente
+    return clientRepository.isOperable(card.clientId);
+  }
+
   @override
   Future<MovementClaim> fileClaim({
     required String ledgerEntryId,
@@ -158,6 +188,9 @@ class FakeLedgerRepository implements LedgerRepository {
     required String requestedByEmail,
   }) async {
     await Future.delayed(const Duration(milliseconds: 200));
+    if (!await _isOperableForEntry(ledgerEntryId)) {
+      throw const ClientInactiveException();
+    }
     if (_claims.any((c) => c.ledgerEntryId == ledgerEntryId)) {
       throw StateError('Este movimiento ya tiene un reclamo.');
     }
@@ -183,6 +216,9 @@ class FakeLedgerRepository implements LedgerRepository {
     await Future.delayed(const Duration(milliseconds: 200));
     final index = _claims.indexWhere((c) => c.id == claimId);
     if (index == -1) throw NotFoundException('Reclamo $claimId no encontrado');
+    if (!await _isOperableForEntry(_claims[index].ledgerEntryId)) {
+      throw const ClientInactiveException();
+    }
     final updated = _claims[index].copyWith(
       status: inFavor ? ClaimStatus.resolvedFavor : ClaimStatus.rejected,
       resolvedByEmail: resolvedByEmail,

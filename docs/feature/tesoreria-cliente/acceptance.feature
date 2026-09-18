@@ -61,3 +61,8 @@ Característica: Tesorería del Cliente (Cuenta Concentradora y Cuenta Colectora
     Y hay un depósito pendiente listado en "Requiere tu atención"
     Cuando "Carlos" toca ese depósito
     Entonces navega a "Operaciones de saldo" con la pestaña "Depósitos por conciliar" ya seleccionada
+
+  Escenario: No se puede registrar ni conciliar un depósito de un Cliente inactivo
+    Dado que "Koons Subsidiaria A" está inactiva
+    Cuando alguien con sesión activa intenta registrar o conciliar un depósito de "Koons Subsidiaria A"
+    Entonces la acción se rechaza

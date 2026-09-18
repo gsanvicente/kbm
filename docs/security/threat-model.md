@@ -144,3 +144,23 @@ distingue cuál de los dos motivos fue (mismo principio que
 límite de intentos fallidos por sesión/usuario con bloqueo temporal — sin
 esto, (a) por sí solo no evita que alguien pruebe miles de números.
 Ver `docs/feature/transferencia-c2c-tarjetahabiente/README.md`.
+
+## 13. Un Cliente desactivado que sigue siendo operable
+**Riesgo:** desactivar un Cliente (`docs/business/desactivacion-de-clientes.md`)
+solo bloquea el *siguiente* login de su propio staff si la verificación
+vive únicamente ahí — alguien con una sesión ya iniciada antes de la
+desactivación (ej. un Super Admin, o un Admin Cliente ancestro) podría
+seguir registrando depósitos, aprobando operaciones o gestionando
+tarjetas de una empresa que ya no debería poder operar en ningún nivel.
+Es un riesgo de **enforcement incompleto**, no de autorización rota
+(punto 1) — la sesión sí es legítima, la acción no debería serlo.
+**Mitigación de diseño:** enforcement en dos capas, no una — (a) bloqueo
+de login para el staff propio de un Cliente inactivo o de cualquiera de
+sus ancestros (`docs/feature/login-administrativo/README.md`); (b)
+verificación de `is_active` (Cliente + cadena de ancestros) directamente
+en el repositorio, en cada acción que mueve dinero o cambia estado
+(`BalanceOperationRepository.request/approve`,
+`TreasuryRepository.registerDeposit/reconcileDeposit`, asignar/bloquear
+Tarjetas, reclamos) — nunca solo en la UI, para cubrir a quien ya tenía
+sesión abierta. La capa (b) es la que realmente cierra este riesgo; la
+(a) por sí sola no basta.

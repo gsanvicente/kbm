@@ -24,6 +24,14 @@ enum Role {
   /// Auditor es de solo lectura por definición.
   bool get canManageCardholders => this == Role.superAdmin || this == Role.clientAdmin;
 
+  /// Crear un nuevo Cliente (empresa/filial) — mismo grupo que
+  /// [canManageCardholders]. El alcance de *dónde* puede crearlo (su
+  /// propia empresa + descendientes, o sin padre si es Super Admin) lo
+  /// resuelve la UI con `ClientRepository.listAccessibleClients`, no este
+  /// getter. Ver docs/business/roles-and-permissions.md, sección
+  /// "Gestión de Clientes".
+  bool get canManageClients => canManageCardholders;
+
   /// Bloquear/desbloquear una tarjeta ya asignada — ver
   /// docs/business/tarjetas-y-asignacion.md, sección "Quién puede
   /// bloquear / desbloquear". A diferencia de [canManageCardholders],

@@ -1,5 +1,6 @@
 import '../../core/models/role.dart';
 import '../../core/models/session.dart';
+import '../clients/client_repository.dart';
 import 'auth_repository.dart';
 
 class _FakeUser {
@@ -25,6 +26,14 @@ class _FakeUser {
 /// the real HTTP-backed AuthRepository later requires no UI changes.
 /// See docs/feature/login-administrativo/README.md for the scope note.
 class FakeAuthRepository implements AuthRepository {
+  FakeAuthRepository({required this.clientRepository});
+
+  /// Para verificar, además del propio usuario, que su Cliente (y toda
+  /// su cadena de ancestros) esté activo — ver
+  /// docs/business/desactivacion-de-clientes.md, "Capa 1 — bloqueo de
+  /// login".
+  final ClientRepository clientRepository;
+
   static const _password = 'LocalDevOnly123!';
 
   static const _users = [
@@ -88,6 +97,11 @@ class FakeAuthRepository implements AuthRepository {
       }
     }
     if (user == null || user.password != password || !user.isActive) {
+      throw _genericError;
+    }
+    // Super Admin no tiene clientId (alcance global) — nunca se ve
+    // afectado por el estado de ningún Cliente en particular.
+    if (user.clientId != null && !await clientRepository.isOperable(user.clientId!)) {
       throw _genericError;
     }
 

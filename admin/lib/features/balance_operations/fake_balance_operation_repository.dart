@@ -6,8 +6,10 @@ import '../../core/models/ledger_entry_type.dart';
 import '../../core/models/movement_trend_point.dart';
 import '../../core/models/operation_status.dart';
 import '../../core/models/operation_type.dart';
+import '../../core/models/shared/client_inactive_exception.dart';
 import '../../core/models/shared/insufficient_funds_exception.dart';
 import '../../core/models/shared/not_found_exception.dart';
+import '../clients/client_repository.dart';
 import '../ledger/ledger_repository.dart';
 import '../treasury/treasury_repository.dart';
 import 'balance_operation_repository.dart';
@@ -19,13 +21,24 @@ import 'balance_operation_repository.dart';
 /// repository is where this iteration's business rules actually live,
 /// there's no real backend yet.
 class FakeBalanceOperationRepository implements BalanceOperationRepository {
-  FakeBalanceOperationRepository({required this.ledgerRepository, required this.treasuryRepository});
+  FakeBalanceOperationRepository({
+    required this.ledgerRepository,
+    required this.treasuryRepository,
+    required this.clientRepository,
+  });
 
   final LedgerRepository ledgerRepository;
 
   /// Backs every Dispersión (debits it) and Deducción (credits it) — see
   /// docs/business/tesoreria-cliente.md. Transferencia never touches it.
   final TreasuryRepository treasuryRepository;
+
+  /// Para verificar, en `request`/`approve`/`reject`, que el Cliente
+  /// pueda operar — ver docs/business/desactivacion-de-clientes.md,
+  /// "Capa 2". Una operación `pending_approval` cuando el Cliente se
+  /// desactiva queda congelada: ni `approve` ni `reject` la resuelven
+  /// hasta reactivar.
+  final ClientRepository clientRepository;
 
   static const _rules = [
     ApprovalRule(
@@ -237,6 +250,9 @@ class FakeBalanceOperationRepository implements BalanceOperationRepository {
       'destinationCardId is required for transfer and only for transfer',
     );
     await Future.delayed(const Duration(milliseconds: 250));
+    if (!await clientRepository.isOperable(clientId)) {
+      throw const ClientInactiveException();
+    }
 
     final now = DateTime.now();
     var op = BalanceOperation(
@@ -266,6 +282,9 @@ class FakeBalanceOperationRepository implements BalanceOperationRepository {
     if (_operations[index].status != OperationStatus.pendingApproval) {
       throw StateError('Esta operación ya fue resuelta.');
     }
+    if (!await clientRepository.isOperable(_operations[index].clientId)) {
+      throw const ClientInactiveException();
+    }
 
     final executed = await _tryExecute(_operations[index]);
     final resolved = executed.copyWith(resolvedByEmail: approvedByEmail, updatedAt: DateTime.now());
@@ -284,6 +303,9 @@ class FakeBalanceOperationRepository implements BalanceOperationRepository {
     if (index == -1) throw NotFoundException('Operación $operationId no encontrada');
     if (_operations[index].status != OperationStatus.pendingApproval) {
       throw StateError('Esta operación ya fue resuelta.');
+    }
+    if (!await clientRepository.isOperable(_operations[index].clientId)) {
+      throw const ClientInactiveException();
     }
 
     final rejected = _operations[index].copyWith(

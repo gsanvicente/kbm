@@ -123,3 +123,14 @@ Característica: Operación de saldo con aprobación configurable
     Y ve el depósito pendiente en la pestaña "Depósitos por conciliar"
     Y puede conciliar ese depósito desde ahí sin salir a la Tesorería del Cliente
     Y ve el historial completo de operaciones (cualquier estado) en la pestaña "Historial completo"
+
+  Escenario: No se puede solicitar una operación sobre un Cliente inactivo
+    Dado que "Koons Subsidiaria A" está inactiva
+    Cuando alguien con sesión activa intenta solicitar una Dispersión sobre una tarjeta de "Koons Subsidiaria A"
+    Entonces la operación se rechaza
+
+  Escenario: Una operación pendiente queda congelada si el Cliente se desactiva
+    Dado que existe una operación en estado "pending_approval" sobre una tarjeta de "Koons Subsidiaria A"
+    Cuando "Koons Subsidiaria A" se desactiva
+    Entonces esa operación no se puede aprobar ni rechazar mientras siga inactiva
+    Y al reactivar "Koons Subsidiaria A" la operación vuelve a poder aprobarse o rechazarse normalmente

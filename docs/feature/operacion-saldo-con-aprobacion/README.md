@@ -186,9 +186,19 @@ puede cambiar entre que se solicita y se aprueba.
   primero; si eso falla, la tarjeta nunca se toca — mismo principio de
   "nunca dejar un movimiento a medias" que ya aplicaba a Transferencia.
 
+## Cliente inactivo (nuevo, 2026-09-17)
+Ni `request` ni `approve` se ejecutan si el Cliente dueño de la tarjeta
+(o cualquiera de sus ancestros) está inactivo — verificación en el
+repositorio, no solo en la UI, porque cubre el caso de alguien que ya
+tenía sesión iniciada antes de que el Cliente se desactivara. Una
+operación que ya estaba en `pending_approval` cuando el Cliente se
+desactiva **queda congelada tal cual** — ni se aprueba ni se rechaza
+hasta reactivar. Ver `docs/business/desactivacion-de-clientes.md`.
+
 ## Reglas de negocio
-Ver `docs/business/approval-policy.md` y
-`docs/business/roles-and-permissions.md` — no se repiten aquí.
+Ver `docs/business/approval-policy.md`,
+`docs/business/roles-and-permissions.md` y
+`docs/business/desactivacion-de-clientes.md` — no se repiten aquí.
 
 ## Casos borde / fuera de alcance
 - Qué pasa si el Cliente dueño de la tarjeta no tiene ningún Admin Cliente

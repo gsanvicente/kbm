@@ -30,10 +30,51 @@ sin funcionalidad todavía, para dejar visible la forma final del panel.
    (ver `docs/feature/panel-directivo/README.md`); Operador y Auditor
    siguen aterrizando en "Clientes", como en la versión original de este
    flujo.
-2. Desde "Clientes" se lista cada Cliente visible para el usuario: el
-   suyo propio, más todos sus descendientes en la jerarquía (ver regla de
-   herencia en `docs/business/roles-and-permissions.md`).
+2. Desde "Clientes" se ve la jerarquía completa como **árbol** (ver
+   "Vista jerárquica" abajo), no una lista plana.
 3. Un botón de cierre de sesión regresa al login.
+
+## Vista jerárquica (revisado 2026-09-17)
+El listado de Clientes dejó de ser plano — ahora es un **árbol
+indentado** (expandir/colapsar por nodo, mismo patrón que un explorador
+de archivos), porque la jerarquía real puede tener profundidad arbitraria
+(holding → subsidiaria → sub-subsidiaria), no solo los 2 niveles de los
+datos de prueba. Tocar un nodo sigue llevando al mismo
+`ClientDetailView` de siempre — el árbol solo cambia cómo se **navega
+hacia** ahí, no el destino.
+
+**Estado inicial, distinto por rol:**
+- **Admin Cliente**: árbol **expandido por defecto** — su propio
+  subárbol normalmente es acotado.
+- **Super Admin**: árbol **colapsado por defecto** (solo empresas raíz
+  visibles) — puede haber varias empresas raíz independientes, cada una
+  con su propio árbol; expandir todo de entrada saturaría la pantalla.
+
+**Deliberadamente sin filtro de "Tipo: Matriz/Hija"** — sería
+información redundante una vez que el árbol ya muestra la anidación
+visualmente.
+
+## Búsqueda (revisado 2026-09-17)
+Un campo de búsqueda en vivo por **nombre, razón social o RFC**, que
+filtra el árbol mostrando:
+- Los nodos que coinciden.
+- **Su cadena completa de ancestros** (para no perder el contexto de en
+  qué filial está ese resultado), auto-expandiendo esas ramas.
+- Nada más — las ramas sin ninguna coincidencia (propia o de un
+  descendiente) se ocultan.
+
+Mismo criterio que un explorador de archivos con buscador (VS Code, por
+ejemplo) — no una lista de chips de filtro independiente que compita
+visualmente con el árbol.
+
+## Breadcrumb con ancestría completa (revisado 2026-09-17)
+Antes, entrar al detalle de un Cliente mostraba únicamente "Clientes >
+[ese Cliente]" en el breadcrumb, sin importar su profundidad real en la
+jerarquía — inconsistente para una filial de tercer nivel. Ahora el
+breadcrumb muestra la cadena completa: "Clientes > Grupo Koons Holding >
+Koons Subsidiaria A > ...". Cada elemento intermedio es navegable (regresa
+al detalle de ese ancestro), igual que el resto de los breadcrumbs de la
+app.
 
 ## Reglas de negocio
 Ver `docs/business/roles-and-permissions.md` — no se repite aquí. En
@@ -42,9 +83,13 @@ a sus hermanas) y aplica a **todos** los roles del padre, no solo Admin
 Cliente.
 
 ## Casos borde / fuera de alcance
-- Búsqueda/filtrado del listado: fuera de alcance de esta iteración.
-- Crear/editar Clientes desde esta pantalla: fuera de alcance — esta
-  iteración es de solo lectura.
+- Crear/editar/desactivar un Cliente: fuera de esta pantalla — el
+  listado (árbol) sigue siendo de solo lectura/navegación; esas acciones
+  viven en `docs/feature/alta-y-gestion-de-clientes/README.md`.
+- Búsqueda por objeto social/giro, o por otros campos del expediente KYB:
+  fuera de alcance — solo nombre/razón social/RFC por ahora.
+- Recordar el estado expandido/colapsado entre sesiones: fuera de
+  alcance, siempre se recalcula el estado inicial por rol al entrar.
 
 ## Criterios de aceptación
 Ver `acceptance.feature`.

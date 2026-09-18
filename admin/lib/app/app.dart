@@ -25,15 +25,19 @@ class _KbmAdminAppState extends State<KbmAdminApp> {
   // docs/feature/login-administrativo/README.md and
   // docs/feature/panel-principal-admin/README.md for the scope note on
   // swapping these for the real HTTP-backed repositories.
-  late final _authController = AuthController(FakeAuthRepository());
   final _clientRepository = FakeClientRepository();
+  late final _authController = AuthController(FakeAuthRepository(clientRepository: _clientRepository));
   final _cardholderRepository = FakeCardholderRepository();
-  final _cardRepository = FakeCardRepository();
-  final _ledgerRepository = FakeLedgerRepository();
-  final _treasuryRepository = FakeTreasuryRepository();
+  late final _cardRepository = FakeCardRepository(clientRepository: _clientRepository);
+  late final _ledgerRepository = FakeLedgerRepository(
+    cardRepository: _cardRepository,
+    clientRepository: _clientRepository,
+  );
+  late final _treasuryRepository = FakeTreasuryRepository(clientRepository: _clientRepository);
   late final _balanceOperationRepository = FakeBalanceOperationRepository(
     ledgerRepository: _ledgerRepository,
     treasuryRepository: _treasuryRepository,
+    clientRepository: _clientRepository,
   );
   late final _dashboardRepository = FakeDashboardRepository(
     clientRepository: _clientRepository,

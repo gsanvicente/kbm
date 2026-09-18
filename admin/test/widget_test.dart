@@ -37,6 +37,28 @@ Future<void> _toggleFilterOption(WidgetTester tester, String comboLabel, String 
   await tester.pumpAndSettle();
 }
 
+/// Opens a `_DatePickerField` (found by its label) and confirms the
+/// dialog's default `initialDate` via the "OK" action — good enough for
+/// tests that only need *some* valid date, not a specific one.
+/// Super Admin's Clientes tree is collapsed by default (see
+/// docs/feature/panel-principal-admin/README.md, "Vista jerárquica") —
+/// expands one node's chevron so a descendant becomes reachable.
+Future<void> _expandClientTreeNode(WidgetTester tester, String clientName) async {
+  final row = find.ancestor(of: find.text(clientName), matching: find.byType(ListTile));
+  final chevron = find.descendant(of: row, matching: find.byType(IconButton));
+  await tester.tap(chevron);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _confirmDatePicker(WidgetTester tester, String fieldLabel) async {
+  final field = find.ancestor(of: find.text(fieldLabel), matching: find.byType(InkWell));
+  await tester.ensureVisible(field);
+  await tester.tap(field);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('OK'));
+  await tester.pumpAndSettle();
+}
+
 /// Types into the Tarjetahabiente autocomplete search field and picks a
 /// suggestion — selecting is what actually applies the filter, per
 /// docs/feature/pool-y-asignacion-de-tarjetas/README.md.
@@ -887,6 +909,7 @@ void main() {
     await _login(tester, 'super.admin@koons.test');
 
     await _goToSection(tester, 'Clientes');
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Tesorería');
 
@@ -989,6 +1012,7 @@ void main() {
     expect(find.text('\$1,250.00 MXN'), findsOneWidget); // unchanged
 
     await _goToSection(tester, 'Clientes'); // permanent sidebar item
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Tesorería');
     expect(find.text('\$10,000.00 MXN'), findsOneWidget); // unchanged
@@ -1016,6 +1040,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await _goToSection(tester, 'Clientes');
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Tesorería');
     expect(find.text('\$10,050.00 MXN'), findsOneWidget); // 10,000.00 + 50.00
@@ -1038,6 +1063,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await _goToSection(tester, 'Clientes');
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
     await _goToSection(tester, 'Koons Subsidiaria B');
     await _goToSection(tester, 'Tesorería');
     expect(find.text('\$10,000.00 MXN'), findsOneWidget); // untouched
@@ -1191,5 +1217,272 @@ void main() {
 
     expect(find.text('Operaciones de saldo'), findsNWidgets(2)); // sidebar item + header title
     expect(find.text('Referencia: SPEI-DEMO-001'), findsOneWidget); // aterrizó directo en la pestaña de depósitos
+  });
+
+  // --- Alta y gestión de Clientes ----------------------------------------
+
+  testWidgets('Only Admin Cliente and Super Admin see the "Nuevo Cliente" button', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test');
+
+    expect(find.widgetWithText(FilledButton, 'Nuevo Cliente'), findsNothing);
+  });
+
+  testWidgets('Admin Cliente does not see the option to create a Cliente without an empresa padre', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await tester.tap(find.widgetWithText(FilledButton, 'Nuevo Cliente'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Crear sin empresa padre (nueva empresa raíz)'), findsNothing);
+  });
+
+  testWidgets('Super Admin can create a new root Cliente with its full KYB expediente', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await tester.tap(find.widgetWithText(FilledButton, 'Nuevo Cliente'));
+    await tester.pumpAndSettle();
+
+    // Paso 0: Ubicación.
+    await tester.tap(find.text('Crear sin empresa padre (nueva empresa raíz)'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.pumpAndSettle();
+
+    // Paso 1: Datos generales.
+    await tester.enterText(find.widgetWithText(TextField, 'Razón social'), 'Nueva Empresa de Prueba SA de CV');
+    await tester.enterText(find.widgetWithText(TextField, 'RFC'), 'NEP250101AB1');
+    await tester.enterText(find.widgetWithText(TextField, 'Objeto social / giro'), 'Comercio al por menor');
+    await _confirmDatePicker(tester, 'Fecha de constitución');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de escritura'), '12345');
+    await tester.enterText(find.widgetWithText(TextField, 'Notario público (acta)'), 'Lic. Juan Notario');
+    await tester.enterText(find.widgetWithText(TextField, 'Plaza / ciudad del notario'), 'Ciudad de México');
+    await _confirmDatePicker(tester, 'Fecha del acta');
+    await tester.enterText(find.widgetWithText(TextField, 'Folio de Registro Público de Comercio'), 'RPC-9999');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.pumpAndSettle();
+
+    // Paso 2: Domicilio fiscal.
+    await tester.enterText(find.widgetWithText(TextField, 'Calle y número'), 'Av. Siempre Viva 123');
+    await tester.enterText(find.widgetWithText(TextField, 'Colonia'), 'Centro');
+    await tester.enterText(find.widgetWithText(TextField, 'Ciudad'), 'CDMX');
+    await tester.enterText(find.widgetWithText(TextField, 'Estado'), 'CDMX');
+    await tester.enterText(find.widgetWithText(TextField, 'Código postal'), '01000');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.pumpAndSettle();
+
+    // Paso 3: Apoderado principal.
+    await tester.enterText(find.widgetWithText(TextField, 'Nombre completo del apoderado'), 'Carlos Apoderado');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de identificación (apoderado)'), 'ID12345');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de escritura del poder'), '54321');
+    await tester.enterText(find.widgetWithText(TextField, 'Notario público (del poder)'), 'Lic. Ana Notaria');
+    await _confirmDatePicker(tester, 'Fecha del instrumento');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.pumpAndSettle();
+
+    // Paso 4: Beneficiario controlador mayoritario.
+    await tester.enterText(find.widgetWithText(TextField, 'Nombre completo del beneficiario'), 'Beatriz Beneficiaria');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de identificación (beneficiario)'), 'ID67890');
+    await tester.enterText(find.widgetWithText(TextField, '% de participación'), '60');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.pumpAndSettle();
+
+    // Paso 5: Revisión.
+    expect(find.text('Nueva Empresa de Prueba SA de CV'), findsWidgets); // resumen de revisión
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Crear Cliente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Crear Cliente'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('creado'), findsOneWidget); // snackbar de confirmación
+
+    // Aterrizó en el detalle del Cliente recién creado — regresa al
+    // listado por el breadcrumb (no por el sidebar: "Clientes" aparece
+    // en ambos a la vez en este punto).
+    await tester.tap(find.byKey(const Key('breadcrumb-0')));
+    await tester.pumpAndSettle();
+    expect(find.text('Nueva Empresa de Prueba SA de CV'), findsOneWidget);
+  });
+
+  testWidgets('searching the Clientes tree filters by name and keeps ancestors visible', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    // Super Admin: árbol colapsado por defecto.
+    expect(find.text('Koons Subsidiaria A'), findsNothing);
+    expect(find.text('Koons Subsidiaria B'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), 'Subsidiaria B');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Grupo Koons Holding'), findsOneWidget); // ancestro forzado a mostrarse
+    expect(find.text('Koons Subsidiaria B'), findsOneWidget);
+    expect(find.text('Koons Subsidiaria A'), findsNothing); // no coincide, se oculta
+  });
+
+  testWidgets('clearing the Clientes search restores the collapsed tree', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await tester.enterText(find.byType(TextField), 'Subsidiaria B');
+    await tester.pumpAndSettle();
+    expect(find.text('Koons Subsidiaria A'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Koons Subsidiaria A'), findsNothing); // vuelve a colapsado, no se filtra ni se expande
+    expect(find.text('Koons Subsidiaria B'), findsNothing);
+    expect(find.text('Grupo Koons Holding'), findsOneWidget);
+  });
+
+  testWidgets('Admin Cliente can edit their own company expediente and the tree label updates', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.holding@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Grupo Koons Holding');
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Editar'));
+    await tester.pumpAndSettle();
+
+    // El expediente sembrado para este Cliente raíz no trae KYB — se
+    // completa por primera vez desde la edición.
+    await tester.enterText(find.widgetWithText(TextField, 'Razón social'), 'Koons Holding SA de CV');
+    await tester.enterText(find.widgetWithText(TextField, 'Nombre comercial (opcional)'), 'Koons Holding');
+    await tester.enterText(find.widgetWithText(TextField, 'RFC'), 'KHO250101AB1');
+    await tester.enterText(find.widgetWithText(TextField, 'Objeto social / giro'), 'Tenencia de acciones');
+    await _confirmDatePicker(tester, 'Fecha de constitución');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de escritura'), '111');
+    await tester.enterText(find.widgetWithText(TextField, 'Notario público (acta)'), 'Lic. Juan Notario');
+    await tester.enterText(find.widgetWithText(TextField, 'Plaza / ciudad del notario'), 'Ciudad de México');
+    await _confirmDatePicker(tester, 'Fecha del acta');
+    await tester.enterText(find.widgetWithText(TextField, 'Folio de Registro Público de Comercio'), 'RPC-1');
+    await tester.enterText(find.widgetWithText(TextField, 'Calle y número'), 'Reforma 100');
+    await tester.enterText(find.widgetWithText(TextField, 'Colonia'), 'Juárez');
+    await tester.enterText(find.widgetWithText(TextField, 'Ciudad'), 'CDMX');
+    await tester.enterText(find.widgetWithText(TextField, 'Estado'), 'CDMX');
+    await tester.enterText(find.widgetWithText(TextField, 'Código postal'), '06600');
+    await tester.enterText(find.widgetWithText(TextField, 'Nombre completo del apoderado'), 'Carlos Apoderado');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de identificación (apoderado)'), 'ID1');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de escritura del poder'), '222');
+    await tester.enterText(find.widgetWithText(TextField, 'Notario público (del poder)'), 'Lic. Ana Notaria');
+    await _confirmDatePicker(tester, 'Fecha del instrumento');
+    await tester.enterText(find.widgetWithText(TextField, 'Nombre completo del beneficiario'), 'Beatriz Beneficiaria');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de identificación (beneficiario)'), 'ID2');
+    await tester.enterText(find.widgetWithText(TextField, '% de participación'), '80');
+
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Guardar cambios'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Guardar cambios'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cambios guardados.'), findsOneWidget);
+    // El nombre comercial capturado ahora es el nombre mostrado en el
+    // encabezado del detalle y en el breadcrumb (mismo criterio que al
+    // crear un Cliente).
+    expect(find.text('Koons Holding'), findsNWidgets(2));
+
+    // La corrección también se refleja en el árbol.
+    await tester.tap(find.byKey(const Key('breadcrumb-0')));
+    await tester.pumpAndSettle();
+    expect(find.text('Koons Holding'), findsOneWidget);
+  });
+
+  testWidgets('Admin Cliente cannot deactivate their own company but can deactivate a filial', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.holding@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Grupo Koons Holding');
+    expect(find.widgetWithText(OutlinedButton, 'Desactivar'), findsNothing);
+    expect(find.text('No puedes desactivar tu propia empresa.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('breadcrumb-0')));
+    await tester.pumpAndSettle();
+    // Admin Cliente: árbol expandido por defecto, no hace falta abrir el
+    // nodo manualmente (a diferencia de Super Admin).
+    await _goToSection(tester, 'Koons Subsidiaria A');
+
+    expect(find.widgetWithText(OutlinedButton, 'Desactivar'), findsOneWidget);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Inactiva'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Reactivar'), findsOneWidget);
+  });
+
+  testWidgets('deactivating a parent Cliente cascades to its filiales and blocks their login', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Grupo Koons Holding');
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Inactiva'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('breadcrumb-0')));
+    await tester.pumpAndSettle();
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
+    // La cascada desactivó también a la filial, aunque nunca se tocó
+    // directamente.
+    expect(find.text('Inactiva'), findsNWidgets(3)); // Holding + Subsidiaria A + Subsidiaria B, todas en el árbol
+
+    // Capa 1: el staff de la filial ya no puede iniciar sesión.
+    await tester.tap(find.byIcon(Icons.logout_rounded));
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+    expect(find.text('Email o contraseña incorrectos.'), findsOneWidget);
+  });
+
+  testWidgets('reactivating a parent Cliente cascades to its filiales', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Grupo Koons Holding');
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Reactivar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Reactivar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Inactiva'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('breadcrumb-0')));
+    await tester.pumpAndSettle();
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
+    expect(find.text('Inactiva'), findsNothing);
+
+    // El staff de la filial vuelve a poder iniciar sesión.
+    await tester.tap(find.byIcon(Icons.logout_rounded));
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+    expect(find.text('Email o contraseña incorrectos.'), findsNothing);
   });
 }

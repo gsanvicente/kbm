@@ -15,10 +15,13 @@ import '../cardholders/cardholder_list_view.dart';
 import '../cardholders/cardholder_repository.dart';
 import '../treasury/deposit_tile.dart';
 import '../treasury/treasury_repository.dart';
+import 'client_repository.dart';
 
-/// Detalle de un Cliente: Tarjetahabientes (el listado que ya existía) y
-/// Tesorería (Cuenta Concentradora / Cuenta Colectora, nuevo). Ver
-/// docs/feature/tesoreria-cliente/README.md.
+/// Detalle de un Cliente: encabezado con acciones de gobernabilidad
+/// (Editar / Desactivar / Reactivar — ver
+/// docs/business/desactivacion-de-clientes.md), Tarjetahabientes (el
+/// listado que ya existía) y Tesorería (Cuenta Concentradora / Cuenta
+/// Colectora). Ver docs/feature/tesoreria-cliente/README.md.
 class ClientDetailView extends StatefulWidget {
   const ClientDetailView({
     super.key,
@@ -26,14 +29,20 @@ class ClientDetailView extends StatefulWidget {
     required this.session,
     required this.cardholderRepository,
     required this.treasuryRepository,
+    required this.clientRepository,
     required this.onSelectCardholder,
+    required this.onEdit,
+    required this.onClientUpdated,
   });
 
   final Client client;
   final Session session;
   final CardholderRepository cardholderRepository;
   final TreasuryRepository treasuryRepository;
+  final ClientRepository clientRepository;
   final ValueChanged<Cardholder> onSelectCardholder;
+  final VoidCallback onEdit;
+  final ValueChanged<Client> onClientUpdated;
 
   @override
   State<ClientDetailView> createState() => _ClientDetailViewState();
@@ -41,6 +50,7 @@ class ClientDetailView extends StatefulWidget {
 
 class _ClientDetailViewState extends State<ClientDetailView> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool _togglingActive = false;
 
   @override
   void initState() {
@@ -54,10 +64,118 @@ class _ClientDetailViewState extends State<ClientDetailView> with SingleTickerPr
     super.dispose();
   }
 
+  Future<void> _confirmToggleActive() async {
+    final client = widget.client;
+    final activating = !client.isActive;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(activating ? 'Reactivar empresa' : 'Desactivar empresa'),
+        content: Text(
+          activating
+              ? '${client.name} y todas sus filiales volverán a poder operar (tarjetas, saldos, tesorería, tarjetahabientes).'
+              : '${client.name} y todas sus filiales dejarán de poder operar en cualquier nivel. Su historial financiero se conserva y se puede seguir consultando; su expediente KYB se puede seguir editando.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: activating ? null : FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(activating ? 'Reactivar' : 'Desactivar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _togglingActive = true);
+    final updated = await widget.clientRepository.setActive(client.id, activating);
+    if (!mounted) return;
+    setState(() => _togglingActive = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          activating
+              ? '${client.name} y sus filiales fueron reactivadas.'
+              : '${client.name} y sus filiales fueron desactivadas.',
+        ),
+      ),
+    );
+    widget.onClientUpdated(updated);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final client = widget.client;
+    final isOwnCompany = widget.session.clientId == client.id;
+    final canManage = widget.session.role.canManageClients;
+    final canToggleActive = canManage && !isOwnCompany;
+
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        client.name,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (!client.isActive) ...[
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.red.shade200),
+                        ),
+                        child: Text(
+                          'Inactiva',
+                          style: TextStyle(color: Colors.red.shade700, fontSize: 12, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (canManage) ...[
+                OutlinedButton.icon(
+                  onPressed: widget.onEdit,
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Editar'),
+                ),
+                const SizedBox(width: 8),
+              ],
+              if (canToggleActive)
+                OutlinedButton.icon(
+                  onPressed: _togglingActive ? null : _confirmToggleActive,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: client.isActive ? Colors.red.shade700 : Colors.green.shade700,
+                    side: BorderSide(color: client.isActive ? Colors.red.shade200 : Colors.green.shade200),
+                  ),
+                  icon: _togglingActive
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : Icon(client.isActive ? Icons.block_rounded : Icons.check_circle_outline_rounded, size: 18),
+                  label: Text(client.isActive ? 'Desactivar' : 'Reactivar'),
+                ),
+            ],
+          ),
+        ),
+        if (canManage && isOwnCompany)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text(
+              'No puedes desactivar tu propia empresa.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5, fontStyle: FontStyle.italic),
+            ),
+          ),
         TabBar(
           controller: _tabController,
           labelColor: KoonsColors.navy,

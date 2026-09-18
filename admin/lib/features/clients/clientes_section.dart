@@ -15,12 +15,15 @@ import '../treasury/treasury_repository.dart';
 import 'client_detail_view.dart';
 import 'client_list_view.dart';
 import 'client_repository.dart';
+import 'edit_client_view.dart';
+import 'new_client_wizard.dart';
 
 /// Owns the drill-down state for the "Clientes" nav section: Clientes list
 /// → Tarjetahabientes of a Cliente → detalle de un Tarjetahabiente →
 /// detalle de una de sus Tarjetas. See docs/feature/tarjetahabientes-por-cliente/,
-/// docs/feature/detalle-y-gestion-tarjetahabiente/ and
-/// docs/feature/tarjetas-de-tarjetahabiente/.
+/// docs/feature/detalle-y-gestion-tarjetahabiente/ y
+/// docs/feature/panel-principal-admin/README.md ("Breadcrumb con
+/// ancestría completa").
 class ClientesSection extends StatefulWidget {
   const ClientesSection({
     super.key,
@@ -49,34 +52,68 @@ class _ClientesSectionState extends State<ClientesSection> {
   Client? _selectedClient;
   Cardholder? _selectedCardholder;
   PaymentCard? _selectedCard;
+  bool _creatingClient = false;
+  bool _editingClient = false;
+
+  /// Todos los Clientes accesibles — usado solo para resolver la cadena
+  /// de ancestros del breadcrumb (ver `_ancestorChainFor`). Se llena de
+  /// forma asíncrona; hasta que cargue, el breadcrumb degrada con
+  /// gracia mostrando solo el Cliente seleccionado, sin sus ancestros.
+  List<Client> _allClients = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    widget.clientRepository.listAccessibleClients(widget.session).then((clients) {
+      if (mounted) setState(() => _allClients = clients);
+    });
+  }
+
+  List<Client> _ancestorChainFor(Client client) {
+    final byId = {for (final c in _allClients) c.id: c};
+    final chain = <Client>[client];
+    var current = client;
+    while (current.parentClientId != null && byId.containsKey(current.parentClientId)) {
+      current = byId[current.parentClientId]!;
+      chain.insert(0, current);
+    }
+    return chain;
+  }
 
   @override
   Widget build(BuildContext context) {
     final client = _selectedClient;
     final cardholder = _selectedCardholder;
     final card = _selectedCard;
+    final ancestorChain = client != null ? _ancestorChainFor(client) : const <Client>[];
 
     final breadcrumbItems = <BreadcrumbItem>[
       BreadcrumbItem(
         'Clientes',
-        onTap: client != null
+        onTap: (client != null || _creatingClient)
             ? () => setState(() {
                   _selectedClient = null;
                   _selectedCardholder = null;
                   _selectedCard = null;
+                  _creatingClient = false;
+                  _editingClient = false;
                 })
             : null,
       ),
-      if (client != null)
+      if (_creatingClient) const BreadcrumbItem('Nuevo Cliente'),
+      for (var i = 0; i < ancestorChain.length; i++)
         BreadcrumbItem(
-          client.name,
-          onTap: cardholder != null
+          ancestorChain[i].name,
+          onTap: (i < ancestorChain.length - 1 || cardholder != null || _editingClient)
               ? () => setState(() {
+                    _selectedClient = ancestorChain[i];
                     _selectedCardholder = null;
                     _selectedCard = null;
+                    _editingClient = false;
                   })
               : null,
         ),
+      if (_editingClient) const BreadcrumbItem('Editar'),
       if (cardholder != null)
         BreadcrumbItem(cardholder.fullName, onTap: card != null ? () => setState(() => _selectedCard = null) : null),
       if (card != null) BreadcrumbItem(card.maskedPan),
@@ -100,6 +137,37 @@ class _ClientesSectionState extends State<ClientesSection> {
   }
 
   Widget _buildBody(Client? client, Cardholder? cardholder, PaymentCard? card) {
+    if (_creatingClient) {
+      // Sin SingleChildScrollView aquí a propósito: Stepper ya trae su
+      // propio ListView interno — envolverlo en otro scroll le da altura
+      // no acotada y rompe su layout (Expanded dentro de una columna sin
+      // límite de altura).
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: NewClientWizard(
+          session: widget.session,
+          clientRepository: widget.clientRepository,
+          onCreated: (created) => setState(() {
+            _creatingClient = false;
+            _selectedClient = created;
+          }),
+        ),
+      );
+    }
+    if (_editingClient && client != null) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: EditClientView(
+          client: client,
+          clientRepository: widget.clientRepository,
+          onSaved: (updated) => setState(() {
+            _editingClient = false;
+            _selectedClient = updated;
+          }),
+          onCancel: () => setState(() => _editingClient = false),
+        ),
+      );
+    }
     if (card != null && cardholder != null && client != null) {
       return CardDetailView(
         card: card,
@@ -129,13 +197,17 @@ class _ClientesSectionState extends State<ClientesSection> {
         session: widget.session,
         cardholderRepository: widget.cardholderRepository,
         treasuryRepository: widget.treasuryRepository,
+        clientRepository: widget.clientRepository,
         onSelectCardholder: (selected) => setState(() => _selectedCardholder = selected),
+        onEdit: () => setState(() => _editingClient = true),
+        onClientUpdated: (updated) => setState(() => _selectedClient = updated),
       );
     }
     return ClientListView(
       repository: widget.clientRepository,
       session: widget.session,
       onSelect: (selected) => setState(() => _selectedClient = selected),
+      onCreateNew: widget.session.role.canManageClients ? () => setState(() => _creatingClient = true) : null,
     );
   }
 }

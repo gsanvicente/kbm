@@ -3,13 +3,22 @@ import '../../core/models/collector_deposit_status.dart';
 import '../../core/models/concentrator_account.dart';
 import '../../core/models/concentrator_entry.dart';
 import '../../core/models/ledger_entry_type.dart';
+import '../../core/models/shared/client_inactive_exception.dart';
 import '../../core/models/shared/insufficient_funds_exception.dart';
 import '../../core/models/shared/not_found_exception.dart';
+import '../clients/client_repository.dart';
 import 'treasury_repository.dart';
 
 /// In-memory stand-in for the Concentradora/Colectora endpoints — same
 /// seed data as backend/scripts/init-db/001_seed.sql.
 class FakeTreasuryRepository implements TreasuryRepository {
+  FakeTreasuryRepository({required this.clientRepository});
+
+  /// Para verificar, en `registerDeposit`/`reconcileDeposit`, que el
+  /// Cliente pueda operar — ver
+  /// docs/business/desactivacion-de-clientes.md, "Capa 2".
+  final ClientRepository clientRepository;
+
   final _concentratorByClient = {
     '00000000-0000-0000-0000-000000000002': const ConcentratorAccount(
       id: '90000000-0000-0000-0000-000000000001',
@@ -123,6 +132,9 @@ class FakeTreasuryRepository implements TreasuryRepository {
     required String registeredByEmail,
   }) async {
     await Future.delayed(const Duration(milliseconds: 250));
+    if (!await clientRepository.isOperable(clientId)) {
+      throw const ClientInactiveException();
+    }
     final deposit = CollectorDeposit(
       id: 'deposit-${DateTime.now().microsecondsSinceEpoch}',
       clientId: clientId,
@@ -144,6 +156,9 @@ class FakeTreasuryRepository implements TreasuryRepository {
     final index = _deposits.indexWhere((d) => d.id == depositId);
     if (index == -1) throw NotFoundException('Depósito $depositId no encontrado');
     final deposit = _deposits[index];
+    if (!await clientRepository.isOperable(deposit.clientId)) {
+      throw const ClientInactiveException();
+    }
     if (deposit.status == CollectorDepositStatus.reconciled) {
       throw StateError('Este depósito ya fue conciliado.');
     }

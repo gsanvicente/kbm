@@ -105,8 +105,17 @@ ni navegación asociada (no es un botón).
 - Operador y Auditor no ven este indicador en absoluto, aunque sí pueden
   ver el detalle completo de Tesorería desde Clientes.
 
+## Cliente inactivo (nuevo, 2026-09-17)
+Ni `registerDeposit` ni `reconcileDeposit` se ejecutan si el Cliente (o
+un ancestro suyo) está inactivo — mismo criterio y mismo motivo que en
+`docs/feature/operacion-saldo-con-aprobacion/README.md`, sección
+"Cliente inactivo": cubre tanto al propio staff (bloqueado desde el
+login) como a un ancestro que ya tenía sesión iniciada. Ver
+`docs/business/desactivacion-de-clientes.md`.
+
 ## Reglas de negocio
-Ver `docs/business/tesoreria-cliente.md` — no se repiten aquí.
+Ver `docs/business/tesoreria-cliente.md` y
+`docs/business/desactivacion-de-clientes.md` — no se repiten aquí.
 
 ## Casos borde / fuera de alcance
 - Integración bancaria real (SPEI, webhooks): fuera de alcance, registrar

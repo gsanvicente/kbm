@@ -58,6 +58,21 @@
   completo de una tarjeta, usada solo para resolver el destino de una
   Transferencia C2C — nunca permite recuperar el PAN original. Ver
   `docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`.
+- **Cliente inactivo**: un Cliente con `is_active = false` — no puede
+  operar en ningún nivel (ni su propio staff, ni un ancestro operando en
+  su nombre), aunque sigue siendo consultable de solo lectura. Se
+  propaga en cascada a todos sus descendientes. Ver
+  `docs/business/desactivacion-de-clientes.md`.
+- **KYB (Know Your Business)**: expediente de identificación legal de un
+  Cliente (persona moral) — equivalente empresarial del KYC de
+  Tarjetahabiente. Ver `docs/business/kyb-cliente.md`.
+- **Apoderado legal**: persona física con poder notarial para actuar en
+  nombre de un Cliente frente a KBM. Uno principal (requerido) por
+  Cliente, adicionales opcionales.
+- **Beneficiario controlador**: persona(s) física(s) que en última
+  instancia poseen o controlan un Cliente (dato de cumplimiento
+  PLD/LFPIORPI). Uno mayoritario (requerido, con % de participación),
+  minoritarios opcionales.
 - **Congelar vs. bloquear una tarjeta**: dos acciones distintas sobre el
   mismo campo de estado. "Congelar" lo hace el propio Tarjetahabiente
   (reversible por él mismo); "bloquear" lo hace el staff (Admin

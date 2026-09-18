@@ -25,3 +25,22 @@ Característica: Login administrativo
     Dado que "usuario.inactivo@koons.test" existe pero está marcado como inactivo
     Cuando intenta iniciar sesión con su contraseña correcta
     Entonces la sesión se rechaza
+
+  Escenario: Usuario activo de un Cliente inactivo no puede iniciar sesión
+    Dado que "Koons Subsidiaria A" está inactiva
+    Y "admin.subA@koons.test" es un usuario activo de "Koons Subsidiaria A"
+    Cuando intenta iniciar sesión con su contraseña correcta
+    Entonces la sesión se rechaza
+    Y el mensaje de error es igual al de contraseña incorrecta
+
+  Escenario: Usuario activo de una filial cuyo ancestro está inactivo no puede iniciar sesión
+    Dado que "Koons Subsidiaria A" es hija de "Grupo Koons Holding"
+    Y "Grupo Koons Holding" está inactiva
+    Y "admin.subA@koons.test" es un usuario activo de "Koons Subsidiaria A"
+    Cuando intenta iniciar sesión con su contraseña correcta
+    Entonces la sesión se rechaza
+
+  Escenario: Super Admin nunca se ve afectado por el estado de un Cliente
+    Dado que inicié sesión como Super Admin
+    Cuando cualquier Cliente del sistema está inactivo
+    Entonces mi sesión sigue siendo válida

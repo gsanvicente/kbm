@@ -2,13 +2,22 @@ import '../../core/models/card_network.dart';
 import '../../core/models/card_status.dart';
 import '../../core/models/payment_card.dart';
 import '../../core/models/shared/card_limit_exceeded_exception.dart';
+import '../../core/models/shared/client_inactive_exception.dart';
 import '../../core/models/shared/not_found_exception.dart';
+import '../clients/client_repository.dart';
 import 'card_repository.dart';
 
 /// In-memory stand-in for the card endpoints — same seed data as
 /// backend/scripts/init-db/001_seed.sql. Mutable, same rationale as
 /// FakeCardholderRepository (see its doc comment).
 class FakeCardRepository implements CardRepository {
+  FakeCardRepository({required this.clientRepository});
+
+  /// Para verificar, en `assign`/`setBlocked`, que el Cliente dueño de la
+  /// tarjeta pueda operar — ver
+  /// docs/business/desactivacion-de-clientes.md, "Capa 2".
+  final ClientRepository clientRepository;
+
   final List<PaymentCard> _cards = [
     PaymentCard(
       id: '40000000-0000-0000-0000-000000000001',
@@ -91,6 +100,15 @@ class FakeCardRepository implements CardRepository {
   };
 
   @override
+  Future<PaymentCard?> getById(String cardId) async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    for (final card in _cards) {
+      if (card.id == cardId) return card;
+    }
+    return null;
+  }
+
+  @override
   Future<List<PaymentCard>> listByCardholder(String cardholderId) async {
     await Future.delayed(const Duration(milliseconds: 300));
     return _cards.where((c) => c.cardholderId == cardholderId).toList();
@@ -115,6 +133,9 @@ class FakeCardRepository implements CardRepository {
     final index = _cards.indexWhere((c) => c.id == cardId);
     if (index == -1) throw NotFoundException('Tarjeta $cardId no encontrada');
     final card = _cards[index];
+    if (!await clientRepository.isOperable(card.clientId)) {
+      throw const ClientInactiveException();
+    }
     if (!card.isAvailable) {
       throw StateError('La tarjeta ${card.maskedPan} ya no está disponible.');
     }
@@ -142,6 +163,9 @@ class FakeCardRepository implements CardRepository {
     final index = _cards.indexWhere((c) => c.id == cardId);
     if (index == -1) throw NotFoundException('Tarjeta $cardId no encontrada');
     final card = _cards[index];
+    if (!await clientRepository.isOperable(card.clientId)) {
+      throw const ClientInactiveException();
+    }
     if (card.cardholderId == null) {
       throw StateError('No se puede bloquear una tarjeta que no está asignada.');
     }

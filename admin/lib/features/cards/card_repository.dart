@@ -1,6 +1,12 @@
 import '../../core/models/payment_card.dart';
 
 abstract class CardRepository {
+  /// Una tarjeta por id, o null si no existe — usado por
+  /// `LedgerRepository` para resolver el Cliente dueño de un movimiento
+  /// al verificar si puede operar (ver
+  /// docs/business/desactivacion-de-clientes.md).
+  Future<PaymentCard?> getById(String cardId);
+
   /// Tarjetas de un único Tarjetahabiente.
   Future<List<PaymentCard>> listByCardholder(String cardholderId);
 
