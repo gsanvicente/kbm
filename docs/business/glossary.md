@@ -44,6 +44,25 @@
 - **Panel directivo**: pantalla de inicio ("Inicio") con un resumen
   ejecutivo de saldos, pendientes y actividad, solo para Super Admin y
   Admin Cliente. Ver `docs/feature/panel-directivo/README.md`.
+- **Portal de autoservicio**: la app web/móvil del Tarjetahabiente (no
+  staff) para ver su saldo/estado de cuenta, transferir C2C y
+  congelar/descongelar su propia tarjeta — independiente de la gestión de
+  saldos del staff. Ver `docs/business/autoservicio-tarjetahabiente.md`.
+- **Transferencia C2C**: transferencia de autoservicio entre la tarjeta
+  del Tarjetahabiente y la de otro Tarjetahabiente del mismo Cliente,
+  identificando el destino por su número de tarjeta completo (no por un
+  directorio) — distinta de la Transferencia que solicita un Operador
+  desde la consola administrativa (esa sí puede requerir aprobación; la
+  C2C nunca). Ver `docs/feature/transferencia-c2c-tarjetahabiente/README.md`.
+- **Hash de PAN**: huella criptográfica irreversible (HMAC) del número
+  completo de una tarjeta, usada solo para resolver el destino de una
+  Transferencia C2C — nunca permite recuperar el PAN original. Ver
+  `docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`.
+- **Congelar vs. bloquear una tarjeta**: dos acciones distintas sobre el
+  mismo campo de estado. "Congelar" lo hace el propio Tarjetahabiente
+  (reversible por él mismo); "bloquear" lo hace el staff (Admin
+  Cliente+) y siempre pesa más — el Tarjetahabiente no puede revertir un
+  bloqueo del staff. Ver `docs/business/autoservicio-tarjetahabiente.md`.
 - **Rol**: perfil de acceso de un usuario administrativo/staff (Super
   Admin, Admin Cliente, Operador, Auditor). No confundir con el acceso de
   autoservicio del Tarjetahabiente, que es un plano de identidad distinto.

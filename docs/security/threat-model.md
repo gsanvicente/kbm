@@ -54,9 +54,13 @@ comprometido o credenciales débiles; superficie de ataque distinta a la
 del staff administrativo.
 **Mitigación de diseño:** plano de identidad separado (`cardholder_users`
 vs. `users`), política de autenticación propia (ver
-`docs/security/data-classification.md`), y las mismas reglas de
-aprobación que aplicarían a un Operador cuando el Tarjetahabiente solicita
-una acción vía autoservicio.
+`docs/security/data-classification.md`, MFA pendiente para ambos planos,
+ver nota en `docs/business/autoservicio-tarjetahabiente.md`). A
+diferencia de lo que se pensaba originalmente, las transferencias de
+autoservicio **no** pasan por `approval_rules` (el Tarjetahabiente opera
+su propio saldo libremente) — ver
+`docs/business/autoservicio-tarjetahabiente.md` para el porqué. Ver
+también los puntos 11 y 12 (riesgos específicos de la transferencia C2C).
 
 ## 7. Secretos y credenciales
 **Riesgo:** credenciales reales committeadas o reutilizadas entre entornos
@@ -109,3 +113,34 @@ depósito. Sigue siendo un control manual (no hay verificación bancaria
 real en esta iteración, ver "Fuera de alcance" en
 `docs/feature/tesoreria-cliente/README.md`), pero exige una segunda
 persona antes de que el dinero sea utilizable.
+
+## 11. PAN completo en tránsito para transferencias C2C de Tarjetahabiente
+**Riesgo:** desde `docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`,
+el PAN completo del destinatario viaja hasta el backend (nunca se
+almacena) para resolver una transferencia C2C. Si algún componente
+(logging, APM, manejo de errores, un `print`/log de depuración olvidado)
+lo captura por accidente, el invariante central de esa ADR se rompe
+silenciosamente — es el tipo de bug que no se nota hasta una auditoría o
+un incidente.
+**Mitigación de diseño:** el campo de PAN se trata como secreto en todo
+el pipeline de logging/observabilidad (misma categoría que
+`password_hash` en `data-classification.md`) — cualquier middleware de
+logs, manejo de excepciones o tracing debe excluirlo explícitamente antes
+de escribir cualquier salida. Code review de esta feature específica debe
+verificar esto como criterio de aceptación, no como buena práctica
+opcional.
+
+## 12. Enumeración de tarjetas vía resolución de beneficiario (transferencias C2C)
+**Riesgo:** a diferencia del punto 9 (donde quien resuelve un destino ya
+tiene una relación legítima con el Cliente completo), aquí cualquier
+Tarjetahabiente autenticado podría escribir números de tarjeta al azar
+para descubrir cuáles existen y a nombre de quién, si el sistema confirma
+"tarjeta válida, pertenece a Fulano de Tal" antes de enviar. Es un
+oráculo de enumeración con datos personales de por medio.
+**Mitigación de diseño:** (a) un solo mensaje de error genérico para
+"formato inválido" y "no pertenece a nuestro universo" — nunca se
+distingue cuál de los dos motivos fue (mismo principio que
+`docs/feature/login-administrativo/README.md` con email/contraseña); (b)
+límite de intentos fallidos por sesión/usuario con bloqueo temporal — sin
+esto, (a) por sí solo no evita que alguien pruebe miles de números.
+Ver `docs/feature/transferencia-c2c-tarjetahabiente/README.md`.

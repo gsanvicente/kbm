@@ -100,7 +100,30 @@ Resumen de permisos:
 ## Plano de autoservicio (Tarjetahabiente)
 
 Identidad completamente separada de los roles de staff (`cardholder_users`
-vs. `users`). Alcance MVP: consulta (saldo, movimientos, estado de
-tarjeta) + acciones básicas (solicitar recarga, congelar/bloquear su
-propia tarjeta), sujetas a las mismas reglas de aprobación que aplicarían
-si un Operador hiciera la misma operación.
+vs. `users`), y de negocio completamente independiente de la gestión de
+saldos que hace el staff — sin Cuentas Concentradoras/Colectoras de por
+medio. Ver `docs/business/autoservicio-tarjetahabiente.md` para el
+detalle completo; resumen de permisos:
+
+- **Ver** su propio saldo y estado de cuenta (movimientos, con filtros de
+  fecha — más "bancario" que el historial que ve el staff): siempre, sin
+  restricción.
+- **Transferir** (C2C, a la tarjeta de otro Tarjetahabiente del **mismo
+  Cliente**): libre, **sin pasar por `approval_rules`** — el
+  Tarjetahabiente opera su propio saldo, distinto de cuando un Operador
+  solicita una operación en su nombre. Ver
+  `docs/feature/transferencia-c2c-tarjetahabiente/README.md`.
+- **Congelar/descongelar su propia tarjeta**: sí, pero un bloqueo hecho
+  por un Admin Cliente/Super Admin **siempre pesa más** — el
+  Tarjetahabiente no puede autodescongelar una tarjeta que el staff
+  bloqueó. Ver "Congelar vs. bloquear" en
+  `docs/business/autoservicio-tarjetahabiente.md`.
+- **Presentar un reclamo** sobre su propio movimiento: sí, mismo
+  mecanismo (`MovementClaim`) que ya usa un Operador en su nombre.
+- **Onboarding**: fuera de alcance de la versión web — se asume que el
+  Tarjetahabiente ya se registró (probablemente desde la app móvil, no
+  documentado todavía). La versión web solo cubre login sobre una cuenta
+  ya activada.
+
+No implementado todavía: MFA (pendiente para ambos planos de identidad,
+staff y Tarjetahabiente, "lo iteraremos" — no bloquea esta definición).

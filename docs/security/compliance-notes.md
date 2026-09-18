@@ -7,13 +7,23 @@
 
 ## Reducción de alcance PCI-DSS por diseño
 
-KBM nunca almacena el PAN completo — solo `masked_pan` (ver
-`data-classification.md`). El manejo del PAN real es responsabilidad del
-procesador de tarjetas externo. Esta decisión de diseño busca mantener a
-KBM fuera del alcance completo de PCI-DSS (perfil más cercano a un
-comercio que no almacena datos de tarjeta, tipo SAQ A/A-EP), pero la
-clasificación final depende de cómo se integre con el procesador — debe
-confirmarse con un QSA antes de procesar tarjetas reales.
+KBM nunca **almacena** el PAN completo — solo `masked_pan` y un hash
+irreversible (HMAC) del PAN, usado exclusivamente para resolver el
+destino de una transferencia C2C de Tarjetahabiente (ver
+`data-classification.md` y
+`docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`). El manejo del PAN
+real en operaciones de pago sigue siendo responsabilidad del procesador
+de tarjetas externo.
+
+**Actualización 2026-09-17**: a diferencia de la postura original ("KBM
+nunca toca el PAN en absoluto"), el PAN completo ahora sí **transita**
+(nunca se persiste ni se loguea) por el backend durante la resolución de
+una transferencia C2C, y a futuro hacia el procesador externo. Esto sigue
+siendo un alcance significativamente menor que almacenar el PAN, pero
+cambia la conversación con el QSA respecto a la postura anterior — no es
+ya "nunca lo ve", es "lo ve en memoria, nunca lo guarda". Debe
+confirmarse con un QSA antes de procesar tarjetas reales cuál SAQ aplica
+exactamente bajo este flujo.
 
 ## Protección de datos personales (LFPDPPP — México)
 
