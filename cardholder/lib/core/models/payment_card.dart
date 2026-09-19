@@ -35,7 +35,7 @@ class PaymentCard {
 
   String get expiryLabel => '${expiryMonth.toString().padLeft(2, '0')}/$expiryYear';
 
-  PaymentCard copyWith({double? balance}) {
+  PaymentCard copyWith({double? balance, CardStatus? status}) {
     return PaymentCard(
       id: id,
       clientId: clientId,
@@ -44,7 +44,7 @@ class PaymentCard {
       network: network,
       expiryMonth: expiryMonth,
       expiryYear: expiryYear,
-      status: status,
+      status: status ?? this.status,
       balance: balance ?? this.balance,
       currency: currency,
     );

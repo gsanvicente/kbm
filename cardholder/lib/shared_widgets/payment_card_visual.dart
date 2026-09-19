@@ -118,6 +118,8 @@ class _StatusBadge extends StatelessWidget {
     switch (status) {
       case CardStatus.active:
         return const Color(0xFF43AB63);
+      case CardStatus.frozen:
+        return Colors.blue.shade300;
       case CardStatus.blocked:
         return Colors.red.shade400;
     }

@@ -76,6 +76,32 @@ class HttpCardholderBackend implements CardholderAuthRepository, CardRepository,
   }
 
   @override
+  Future<PaymentCard> setFrozen(String cardholderId, String cardId, bool freeze) async {
+    try {
+      final cardJson = await client.post('/v1/cards/$cardId/self-freeze', {
+        'cardholderId': cardholderId,
+        'frozen': freeze,
+      }) as Map<String, dynamic>;
+      final ledger = await client.get('/v1/cards/$cardId/ledger') as Map<String, dynamic>;
+      return _fromCardJson(
+        cardJson,
+        balance: (ledger['balance'] as num).toDouble(),
+        currency: ledger['currency'] as String,
+      );
+    } on KbmBackendException catch (e) {
+      if (e.statusCode == 404) throw StateError('Tarjeta $cardId no encontrada.');
+      if (e.statusCode == 409) {
+        throw StateError(
+          freeze
+              ? 'Solo se puede aplicar un bloqueo temporal a una tarjeta activa.'
+              : 'Esta tarjeta no tiene un bloqueo temporal que quitar.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  @override
   Future<List<LedgerMovement>> listMovements(String cardId) async {
     final json = await client.get('/v1/cards/$cardId/ledger') as Map<String, dynamic>;
     final movements = (json['entries'] as List<dynamic>).map((e) {

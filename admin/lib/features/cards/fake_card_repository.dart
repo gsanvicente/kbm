@@ -102,6 +102,22 @@ class FakeCardRepository implements CardRepository {
       expiryYear: 2027,
       status: CardStatus.unassigned,
     ),
+    // Congelada por el propio Tarjetahabiente (autoservicio) — no cuenta
+    // para el límite de tarjetas activas (frozen != active), por eso
+    // Maria puede tener esta y su 5678 sin chocar con el límite de 2 de
+    // Subsidiaria B. Ver docs/business/autoservicio-tarjetahabiente.md,
+    // "Congelar vs. bloquear una tarjeta".
+    PaymentCard(
+      id: '40000000-0000-0000-0000-000000000009',
+      clientId: '00000000-0000-0000-0000-000000000003',
+      cardholderId: '20000000-0000-0000-0000-000000000002', // Maria Gomez
+      maskedPan: '**** **** **** 4004',
+      network: CardNetwork.visa,
+      expiryMonth: 4,
+      expiryYear: 2028,
+      status: CardStatus.frozen,
+      assignedAt: DateTime(2026, 1, 20),
+    ),
   ];
 
   // Default de 1 tarjeta activa por tarjetahabiente para cualquier

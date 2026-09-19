@@ -34,7 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: Colors.white,
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
+          constraints: const BoxConstraints(maxWidth: 520),
           child: SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(32),
@@ -49,7 +49,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         Image.asset(
                           'assets/images/kbm_logo.png',
-                          height: 280,
+                          height: 420,
                           fit: BoxFit.contain,
                           filterQuality: FilterQuality.high,
                         ),

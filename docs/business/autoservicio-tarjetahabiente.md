@@ -1,6 +1,6 @@
 # Autoservicio del Tarjetahabiente
 
-> Referencia viva. Última revisión: 2026-09-17.
+> Referencia viva. Última revisión: 2026-09-19.
 
 ## Qué es
 El plano de identidad y funcionalidad que le permite a un Tarjetahabiente
@@ -29,8 +29,8 @@ dinero de la empresa.
    completo. Ver `docs/feature/transferencia-c2c-tarjetahabiente/README.md`
    para el detalle completo (es la pieza más compleja de esta feature,
    tiene su propio documento).
-3. **Congelar/descongelar su propia tarjeta** — ver "Congelar vs.
-   bloquear" más abajo.
+3. **Congelar/descongelar su propia tarjeta** — **implementado**
+   (2026-09-19), ver "Congelar vs. bloquear" más abajo.
 4. **Presentar un reclamo** sobre uno de sus propios movimientos — mismo
    mecanismo (`MovementClaim`) que ya usa un Operador en su nombre, ver
    "Reclamos" más abajo.
@@ -65,11 +65,22 @@ administrador). Solo el staff puede regresarla a `active` desde
 `blocked`. En cambio, si el Tarjetahabiente la congeló él mismo
 (`frozen`), tanto él como el staff pueden regresarla a `active`.
 
-Esto **no requiere ningún cambio de modelo** — `CardStatus` ya distingue
-`blocked` de `frozen` desde que se construyó (`admin/lib/core/models/card_status.dart`),
-aunque hasta esta iteración `frozen` nunca se producía desde ningún flujo.
-Las pantallas de tarjetas del staff (`payment_card_visual.dart`,
-`card_tile.dart`) ya renderizan ambos estados correctamente sin cambios.
+**Etiqueta visible**: `frozen` se muestra como **"Bloqueo temporal"**,
+nunca "Congelada" — a propósito distinto de "Bloqueada" (`blocked`), para
+que sea obvio a simple vista quién originó el estado. Misma etiqueta en
+ambas apps (`admin/lib/core/models/card_status.dart` y
+`cardholder/lib/core/models/card_status.dart`).
+
+**Implementado** (2026-09-19): `SetFrozen` en el backend Go compartido
+(`POST /v1/cards/{cardId}/self-freeze`, ver ADR-0010) — nunca acepta
+`cardholderId` de otro dueño, y solo permite `active→frozen` o
+`frozen→active`, nunca tocar `blocked`. `CardStatus` ya distinguía
+`blocked` de `frozen` desde que se construyó, pero `frozen` nunca se
+producía desde ningún flujo hasta ahora. Al implementarlo se encontró un
+bug real en `admin/`: `CardDetailView._canToggleBlock` solo consideraba
+`active`/`blocked`, así que el botón "Bloquear" del staff **no aparecía
+en absoluto** sobre una tarjeta `frozen` — corregido para incluir
+`frozen`, ya que el bloqueo de staff debe poder aplicarse ahí también.
 
 ## Reclamos
 El Tarjetahabiente puede presentar un reclamo sobre un movimiento propio
@@ -96,11 +107,12 @@ Antes de implementar código de este portal, se construyeron:
 2. CRUD de Tarjetahabientes — **implementado**, ver
    `docs/feature/alta-y-gestion-de-tarjetahabientes/`.
 
-Con ambas dependencias resueltas, se implementó (2026-09-19) el mínimo de
-este portal necesario para la Transferencia C2C — ver "Estado" en
+Con ambas dependencias resueltas, se implementó el mínimo de este portal
+necesario para la Transferencia C2C, y luego (2026-09-19) congelar/
+descongelar la propia tarjeta — ver "Estado" en
 `docs/feature/portal-autoservicio-tarjetahabiente/README.md` para el
-detalle exacto de qué sigue pendiente (estado de cuenta, congelar/
-descongelar, reclamos).
+detalle exacto de qué sigue pendiente (estado de cuenta con filtro de
+fechas, reclamos).
 
 ## Login y Tarjetahabiente inactivo (implementado)
 El login de este portal aplica la misma regla de Capa 1 que ya se

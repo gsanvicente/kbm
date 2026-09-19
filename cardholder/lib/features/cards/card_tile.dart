@@ -15,7 +15,7 @@ class CardTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final blocked = card.status == CardStatus.blocked;
+    final isActive = card.status == CardStatus.active;
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: InkWell(
@@ -32,10 +32,10 @@ class CardTile extends StatelessWidget {
               const SizedBox(width: 16),
               Expanded(
                 child: Text(
-                  blocked ? 'Bloqueada' : formatCurrency(card.balance, card.currency),
+                  isActive ? formatCurrency(card.balance, card.currency) : card.status.label,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: blocked ? Colors.red.shade700 : KoonsColors.navy,
+                    color: isActive ? KoonsColors.navy : Colors.red.shade700,
                   ),
                 ),
               ),

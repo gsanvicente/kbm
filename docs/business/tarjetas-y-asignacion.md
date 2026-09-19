@@ -1,11 +1,11 @@
 # Tarjetas: ciclo de vida y asignación
 
-> Referencia viva. Última revisión: 2026-09-17.
+> Referencia viva. Última revisión: 2026-09-19.
 
 ## Ciclo de vida de una Tarjeta
 
 ```
-disponible → (asignación) → activa → bloqueada / congelada / cancelada
+disponible → (asignación) → activa ⇄ bloqueo temporal (frozen) → bloqueada / cancelada
 ```
 
 - **Disponible**: existe en el sistema, pertenece a un Cliente, pero no
@@ -14,10 +14,16 @@ disponible → (asignación) → activa → bloqueada / congelada / cancelada
 - **Activa**: asignada a un Tarjetahabiente, en uso normal.
 - **Bloqueada**: asignada, pero deshabilitada por el staff (ver
   `docs/feature/bloqueo-de-tarjeta/`) — reversible, vuelve a **Activa**
-  al desbloquear, salvo la excepción de "Motivo de bloqueo" abajo.
-- **Congelada / Cancelada**: estados operativos aún no implementados
-  (gestión de saldo, feature futura — ver
-  `docs/feature/operacion-saldo-con-aprobacion/`).
+  al desbloquear, salvo la excepción de "Motivo de bloqueo" abajo. Pesa
+  más que un "Bloqueo temporal" — puede aplicarse encima de uno.
+- **Bloqueo temporal** (`frozen`, etiqueta distinta de "Bloqueada" a
+  propósito): autocongelamiento del propio Tarjetahabiente desde
+  `cardholder/`, **implementado** — ver
+  `docs/business/autoservicio-tarjetahabiente.md`, "Congelar vs.
+  bloquear una tarjeta". El staff nunca lo origina, solo puede
+  revertirlo (o bloquear encima).
+- **Cancelada**: estado operativo aún no implementado (gestión de saldo,
+  feature futura — ver `docs/feature/operacion-saldo-con-aprobacion/`).
 
 Una tarjeta nace **disponible**, siempre perteneciendo a un Cliente
 específico desde el inicio (el pool no es "global sin dueño" — una

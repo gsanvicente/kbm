@@ -12,4 +12,13 @@ abstract class CardRepository {
   /// cuenta" sigue pendiente, ver
   /// docs/feature/portal-autoservicio-tarjetahabiente/README.md.
   Future<List<LedgerMovement>> listMovements(String cardId);
+
+  /// Autocongelamiento ("Bloqueo temporal") — ver
+  /// docs/business/autoservicio-tarjetahabiente.md, "Congelar vs.
+  /// bloquear una tarjeta". [freeze] true exige que la tarjeta esté
+  /// activa; false exige que ya esté congelada. Nunca puede tocar un
+  /// bloqueo hecho por el staff (`CardStatus.blocked`) — lanza si se
+  /// intenta. [cardholderId] verifica que [cardId] sea realmente suya.
+  /// Devuelve la tarjeta ya actualizada.
+  Future<PaymentCard> setFrozen(String cardholderId, String cardId, bool freeze);
 }

@@ -44,6 +44,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/v1/cards/{cardID}", h.getCard)
 	r.Post("/v1/cards/{cardID}/assign", h.assignCard)
 	r.Post("/v1/cards/{cardID}/block-status", h.setBlockStatus)
+	r.Post("/v1/cards/{cardID}/self-freeze", h.setSelfFrozen)
 	r.Get("/v1/cards/{cardID}/ledger", h.getLedger)
 	r.Post("/v1/cards/{cardID}/ledger/entries", h.postLedgerEntry)
 
@@ -136,6 +137,19 @@ func (h *Handler) setBlockStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, err := h.Cards.SetBlocked(r.Context(), chi.URLParam(r, "cardID"), req.Blocked)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dto.FromCard(c))
+}
+
+func (h *Handler) setSelfFrozen(w http.ResponseWriter, r *http.Request) {
+	var req dto.SelfFreezeRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	c, err := h.Cards.SetFrozen(r.Context(), chi.URLParam(r, "cardID"), req.CardholderID, req.Frozen)
 	if err != nil {
 		writeError(w, err)
 		return

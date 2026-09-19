@@ -94,8 +94,14 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
     });
   }
 
+  // Incluye `frozen` (autocongelamiento del propio Tarjetahabiente) —
+  // un bloqueo de staff siempre pesa más y puede aplicarse sobre una
+  // tarjeta congelada, no solo sobre una activa. Ver
+  // docs/business/autoservicio-tarjetahabiente.md, "Congelar vs.
+  // bloquear una tarjeta".
   bool get _canToggleBlock =>
-      _card.cardholderId != null && (_card.status == CardStatus.active || _card.status == CardStatus.blocked);
+      _card.cardholderId != null &&
+      (_card.status == CardStatus.active || _card.status == CardStatus.blocked || _card.status == CardStatus.frozen);
 
   Future<void> _toggleBlocked() async {
     final blocking = _card.status != CardStatus.blocked;

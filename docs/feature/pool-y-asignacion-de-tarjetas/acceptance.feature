@@ -33,7 +33,7 @@ Característica: Pool y asignación de Tarjetas
 
   Escenario: Filtrar el listado por varios estados a la vez
     Dado que inicié sesión como Super Admin en el listado de "Tarjetas"
-    Cuando selecciono "Bloqueada" y "Congelada" en el filtro de Estado
+    Cuando selecciono "Bloqueada" y "Bloqueo temporal" en el filtro de Estado
     Entonces solo veo tarjetas en esos dos estados
 
   Escenario: El filtro de Empresa no aparece si solo hay un Cliente accesible

@@ -91,6 +91,28 @@ void main() {
     expect(find.text('Bloqueada'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Transferir'), findsNothing);
     expect(find.textContaining('Contacta a tu administrador'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Bloqueo temporal'), findsNothing);
+  });
+
+  testWidgets('a cardholder can apply and remove a temporary block on their own active card', (tester) async {
+    await tester.pumpWidget(const KbmCardholderApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'juan.perez@cardholder.test');
+
+    expect(find.widgetWithText(FilledButton, 'Transferir'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Bloqueo temporal'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bloqueo temporal'), findsWidgets); // insignia de la tarjeta + snackbar/mensaje
+    expect(find.widgetWithText(FilledButton, 'Transferir'), findsNothing);
+    expect(find.text('\$1,250.00 MXN'), findsOneWidget); // el saldo no cambia por congelar
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Quitar bloqueo temporal'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Activa'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Transferir'), findsOneWidget);
   });
 
   testWidgets('a successful C2C transfer moves balance and never asks for approval', (tester) async {

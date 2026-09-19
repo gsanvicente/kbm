@@ -526,6 +526,29 @@ void main() {
     expect(find.widgetWithText(OutlinedButton, 'Desbloquear'), findsOneWidget);
   });
 
+  testWidgets('staff can block a card the Tarjetahabiente had already put on a temporary block themselves', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 4004'); // Maria Gomez, self-frozen
+
+    // Antes de este fix, _canToggleBlock no incluía CardStatus.frozen y
+    // el botón "Bloquear" no aparecía en absoluto sobre una tarjeta con
+    // bloqueo temporal — ver docs/business/autoservicio-tarjetahabiente.md,
+    // "Congelar vs. bloquear una tarjeta": el staff siempre debe poder
+    // bloquear, incluso encima de un bloqueo temporal.
+    expect(find.text('Bloqueo temporal'), findsWidgets);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Bloquear'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bloqueada'), findsWidgets);
+    expect(find.widgetWithText(OutlinedButton, 'Desbloquear'), findsOneWidget);
+  });
+
   testWidgets('Operador can unblock a blocked card', (tester) async {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();

@@ -11,6 +11,11 @@ class KoonsColors {
   static const blue = Color(0xFF227EA7);
   static const green = Color(0xFF43AB63);
 
+  static const sidebarBackground = navy;
+  static const sidebarItemActive = Color(0xFF0E4877);
+  static const sidebarText = Color(0xFFC9D6E3);
+  static const sidebarTextActive = Colors.white;
+
   static const surface = Color(0xFFF7F8FA);
   static const border = Color(0xFFE3E6EA);
 }
@@ -80,6 +85,25 @@ ThemeData buildKbmCardholderTheme() {
       foregroundColor: KoonsColors.navy,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
+    ),
+    // Barra inferior en pantallas angostas (móvil) — CardholderShell usa
+    // el sidebar de escritorio en anchas, ver ese archivo. Mismos colores
+    // de marca que el sidebar, adaptados a una barra clara.
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: Colors.white,
+      indicatorColor: KoonsColors.blue.withValues(alpha: 0.12),
+      iconTheme: WidgetStateProperty.resolveWith(
+        (states) => IconThemeData(
+          color: states.contains(WidgetState.selected) ? KoonsColors.navy : Colors.grey.shade500,
+        ),
+      ),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: states.contains(WidgetState.selected) ? KoonsColors.navy : Colors.grey.shade500,
+        ),
+      ),
     ),
   );
 }

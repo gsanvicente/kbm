@@ -181,6 +181,41 @@ func (s *Store) SetBlocked(_ context.Context, cardID string, blocked bool) (card
 	return c, nil
 }
 
+func (s *Store) SetFrozen(_ context.Context, cardID, cardholderID string, frozen bool) (card.Card, error) {
+	s.cardsMu.Lock()
+	defer s.cardsMu.Unlock()
+
+	c, ok := s.cards[cardID]
+	if !ok {
+		return card.Card{}, shared.ErrNotFound
+	}
+	// Nunca revela si la tarjeta existe pero es de otra persona — mismo
+	// criterio que el resto de este backend con datos de otro
+	// Tarjetahabiente.
+	if c.CardholderID == nil || *c.CardholderID != cardholderID {
+		return card.Card{}, shared.ErrNotFound
+	}
+
+	if frozen {
+		// Congelar solo aplica sobre "active" — nunca sobre "blocked"
+		// (un bloqueo de staff no se toca desde aquí) ni sobre ya
+		// "frozen".
+		if c.Status != card.StatusActive {
+			return card.Card{}, shared.ErrInvalidState
+		}
+		c.Status = card.StatusFrozen
+	} else {
+		// Descongelar solo aplica sobre "frozen" — si está "blocked",
+		// esto nunca es la vía para revertirlo (ver SetBlocked).
+		if c.Status != card.StatusFrozen {
+			return card.Card{}, shared.ErrInvalidState
+		}
+		c.Status = card.StatusActive
+	}
+	s.cards[cardID] = c
+	return c, nil
+}
+
 func (s *Store) FreezeAllForCardholder(_ context.Context, cardholderID string) error {
 	s.cardsMu.Lock()
 	defer s.cardsMu.Unlock()

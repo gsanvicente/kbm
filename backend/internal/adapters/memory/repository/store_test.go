@@ -130,6 +130,80 @@ func TestSetBlocked_ManualReason(t *testing.T) {
 	}
 }
 
+func TestSetFrozen_SelfServiceRoundTrip(t *testing.T) {
+	s := NewStore()
+	ctx := context.Background()
+
+	frozen, err := s.SetFrozen(ctx, juanCard, juanID, true)
+	if err != nil {
+		t.Fatalf("unexpected error freezing: %v", err)
+	}
+	if frozen.Status != card.StatusFrozen {
+		t.Errorf("expected StatusFrozen, got %v", frozen.Status)
+	}
+
+	unfrozen, err := s.SetFrozen(ctx, juanCard, juanID, false)
+	if err != nil {
+		t.Fatalf("unexpected error unfreezing: %v", err)
+	}
+	if unfrozen.Status != card.StatusActive {
+		t.Errorf("expected StatusActive, got %v", unfrozen.Status)
+	}
+}
+
+func TestSetFrozen_RejectsFreezingAnotherCardholdersCard(t *testing.T) {
+	s := NewStore()
+	ctx := context.Background()
+
+	_, err := s.SetFrozen(ctx, juanCard, anaID, true) // juanCard belongs to Juan, not Ana
+	if !errors.Is(err, shared.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestSetFrozen_RejectsFreezingANonActiveCard(t *testing.T) {
+	s := NewStore()
+	ctx := context.Background()
+
+	if _, err := s.SetBlocked(ctx, juanCard, true); err != nil {
+		t.Fatalf("unexpected error blocking: %v", err)
+	}
+	_, err := s.SetFrozen(ctx, juanCard, juanID, true)
+	if !errors.Is(err, shared.ErrInvalidState) {
+		t.Fatalf("expected ErrInvalidState, got %v", err)
+	}
+}
+
+func TestSetFrozen_RejectsUnfreezingANonFrozenCard(t *testing.T) {
+	s := NewStore()
+	ctx := context.Background()
+
+	_, err := s.SetFrozen(ctx, juanCard, juanID, false) // juanCard starts out active, never frozen
+	if !errors.Is(err, shared.ErrInvalidState) {
+		t.Fatalf("expected ErrInvalidState, got %v", err)
+	}
+}
+
+// Regla de gobernabilidad: un bloqueo de staff siempre pesa más y nunca
+// se revierte por esta vía — ver
+// docs/business/autoservicio-tarjetahabiente.md, "Congelar vs. bloquear
+// una tarjeta".
+func TestSetBlocked_AlwaysOverridesASelfFreeze(t *testing.T) {
+	s := NewStore()
+	ctx := context.Background()
+
+	if _, err := s.SetFrozen(ctx, juanCard, juanID, true); err != nil {
+		t.Fatalf("unexpected error freezing: %v", err)
+	}
+	blocked, err := s.SetBlocked(ctx, juanCard, true)
+	if err != nil {
+		t.Fatalf("unexpected error blocking: %v", err)
+	}
+	if blocked.Status != card.StatusBlocked {
+		t.Errorf("expected a staff block to override the self-freeze, got %v", blocked.Status)
+	}
+}
+
 func TestFreezeAllForCardholder_SkipsAlreadyBlocked(t *testing.T) {
 	s := NewStore()
 	ctx := context.Background()

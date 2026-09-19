@@ -98,6 +98,11 @@ type BlockStatusRequest struct {
 	Blocked bool `json:"blocked"`
 }
 
+type SelfFreezeRequest struct {
+	CardholderID string `json:"cardholderId"`
+	Frozen       bool   `json:"frozen"`
+}
+
 type PostLedgerEntryRequest struct {
 	Type        string  `json:"type"`
 	Amount      float64 `json:"amount"`

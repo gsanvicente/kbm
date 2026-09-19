@@ -4,11 +4,12 @@
   repositorio fake, junto con el mínimo de
   `docs/feature/portal-autoservicio-tarjetahabiente/README.md` necesario
   para llegar aquí (login y detalle de tarjeta) — el resto de ese portal
-  (congelar/descongelar, reclamos, estado de cuenta con filtro de fechas)
-  sigue pendiente. **Migración a backend compartido: diseñada
-  (`docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`),
-  implementación pendiente** — hasta que se implemente, ver "Limitación
-  conocida" abajo.
+  (reclamos, estado de cuenta con filtro de fechas) sigue pendiente;
+  congelar/descongelar ya se implementó, ver
+  `docs/business/autoservicio-tarjetahabiente.md`. Migración a backend
+  compartido ya implementada, ver
+  `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md` — la
+  "Limitación conocida" de abajo ya no aplica.
 - ADR/TDR relacionados: `docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`,
   `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 9 (para
@@ -29,7 +30,7 @@ tarjeta", no un directorio de contactos.
 - Alcance mínimo de portal necesario para esto: login y detalle de una
   tarjeta (saldo + botón Transferir) — ver
   `docs/feature/portal-autoservicio-tarjetahabiente/README.md` para lo
-  que sigue pendiente (congelar/descongelar, reclamos, estado de cuenta).
+  que sigue pendiente (reclamos, estado de cuenta con filtro de fechas).
 - Puerto de desarrollo: `8766` (junto al `8765` de `admin/`), para poder
   correr ambas apps a la vez.
 

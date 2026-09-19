@@ -37,8 +37,8 @@ cambios en esta pantalla, la interfaz no cambió.
    cliente sobre lo que ya ve, nunca cambian qué tarjetas están dentro de
    su alcance:
    - **Estado** (multiselección: Disponible / Activa / Bloqueada /
-     Congelada / Cancelada) — combo desplegable con casillas, muestra un
-     contador cuando hay selección (ej. "Estado (2)").
+     Bloqueo temporal / Cancelada) — combo desplegable con casillas,
+     muestra un contador cuando hay selección (ej. "Estado (2)").
    - **Empresa** (multiselección, mismo patrón de combo) — solo aparece
      si el usuario tiene acceso a más de un Cliente; para roles
      acotados a un solo Cliente (Admin Cliente, Operador, Auditor) no

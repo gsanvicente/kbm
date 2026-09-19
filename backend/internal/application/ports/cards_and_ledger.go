@@ -27,6 +27,16 @@ type CardRepository interface {
 	// FreezeAllForCardholder.
 	SetBlocked(ctx context.Context, cardID string, blocked bool) (card.Card, error)
 
+	// SetFrozen es el autocongelamiento del propio Tarjetahabiente — ver
+	// docs/business/autoservicio-tarjetahabiente.md, "Congelar vs.
+	// bloquear una tarjeta". A diferencia de SetBlocked, nunca puede
+	// tocar ni revertir un bloqueo de staff: lanza shared.ErrNotFound si
+	// [cardID] no le pertenece a [cardholderID], y
+	// shared.ErrInvalidState si la tarjeta no está en el estado correcto
+	// para la transición pedida (congelar exige "active", descongelar
+	// exige "frozen" — nunca "blocked" en ningún sentido).
+	SetFrozen(ctx context.Context, cardID, cardholderID string, frozen bool) (card.Card, error)
+
 	// FreezeAllForCardholder bloquea toda tarjeta de [cardholderID] que no
 	// estuviera ya bloqueada — ver
 	// docs/business/desactivacion-de-tarjetahabientes.md. Una tarjeta ya

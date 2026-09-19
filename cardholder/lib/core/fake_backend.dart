@@ -294,6 +294,29 @@ class FakeCardholderBackend implements CardholderAuthRepository, CardRepository,
   }
 
   @override
+  Future<PaymentCard> setFrozen(String cardholderId, String cardId, bool freeze) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final index = _cards.indexWhere((c) => c.id == cardId && c.cardholderId == cardholderId);
+    if (index == -1) throw StateError('Tarjeta $cardId no encontrada.');
+    final card = _cards[index];
+
+    if (freeze) {
+      if (card.status != CardStatus.active) {
+        throw StateError('Solo se puede aplicar un bloqueo temporal a una tarjeta activa.');
+      }
+      final updated = card.copyWith(status: CardStatus.frozen);
+      _cards[index] = updated;
+      return updated;
+    }
+    if (card.status != CardStatus.frozen) {
+      throw StateError('Esta tarjeta no tiene un bloqueo temporal que quitar.');
+    }
+    final updated = card.copyWith(status: CardStatus.active);
+    _cards[index] = updated;
+    return updated;
+  }
+
+  @override
   Future<ResolvedTransferDestination?> resolveDestination({
     required String cardholderId,
     required String originCardId,

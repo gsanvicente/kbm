@@ -2,16 +2,22 @@ package card
 
 import "time"
 
-// Status mirrors admin/lib/core/models/card_status.dart, minus the states
-// this in-memory backend doesn't need to reason about yet (frozen —
-// self-service autocongelamiento, cancelled — feature futura). See
+// Status mirrors admin/lib/core/models/card_status.dart, minus
+// "cancelled" (feature futura, este backend no la necesita todavía). See
 // docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md.
+//
+// StatusFrozen es el autocongelamiento del propio Tarjetahabiente — ver
+// docs/business/autoservicio-tarjetahabiente.md, "Congelar vs. bloquear
+// una tarjeta". Distinto de StatusBlocked (solo staff): un bloqueo de
+// staff siempre pesa más y el Tarjetahabiente nunca puede revertirlo,
+// pero él (o el staff) sí puede revertir su propio congelamiento.
 type Status string
 
 const (
 	StatusUnassigned Status = "unassigned"
 	StatusActive     Status = "active"
 	StatusBlocked    Status = "blocked"
+	StatusFrozen     Status = "frozen"
 )
 
 // BlockedReason distingue un bloqueo manual del staff de un congelamiento

@@ -160,6 +160,42 @@ paths:
         '409':
           description: No se puede desbloquear mientras el Tarjetahabiente esté inactivo
 
+  /v1/cards/{cardId}/self-freeze:
+    post:
+      summary: Autocongelamiento del propio Tarjetahabiente (bloqueo temporal)
+      description: >
+        Ver docs/business/autoservicio-tarjetahabiente.md, "Congelar vs.
+        bloquear una tarjeta". Distinto de `/block-status` (solo staff):
+        `frozen=true` exige que la tarjeta esté `active` y le pertenezca
+        a `cardholderId`; `frozen=false` exige que esté `frozen`. Nunca
+        puede tocar ni revertir un bloqueo de staff (`blocked`) — un
+        bloqueo de staff siempre pesa más.
+      parameters:
+        - name: cardId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cardholderId, frozen]
+              properties:
+                cardholderId: { type: string, format: uuid }
+                frozen: { type: boolean }
+      responses:
+        '200':
+          description: Estado actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Card' }
+        '404':
+          description: La tarjeta no existe, o no le pertenece a cardholderId
+        '409':
+          description: Transición inválida (ej. intentar congelar una tarjeta bloqueada o ya congelada)
+
   /v1/cards/{cardId}/ledger:
     get:
       summary: Saldo y movimientos de una tarjeta
@@ -295,7 +331,7 @@ components:
         network: { type: string, enum: [visa, mastercard] }
         expiryMonth: { type: integer }
         expiryYear: { type: integer }
-        status: { type: string, enum: [unassigned, active, blocked] }
+        status: { type: string, enum: [unassigned, active, blocked, frozen] }
         blockedReason: { type: string, enum: [manual, cardholder_inactive], nullable: true }
         assignedAt: { type: string, format: date-time, nullable: true }
     LedgerEntry:

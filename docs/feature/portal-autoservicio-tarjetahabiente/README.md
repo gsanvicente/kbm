@@ -1,12 +1,13 @@
 # Portal de autoservicio del Tarjetahabiente
 
 - Estado: **Parcialmente implementado** (2026-09-19) — login, detalle de
-  tarjeta (saldo + Transferir) y ahora también Movimientos (lista de la
-  cuenta, sin filtro de fechas) existen en `cardholder/`, con una
-  navegación persistente (rail en pantallas anchas, barra inferior en
-  angostas) en vez de una sola pantalla suelta — ver "Diseño" más abajo.
-  Filtro de fechas/resumen de periodo, Congelar/Descongelar y Reclamos
-  (puntos en "Pantallas" más abajo) siguen sin implementarse.
+  tarjeta (saldo + Transferir + Bloqueo temporal), y Movimientos (lista
+  de la cuenta, sin filtro de fechas) existen en `cardholder/`, con una
+  navegación persistente (sidebar en pantallas anchas, barra inferior en
+  angostas, homologada visualmente con `admin/`) en vez de una sola
+  pantalla suelta — ver "Diseño" más abajo. Filtro de fechas/resumen de
+  periodo y Reclamos (puntos en "Pantallas" más abajo) siguen sin
+  implementarse.
 - ADR/TDR relacionados: `docs/adr/0002-flutter-web-mobile-two-apps.md`,
   `docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`,
   `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`
@@ -28,9 +29,11 @@ de la gestión de saldos del staff (sin Concentradora/Colectora, sin
 `approval_rules`).
 
 ## Nota de alcance de esta iteración
-- Repositorio fake, mismo patrón que `admin/` — sin backend real. Vive en
-  una sola clase, `FakeCardholderBackend` (implementa las tres interfaces
-  de auth/tarjetas/transferencias a la vez) — ver "Nota de alcance" en
+- `HttpCardholderBackend` habla con el backend Go compartido con
+  `admin/` (ver `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`);
+  `FakeCardholderBackend` (una sola clase, implementa las tres interfaces
+  de auth/tarjetas/transferencias a la vez) sigue existiendo solo para
+  los widget tests — ver "Nota de alcance" en
   `docs/feature/transferencia-c2c-tarjetahabiente/README.md` para el
   porqué de no separarla en varios repositorios.
 - **Login únicamente** — el registro/activación de la cuenta se asume ya
@@ -56,10 +59,14 @@ de la gestión de saldos del staff (sin Concentradora/Colectora, sin
    - **Movimientos** (lista de la cuenta, más reciente primero):
      **implementado**, sin filtro por rango de fechas ni resumen del
      periodo — eso sigue **pendiente**.
-   - Botón **Congelar/Descongelar**: **pendiente**, no construido en esta
-     pasada — una tarjeta `blocked` por el staff sí muestra un mensaje de
-     "contacta a tu administrador" en vez del botón Transferir, pero el
-     propio autocongelamiento del Tarjetahabiente no existe todavía.
+   - Botón **Bloqueo temporal** (congelar/descongelar la propia
+     tarjeta) — **implementado** (2026-09-19), ver
+     `docs/business/autoservicio-tarjetahabiente.md`, "Congelar vs.
+     bloquear una tarjeta". Solo disponible sobre una tarjeta `active`
+     (para congelar) o `frozen` (para descongelar) — una tarjeta
+     `blocked` por el staff sí muestra el mensaje de "contacta a tu
+     administrador" en vez de cualquier acción de autoservicio, ni
+     siquiera esta.
    - Botón **Transferir** — **implementado**, ver
      `docs/feature/transferencia-c2c-tarjetahabiente/README.md`.
    - Presentar un reclamo por movimiento: **pendiente** — ya hay
@@ -68,10 +75,21 @@ de la gestión de saldos del staff (sin Concentradora/Colectora, sin
 
 ## Diseño
 El portal usa un marco de navegación persistente una vez dentro de una
-tarjeta (`CardholderShell`): un `NavigationRail` en pantallas anchas
-(≥900px, web/desktop) o una `NavigationBar` inferior en angostas
-(móvil), con dos destinos — Inicio y Movimientos — en vez de pantallas
-sueltas sin relación visual entre sí.
+tarjeta (`CardholderShell`), homologado con `admin/lib/app/admin_shell.dart`:
+un sidebar navy fijo (248px, mismo `KoonsColors.sidebarBackground`/
+`sidebarItemActive`/`sidebarText`) en pantallas anchas (≥900px,
+web/desktop), o una `NavigationBar` inferior en angostas (móvil), con dos
+destinos — Inicio y Movimientos. El topbar (blanco, borde inferior,
+título de la sección a la izquierda, avatar + nombre + cerrar sesión a la
+derecha) sigue el mismo formato que el `_TopBar` de `admin/`, con un
+`onBack` opcional que `admin/` no necesita (para el selector de
+tarjetas). La pantalla de login (logo, tamaños, layout) también se
+homologó exactamente contra `admin/lib/features/auth/login_screen.dart`
+— antes tenía un logo más chico y un contenedor más angosto, lo que hacía
+que las dos apps se vieran como productos distintos en vez de un mismo
+portal bancario con dos entradas. Todo esto es código duplicado
+(ADR-0002), pero el **diseño no debe divergir** — mismo criterio que ya
+aplica a la tarjeta (`PaymentCardVisual`, ver abajo).
 
 La tarjeta se representa con `PaymentCardVisual`
 (`cardholder/lib/shared_widgets/payment_card_visual.dart`) — el mismo
