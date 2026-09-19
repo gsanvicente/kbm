@@ -143,12 +143,13 @@ func seedCardholders() map[string]cardholder.Cardholder {
 	return out
 }
 
+// Solo overrides explícitos — cualquier Cliente ausente de este mapa usa
+// defaultMaxActiveCardsPerCardholder (1, ver store.go Assign()).
+// Subsidiaria A no necesita entrada, ya está al default; Subsidiaria B
+// tiene espacio (2) a propósito, para demostrar que sí varía por Cliente
+// — mismo criterio que admin/lib/features/cards/fake_card_repository.dart.
 func seedCardLimits() map[string]int {
-	// Subsidiaria A a capacidad (1) a propósito, para demostrar el
-	// rechazo; Subsidiaria B con espacio (2) — mismo criterio que
-	// admin/lib/features/cards/fake_card_repository.dart.
 	return map[string]int{
-		clientA: 1,
 		clientB: 2,
 	}
 }

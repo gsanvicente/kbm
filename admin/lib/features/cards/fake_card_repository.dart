@@ -104,12 +104,18 @@ class FakeCardRepository implements CardRepository {
     ),
   ];
 
-  // Subsidiaria A is at capacity per-cardholder (1) on purpose, to
-  // demonstrate the rejection path; Subsidiaria B has room (2).
+  // Default de 1 tarjeta activa por tarjetahabiente para cualquier
+  // Cliente no listado aquí — ver docs/business/tarjetas-y-asignacion.md,
+  // "Límite de tarjetas activas por Tarjetahabiente". Solo overrides
+  // explícitos van en este mapa; Subsidiaria B tiene uno (2), para
+  // demostrar que sí varía por Cliente y no queda solo en el default.
+  static const _defaultMaxActiveCardsPerCardholder = 1;
   static const _maxActiveCardsByClient = {
-    '00000000-0000-0000-0000-000000000002': 1,
     '00000000-0000-0000-0000-000000000003': 2,
   };
+
+  int _maxActiveCardsFor(String clientId) =>
+      _maxActiveCardsByClient[clientId] ?? _defaultMaxActiveCardsPerCardholder;
 
   @override
   Future<PaymentCard?> getById(String cardId) async {
@@ -135,7 +141,7 @@ class FakeCardRepository implements CardRepository {
   @override
   Future<int?> maxActiveCardsPerCardholder(String clientId) async {
     await Future.delayed(const Duration(milliseconds: 100));
-    return _maxActiveCardsByClient[clientId];
+    return _maxActiveCardsFor(clientId);
   }
 
   @override
@@ -155,12 +161,9 @@ class FakeCardRepository implements CardRepository {
       throw StateError('La tarjeta ${card.maskedPan} ya no está disponible.');
     }
 
-    final max = _maxActiveCardsByClient[card.clientId];
-    if (max != null) {
-      final activeCount =
-          _cards.where((c) => c.cardholderId == cardholderId && c.status == CardStatus.active).length;
-      if (activeCount >= max) throw CardLimitExceededException(max);
-    }
+    final max = _maxActiveCardsFor(card.clientId);
+    final activeCount = _cards.where((c) => c.cardholderId == cardholderId && c.status == CardStatus.active).length;
+    if (activeCount >= max) throw CardLimitExceededException(max);
 
     final updated = card.copyWith(
       cardholderId: cardholderId,

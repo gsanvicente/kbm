@@ -33,9 +33,10 @@ class HttpCardRepository implements CardRepository {
   /// backend/internal/adapters/memory/repository/seed.go — el backend es
   /// quien de verdad hace cumplir el límite (ver `assign`); esto solo
   /// respalda `maxActiveCardsPerCardholder`, que hoy ningún widget llama
-  /// todavía (ver docs/business/tarjetas-y-asignacion.md).
+  /// todavía. Default de 1 para cualquier Cliente no listado — ver
+  /// docs/business/tarjetas-y-asignacion.md.
+  static const _defaultMaxActiveCardsPerCardholder = 1;
   static const _maxActiveCardsByClient = {
-    '00000000-0000-0000-0000-000000000002': 1,
     '00000000-0000-0000-0000-000000000003': 2,
   };
 
@@ -96,7 +97,7 @@ class HttpCardRepository implements CardRepository {
 
   @override
   Future<int?> maxActiveCardsPerCardholder(String clientId) async {
-    return _maxActiveCardsByClient[clientId];
+    return _maxActiveCardsByClient[clientId] ?? _defaultMaxActiveCardsPerCardholder;
   }
 
   @override

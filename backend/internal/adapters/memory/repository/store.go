@@ -29,6 +29,10 @@ import (
 
 const maxFailedAttempts = 5
 
+// Ver Assign() — default cuando un Cliente no tiene override en
+// maxActiveCardsByClient.
+const defaultMaxActiveCardsPerCardholder = 1
+
 type Store struct {
 	cardsMu sync.RWMutex
 	cards   map[string]card.Card
@@ -117,16 +121,23 @@ func (s *Store) Assign(_ context.Context, cardID, cardholderID string) (card.Car
 		return card.Card{}, shared.ErrCardNotAvailable
 	}
 
-	if max, hasLimit := s.maxActiveCardsByClient[c.ClientID]; hasLimit {
-		active := 0
-		for _, other := range s.cards {
-			if other.CardholderID != nil && *other.CardholderID == cardholderID && other.Status == card.StatusActive {
-				active++
-			}
+	// Default de 1 tarjeta activa por tarjetahabiente para cualquier
+	// Cliente sin override explícito en el mapa — ver
+	// docs/business/tarjetas-y-asignacion.md, "Límite de tarjetas activas
+	// por Tarjetahabiente". Nunca "sin límite": ese default cambió de
+	// "sin restricción" a 1 explícitamente.
+	max, hasOverride := s.maxActiveCardsByClient[c.ClientID]
+	if !hasOverride {
+		max = defaultMaxActiveCardsPerCardholder
+	}
+	active := 0
+	for _, other := range s.cards {
+		if other.CardholderID != nil && *other.CardholderID == cardholderID && other.Status == card.StatusActive {
+			active++
 		}
-		if active >= max {
-			return card.Card{}, &shared.CardLimitExceededError{Limit: max}
-		}
+	}
+	if active >= max {
+		return card.Card{}, &shared.CardLimitExceededError{Limit: max}
 	}
 
 	holderID := cardholderID

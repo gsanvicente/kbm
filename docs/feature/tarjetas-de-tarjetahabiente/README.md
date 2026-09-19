@@ -1,6 +1,7 @@
 # Tarjetas del Tarjetahabiente
 
-- Estado: En desarrollo (esta iteración: `admin/` con repositorio fake)
+- Estado: Implementado — incluye asignar una tarjeta directamente desde
+  aquí (ver punto 4 de "Flujo principal")
 - ADR/TDR relacionados: ninguno nuevo
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 y 2
 - Roles/actores involucrados: todos los roles de staff (ver)
@@ -41,6 +42,17 @@ Repositorio fake (`CardRepository`), mismo dataset que
    (ej. "Clientes / Koons Subsidiaria A / Juan Perez / •••• 1234").
 3. Si el Tarjetahabiente no tiene tarjetas asignadas, se muestra un estado
    vacío en vez de una sección en blanco.
+4. Si el rol puede asignar y el Tarjetahabiente está activo, esta misma
+   sección tiene un botón **"Asignar tarjeta"**: abre un selector con las
+   tarjetas **disponibles** del mismo Cliente, y al confirmar llama al
+   mismo `CardRepository.assign` que el flujo original (desde la
+   tarjeta) — mismas reglas de límite y de Tarjetahabiente activo, ver
+   `docs/business/tarjetas-y-asignacion.md`. Se agregó como segundo punto
+   de entrada porque, con el límite de 1 tarjeta activa por
+   Tarjetahabiente, es más natural partir de la persona ("dale una
+   tarjeta a Juan") que de la tarjeta ("busca una libre y dásela a
+   alguien") — ver `docs/feature/pool-y-asignacion-de-tarjetas/` para el
+   flujo original.
 
 ## Nota sobre el asset visual y el overlay
 `card_black_template.png` es una plantilla en blanco (a diferencia de la

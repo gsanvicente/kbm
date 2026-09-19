@@ -4,6 +4,8 @@ import '../../app/theme.dart';
 import '../../core/models/cardholder.dart';
 import '../../core/models/payment_card.dart';
 import '../../core/models/session.dart';
+import '../../core/models/shared/card_limit_exceeded_exception.dart';
+import '../../core/models/shared/cardholder_inactive_exception.dart';
 import '../cards/card_list_view.dart';
 import '../cards/card_repository.dart';
 import 'cardholder_form_dialog.dart';
@@ -105,6 +107,52 @@ class _CardholderDetailViewState extends State<CardholderDetailView> {
       _cardsListGeneration++;
     });
     widget.onChanged(saved);
+  }
+
+  /// Asignar iniciado desde la propia página del Tarjetahabiente — el
+  /// flujo inverso de `CardDetailView._assign` (que parte de la tarjeta).
+  /// Ver docs/business/tarjetas-y-asignacion.md, "Quién puede asignar" y
+  /// "Límite de tarjetas activas por Tarjetahabiente".
+  Future<void> _assignCard() async {
+    setState(() => _busy = true);
+    final available =
+        (await widget.cardRepository.listByClients([_cardholder.clientId])).where((c) => c.isAvailable).toList();
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    if (available.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Este Cliente no tiene tarjetas disponibles para asignar.')),
+      );
+      return;
+    }
+
+    final selected = await showDialog<PaymentCard>(
+      context: context,
+      builder: (context) => _AssignCardToCardholderDialog(candidates: available),
+    );
+    if (selected == null) return;
+
+    setState(() => _busy = true);
+    try {
+      await widget.cardRepository.assign(cardId: selected.id, cardholderId: _cardholder.id);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _cardsListGeneration++;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Tarjeta ${selected.maskedPan} asignada a ${_cardholder.fullName}.')),
+      );
+    } on CardLimitExceededException catch (e) {
+      setState(() => _busy = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } on CardholderInactiveException catch (e) {
+      setState(() => _busy = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   @override
@@ -216,6 +264,13 @@ class _CardholderDetailViewState extends State<CardholderDetailView> {
           const SizedBox(height: 16),
           _Section(
             title: 'Tarjetas',
+            trailing: _canManage && c.isActive && !_busy
+                ? TextButton.icon(
+                    onPressed: _assignCard,
+                    icon: const Icon(Icons.add_card_rounded, size: 18),
+                    label: const Text('Asignar tarjeta'),
+                  )
+                : null,
             children: [
               CardListView(
                 key: ValueKey(_cardsListGeneration),
@@ -245,10 +300,11 @@ String _formatDate(DateTime? date) {
 }
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
+  const _Section({required this.title, required this.children, this.trailing});
 
   final String title;
   final List<Widget> children;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -258,15 +314,66 @@ class _Section extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w700, color: KoonsColors.navy, fontSize: 13),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: KoonsColors.navy, fontSize: 13),
+                  ),
+                ),
+                if (trailing != null) trailing!,
+              ],
             ),
             const Divider(height: 20),
             ...children,
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Dialogo inverso a `_AssignCardDialog` de `card_detail_view.dart`: en
+/// vez de elegir a qué Tarjetahabiente darle una tarjeta ya elegida, aquí
+/// se elige qué tarjeta disponible darle a un Tarjetahabiente ya elegido.
+class _AssignCardToCardholderDialog extends StatefulWidget {
+  const _AssignCardToCardholderDialog({required this.candidates});
+
+  final List<PaymentCard> candidates;
+
+  @override
+  State<_AssignCardToCardholderDialog> createState() => _AssignCardToCardholderDialogState();
+}
+
+class _AssignCardToCardholderDialogState extends State<_AssignCardToCardholderDialog> {
+  PaymentCard? _selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Asignar tarjeta'),
+      content: SizedBox(
+        width: 360,
+        child: DropdownButtonFormField<PaymentCard>(
+          key: const Key('assign-card-dropdown'),
+          initialValue: _selected,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Tarjeta disponible'),
+          items: [
+            for (final card in widget.candidates) DropdownMenuItem(value: card, child: Text(card.maskedPan)),
+          ],
+          onChanged: (value) => setState(() => _selected = value),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(
+          onPressed: _selected == null ? null : () => Navigator.pop(context, _selected),
+          child: const Text('Asignar'),
+        ),
+      ],
     );
   }
 }

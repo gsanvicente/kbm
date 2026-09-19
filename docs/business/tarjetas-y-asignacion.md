@@ -49,8 +49,16 @@ motivo aunque su Tarjetahabiente pase a inactivo después.
 
 Configurable por Cliente (`client_settings.max_active_cards_per_cardholder`,
 mismo patrón que `approval_rules`), cuenta **solo tarjetas activas** — una
-tarjeta cancelada o reemplazada libera espacio para asignar una nueva. Sin
-límite configurado = sin restricción.
+tarjeta cancelada o reemplazada libera espacio para asignar una nueva.
+
+**Default: 1 tarjeta activa por Tarjetahabiente** — no "sin restricción".
+Es el tipo de cuenta actual de KBM el que exige esto; un Cliente puede
+tener un override explícito distinto (ej. Koons Subsidiaria B permite 2
+en el seed de esta iteración, para probar que el mecanismo sí varía por
+Cliente), pero cualquier Cliente sin override cae en el default de 1, no
+en "sin límite". Esta iteración no expone una pantalla para editar el
+valor por Cliente (mismo criterio que `approval_rules`, tampoco editable
+todavía) — vive como dato sembrado en cada repositorio/adaptador.
 
 ## Quién puede asignar
 
@@ -61,6 +69,26 @@ Tampoco se puede asignar una tarjeta a un **Tarjetahabiente inactivo** —
 ver `docs/business/desactivacion-de-tarjetahabientes.md` — el selector de
 Tarjetahabiente al asignar solo ofrece a los activos del Cliente dueño de
 la tarjeta.
+
+Dos puntos de entrada a la misma operación, en `admin/`:
+- **Desde la tarjeta** (`Tarjetas` → una tarjeta `disponible` → botón
+  "Asignar"): elige el Tarjetahabiente destino. Es el original de esta
+  feature.
+- **Desde el Tarjetahabiente** (su detalle → sección "Tarjetas" → botón
+  "Asignar tarjeta"): elige la tarjeta disponible del mismo Cliente.
+  Agregado después, porque con el límite de 1 la forma natural de
+  pensarlo es "dale una tarjeta a esta persona", no "busca una tarjeta
+  libre y dásela a alguien". Ambos llaman al mismo
+  `CardRepository.assign`, con las mismas reglas.
+
+**Fuera de alcance de esta pasada, deliberadamente**: liberar/reasignar
+una tarjeta ya asignada (devolverla al pool, o moverla a otro
+Tarjetahabiente). Con límite de 1 esto importa de verdad — hoy, si la
+única tarjeta de alguien se pierde o esa persona cambia de tarjeta, no
+hay forma de dejarle asignar una nueva sin pasar por otro camino (ej.
+bloquear la vieja no libera el cupo, `assign()` solo acepta tarjetas
+`disponible`). Se decidió no construirlo en esta pasada; revisitar antes
+de considerar el límite de 1 completamente funcional en producción.
 
 ## Quién puede bloquear / desbloquear
 
@@ -106,8 +134,12 @@ Tarjetahabiente).
   inmediato). Activarla sin la cola de Aprobaciones dejaría la operación
   atascada sin forma de aprobarla.
 
-## Backend (diseñado, pendiente de implementar)
-`docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md` migra la
+## Backend
+`docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md` migró la
 fuente de verdad de Tarjetas y Ledger (saldo/movimientos) a un backend Go
-compartido entre `admin/` y `cardholder/` — el ciclo de vida y las reglas
-de esta página no cambian, solo dónde vive el dato.
+compartido entre `admin/` y `cardholder/`, en memoria — el ciclo de vida
+y las reglas de esta página no cambiaron, solo dónde vive el dato. El
+límite de tarjetas activas por Cliente vive ahí de forma independiente
+(`backend/internal/adapters/memory/repository/seed.go`), no derivado de
+los datos de Cliente de `admin/` — ese backend no conoce la jerarquía de
+Clientes (ver esa ADR, alcance).

@@ -300,6 +300,62 @@ void main() {
     expect(find.text('Este tarjetahabiente no tiene tarjetas asignadas'), findsOneWidget);
   });
 
+  testWidgets('Admin Cliente can assign a card directly from the Tarjetahabiente detail page', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
+    await _goToSection(tester, 'Ana Torres');
+
+    expect(find.text('Este tarjetahabiente no tiene tarjetas asignadas'), findsOneWidget);
+
+    final assignButton = find.widgetWithText(TextButton, 'Asignar tarjeta');
+    await tester.ensureVisible(assignButton);
+    await tester.tap(assignButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assign-card-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('**** **** **** 2001').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.widgetWithText(FilledButton, 'Asignar'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tarjeta **** **** **** 2001 asignada a Ana Torres.'), findsOneWidget);
+    expect(find.text('Este tarjetahabiente no tiene tarjetas asignadas'), findsNothing);
+    expect(find.text('**** **** **** 2001'), findsWidgets);
+  });
+
+  testWidgets('assigning a card from the Tarjetahabiente page is rejected once at the default limit', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Tarjetahabientes');
+    await _goToSection(tester, 'Juan Perez'); // ya tiene 1 tarjeta activa; default es 1
+
+    final assignButton = find.widgetWithText(TextButton, 'Asignar tarjeta');
+    await tester.ensureVisible(assignButton);
+    await tester.tap(assignButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assign-card-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('**** **** **** 2001').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.widgetWithText(FilledButton, 'Asignar'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('máximo de 1 tarjeta'), findsOneWidget);
+  });
+
   testWidgets('assigning an available card succeeds within the configured limit', (tester) async {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
@@ -1657,6 +1713,27 @@ void main() {
 
     expect(find.textContaining('inactivo'), findsOneWidget);
     expect(find.text('Bloqueada'), findsWidgets);
+  });
+
+  testWidgets('an inactive Tarjetahabiente never shows the Asignar tarjeta button on their own page', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
+    await _goToSection(tester, 'Koons Subsidiaria B');
+    await _goToClientTab(tester, 'Tarjetahabientes');
+    await _goToSection(tester, 'Carlos Ruiz');
+
+    expect(find.widgetWithText(TextButton, 'Asignar tarjeta'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Desactivar'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextButton, 'Asignar tarjeta'), findsNothing);
   });
 
   testWidgets('reactivating a Tarjetahabiente does not automatically unblock the card it froze', (tester) async {

@@ -70,6 +70,35 @@ func TestAssign_RejectsWhenCardLimitReached(t *testing.T) {
 	}
 }
 
+func TestAssign_DefaultLimitAppliesWhenClientHasNoOverride(t *testing.T) {
+	s := NewStore()
+	ctx := context.Background()
+
+	// Cliente sintético, ausente de seedCardLimits() — debe usar
+	// defaultMaxActiveCardsPerCardholder (1), no "sin límite".
+	const clientC = "00000000-0000-0000-0000-000000000099"
+	const cardholderID = "20000000-0000-0000-0000-000000000998"
+	const firstCard = "40000000-0000-0000-0000-000000000099"
+	const secondCard = "40000000-0000-0000-0000-000000000098"
+	s.cards[firstCard] = card.Card{
+		ID: firstCard, ClientID: clientC, MaskedPAN: "**** **** **** 9999",
+		Network: card.NetworkVisa, ExpiryMonth: 1, ExpiryYear: 2030, Status: card.StatusUnassigned,
+	}
+	s.cards[secondCard] = card.Card{
+		ID: secondCard, ClientID: clientC, MaskedPAN: "**** **** **** 9998",
+		Network: card.NetworkVisa, ExpiryMonth: 1, ExpiryYear: 2030, Status: card.StatusUnassigned,
+	}
+
+	if _, err := s.Assign(ctx, firstCard, cardholderID); err != nil {
+		t.Fatalf("unexpected error assigning the first card: %v", err)
+	}
+	_, err := s.Assign(ctx, secondCard, cardholderID)
+	var limitErr *shared.CardLimitExceededError
+	if !errors.As(err, &limitErr) || limitErr.Limit != 1 {
+		t.Fatalf("expected the default limit of 1 to reject the second card, got err=%v", err)
+	}
+}
+
 func TestAssign_RejectsUnavailableCard(t *testing.T) {
 	s := NewStore()
 	ctx := context.Background()
