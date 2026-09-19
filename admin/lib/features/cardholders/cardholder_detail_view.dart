@@ -81,8 +81,8 @@ class _CardholderDetailViewState extends State<CardholderDetailView> {
         title: Text(activating ? 'Reactivar tarjetahabiente' : 'Desactivar tarjetahabiente'),
         content: Text(
           activating
-              ? '${_cardholder.fullName} podrá volver a recibir tarjetas nuevas. Sus tarjetas ya congeladas '
-                  'seguirán bloqueadas hasta que las desbloquees manualmente, una por una.'
+              ? '${_cardholder.fullName} podrá volver a recibir tarjetas nuevas. Sus tarjetas ya bloqueadas '
+                  'seguirán así hasta que las desbloquees manualmente, una por una.'
               : '${_cardholder.fullName} no podrá recibir tarjetas nuevas, y todas sus tarjetas activas se '
                   'bloquearán de inmediato. Su expediente dejará de poder editarse mientras esté inactivo.',
         ),

@@ -52,7 +52,7 @@ cascadeó. Aquí, **no**:
 - **Desactivar**: bloquea automáticamente las tarjetas sin bloqueo previo.
 - **Reactivar**: solo permite que el Tarjetahabiente vuelva a recibir
   tarjetas nuevas, y habilita que un admin **pueda** desbloquear sus
-  tarjetas congeladas — pero no las desbloquea por sí sola. Cada tarjeta
+  tarjetas bloqueadas — pero no las desbloquea por sí sola. Cada tarjeta
   requiere una acción manual y deliberada, una por una.
 
 La razón de negocio: un bloqueo automático por baja del Tarjetahabiente no

@@ -81,11 +81,19 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
   bool get _canManage => widget.session.role.canManageCardholders;
   bool get _canOperate => widget.session.role.canOperateCards;
 
-  /// Called by the "Operaciones" tab after a balance operation actually
-  /// executes (never for pending_approval/failed, since those never
-  /// touch the ledger). Re-fetching feeds the same _ledgerFuture that
-  /// both "Resumen" and "Movimientos" already key their FutureBuilder
-  /// off of, so both refresh — not just the balance number. See
+  /// Called by the "Operaciones" tab after any intento de operación de
+  /// saldo, sin importar el resultado — no solo cuando ejecuta. La
+  /// versión original solo refrescaba en "executed" (pending_approval/
+  /// failed nunca tocan el ledger *por esta operación*), pero eso
+  /// asumía que el ledger solo cambia por acciones que esta misma
+  /// pantalla dispara. Con `cardholder/` compartiendo el mismo backend
+  /// (docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md),
+  /// un "failed" por fondos insuficientes casi siempre significa que
+  /// alguien más (el propio Tarjetahabiente, típicamente) ya movió el
+  /// saldo — vale la pena refrescar la pantalla también en ese caso.
+  /// Re-fetching feeds the same _ledgerFuture that both "Resumen" and
+  /// "Movimientos" already key their FutureBuilder off of, so both
+  /// refresh — not just the balance number. See
   /// docs/feature/operacion-saldo-con-aprobacion/README.md, "Refresco
   /// del saldo mostrado".
   void _refreshLedger() {
@@ -222,9 +230,10 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
                     ledger: snapshot.data,
                     cardRepository: widget.cardRepository,
                     cardholderRepository: widget.cardholderRepository,
+                    ledgerRepository: widget.ledgerRepository,
                     balanceOperationRepository: widget.balanceOperationRepository,
                     session: widget.session,
-                    onExecuted: _refreshLedger,
+                    onOperationAttempted: _refreshLedger,
                   );
                 },
               ),
@@ -860,9 +869,10 @@ class _OperationsTab extends StatefulWidget {
     required this.ledger,
     required this.cardRepository,
     required this.cardholderRepository,
+    required this.ledgerRepository,
     required this.balanceOperationRepository,
     required this.session,
-    required this.onExecuted,
+    required this.onOperationAttempted,
   });
 
   final PaymentCard card;
@@ -870,12 +880,20 @@ class _OperationsTab extends StatefulWidget {
   final LedgerAccount? ledger;
   final CardRepository cardRepository;
   final CardholderRepository cardholderRepository;
+
+  /// Solo para releer el saldo justo antes de abrir el diálogo de una
+  /// nueva operación (ver `_openOperationDialog`) — `widget.ledger` es
+  /// una foto tomada cuando se abrió esta pestaña, que puede llevar rato
+  /// desactualizada si `cardholder/` movió saldo de esta misma tarjeta
+  /// mientras tanto (comparten backend, ver
+  /// docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md).
+  final LedgerRepository ledgerRepository;
   final BalanceOperationRepository balanceOperationRepository;
   final Session session;
 
-  /// Called after a balance operation actually executes — see
-  /// CardDetailView._refreshLedger, which this triggers.
-  final VoidCallback onExecuted;
+  /// Called after any intento de operación de saldo — ver
+  /// CardDetailView._refreshLedger, que esto dispara.
+  final VoidCallback onOperationAttempted;
 
   @override
   State<_OperationsTab> createState() => _OperationsTabState();
@@ -921,12 +939,22 @@ class _OperationsTabState extends State<_OperationsTab> {
         .where((c) => c.cardholderId != null && c.status != CardStatus.cancelled && c.id != widget.card.id)
         .toList();
 
+    // Relee el saldo justo antes de abrir el diálogo — `widget.ledger`
+    // puede llevar rato en pantalla, y `cardholder/` pudo haber movido
+    // saldo de esta misma tarjeta mientras tanto. No reemplaza la
+    // validación del backend (que siempre relee el saldo real al
+    // ejecutar, ver PostEntry en store.go), pero evita que quien decide
+    // el monto lo haga mirando un número viejo.
+    final freshLedger = await widget.ledgerRepository.getByCard(widget.card.id);
+    if (!mounted) return;
+
     final result = await showDialog<BalanceOperation>(
       context: context,
       builder: (context) => _BalanceOperationDialog(
         type: type,
         card: widget.card,
         cardholderName: widget.cardholderName,
+        currentLedger: freshLedger ?? widget.ledger,
         destinationCandidates: eligibleDestinations,
         cardholderNameById: data.cardholderNameById,
         session: widget.session,
@@ -936,7 +964,10 @@ class _OperationsTabState extends State<_OperationsTab> {
     if (result == null) return;
     if (!mounted) return;
     _reload();
-    if (result.status == OperationStatus.executed) widget.onExecuted();
+    // Cualquier intento real (ejecutado, pendiente o fallido) refresca
+    // el saldo mostrado — ver el doc de CardDetailView._refreshLedger
+    // para el porqué de incluir "failed" ahora.
+    widget.onOperationAttempted();
 
     final message = switch (result.status) {
       OperationStatus.executed => 'Operación ejecutada de inmediato.',
@@ -1046,6 +1077,7 @@ class _BalanceOperationDialog extends StatefulWidget {
     required this.type,
     required this.card,
     required this.cardholderName,
+    required this.currentLedger,
     required this.destinationCandidates,
     required this.cardholderNameById,
     required this.session,
@@ -1055,6 +1087,12 @@ class _BalanceOperationDialog extends StatefulWidget {
   final OperationType type;
   final PaymentCard card;
   final String? cardholderName;
+
+  /// Saldo justo antes de abrir este diálogo (ver
+  /// `_OperationsTab._openOperationDialog`) — null solo si la tarjeta no
+  /// tiene cuenta de saldo, lo cual no debería pasar aquí (esta pestaña
+  /// no se muestra sin `ledger`).
+  final LedgerAccount? currentLedger;
   final List<PaymentCard> destinationCandidates;
   final Map<String, String> cardholderNameById;
   final Session session;
@@ -1116,6 +1154,13 @@ class _BalanceOperationDialogState extends State<_BalanceOperationDialog> {
                 '${widget.cardholderName ?? '—'} · ${widget.card.maskedPan}',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
               ),
+              if (widget.currentLedger != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Saldo disponible: ${formatCurrency(widget.currentLedger!.balance, widget.currentLedger!.currency)}',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: KoonsColors.navy),
+                ),
+              ],
               const SizedBox(height: 20),
               CurrencyField(onChanged: (value) => _amount = value, autofocus: true),
               if (widget.type == OperationType.transfer) ...[

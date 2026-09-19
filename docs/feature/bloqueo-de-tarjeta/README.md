@@ -22,9 +22,13 @@ pantalla nueva.
   flujo de aprobación todavía, aunque el modelo de negocio sí lo
   contempla — ver `docs/business/tarjetas-y-asignacion.md`, sección
   "Quién puede bloquear / desbloquear".
-- Solo aplica a tarjetas **asignadas** (`activa` o `blocked`) — una
-  tarjeta `disponible` no tiene sentido bloquearla (nadie la tiene), y
-  `congelada`/`cancelada` quedan fuera de alcance (ver nota de negocio).
+- Solo aplica a tarjetas **asignadas** (`active`, `frozen` — "Bloqueo
+  temporal" — o `blocked`) — una tarjeta `disponible` no tiene sentido
+  bloquearla (nadie la tiene). Bloquear **sí** aplica sobre una `frozen`
+  (un bloqueo de staff siempre pesa más que el bloqueo temporal que el
+  propio Tarjetahabiente se haya puesto, ver
+  `docs/business/autoservicio-tarjetahabiente.md`); `cancelada` sigue
+  fuera de alcance (ver nota de negocio).
 - `CardRepository` (fake) gana un método `setBlocked`, análogo a
   `CardholderRepository.setActive`.
 - Desde `docs/feature/alta-y-gestion-de-tarjetahabientes/`, `setBlocked`

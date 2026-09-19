@@ -162,11 +162,46 @@ pestaña "Operaciones" cambia el saldo real (vía
 `LedgerRepository.postEntry`), pero eso no invalida por sí solo ese
 Future ya resuelto — sin una señal explícita, "Resumen" seguiría
 mostrando el saldo viejo hasta refrescar la pantalla completa. La
-pestaña "Operaciones" avisa al detalle de la tarjeta (un callback) solo
-cuando el resultado es `executed`, y el detalle vuelve a pedir la cuenta
-de saldo — como esa nueva petición alimenta el mismo `FutureBuilder` que
+pestaña "Operaciones" avisa al detalle de la tarjeta (un callback,
+`onOperationAttempted`), y el detalle vuelve a pedir la cuenta de
+saldo — como esa nueva petición alimenta el mismo `FutureBuilder` que
 usan tanto "Resumen" como "Movimientos", ambas pestañas quedan al día,
 no solo el número de saldo.
+
+**Se dispara ante cualquier intento, no solo `executed`** (cambio
+2026-09-19): la primera versión solo avisaba cuando el resultado era
+`executed`, razonando que `pending_approval`/`failed` "nunca tocan el
+ledger". Eso asumía que el ledger de una tarjeta solo cambia por
+acciones que esta misma pantalla dispara — cierto mientras `admin/` era
+la única app que podía tocar Cards/Ledger. Con
+`docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`,
+`cardholder/` comparte el mismo backend, así que un `failed` por fondos
+insuficientes casi siempre significa que el propio Tarjetahabiente
+movió su saldo (ej. una transferencia C2C) mientras un Operador tenía
+esta pantalla abierta con un número viejo en memoria — justo el caso
+que motivó este cambio, ver el punto siguiente.
+
+**El backend nunca confía en lo que ve la pantalla** — esto es
+importante separarlo del punto anterior, que es solo una mejora de UX:
+`Store.PostEntry` (donde termina tanto una operación de saldo de
+`admin/` como una transferencia C2C de `cardholder/`) relee el saldo
+real bajo un mutex y valida ahí mismo, nunca contra un número que el
+cliente le mande. Aunque `admin/` nunca refrescara nada, sería
+imposible dejar una tarjeta en negativo o aplicar un movimiento a
+medias por una pantalla desactualizada — lo único que estaba mal antes
+de este cambio era que el Operador se quedaba viendo un número viejo
+después de un rechazo, no que el rechazo mismo fuera incorrecto.
+
+**El diálogo de nueva operación también relee el saldo al abrirse**
+(mismo cambio): antes solo tenía la foto que `CardDetailView` tomó al
+entrar a la pantalla, potencialmente desactualizada por el mismo motivo
+de arriba. `_OperationsTab._openOperationDialog` ahora vuelve a pedir
+la cuenta de saldo justo antes de abrir `_BalanceOperationDialog`, que
+muestra "Saldo disponible: $X" — así quien decide el monto lo hace
+viendo un número fresco, no uno que llevaba rato en pantalla. Sigue sin
+ser una garantía (puede volver a cambiar entre que se abre el diálogo y
+se confirma) — esa garantía la sigue dando el backend, ver el punto
+anterior.
 
 ## Captura del monto
 El campo de monto nunca acepta texto libre — solo dígitos, formateado en

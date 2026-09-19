@@ -959,6 +959,27 @@ void main() {
     expect(find.text('Fallida'), findsOneWidget);
   });
 
+  testWidgets('the new-operation dialog shows the current balance, refetched when it opens', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Tarjetas');
+    await _goToSection(tester, '**** **** **** 7890'); // Carlos Ruiz, balance 75.00
+    await _goToSection(tester, 'Operaciones');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Deducción'));
+    await tester.pumpAndSettle();
+
+    // Releído justo al abrir el diálogo — ver
+    // _OperationsTab._openOperationDialog. No es solo el número que ya
+    // traía `widget.ledger`: si otra pantalla (u otra app, ver
+    // docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md)
+    // movió el saldo mientras esta pestaña estaba abierta, esto lo
+    // refleja antes de que alguien decida un monto sobre datos viejos.
+    expect(find.text('Saldo disponible: \$75.00 MXN'), findsOneWidget);
+  });
+
   testWidgets('the destination field only resolves cards from the same company', (tester) async {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
