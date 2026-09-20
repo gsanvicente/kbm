@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
+import '../../core/models/card_status.dart';
 import '../../core/models/cardholder.dart';
 import '../../core/models/payment_card.dart';
 import '../../core/models/session.dart';
@@ -54,7 +55,22 @@ class _CardholderDetailViewState extends State<CardholderDetailView> {
   /// Mismo truco que `CardholderSearchField` en el listado global.
   int _cardsListGeneration = 0;
 
+  /// Se recalcula junto con `_cardsListGeneration` — controla si el botón
+  /// "Asignar tarjeta" se muestra. Ver
+  /// docs/business/tarjetas-y-asignacion.md, "Límite de tarjetas activas
+  /// por Tarjetahabiente": no basta con que `assign` lo rechace después,
+  /// el botón no debería ofrecerse si ya no hay cupo.
+  late Future<bool> _canAssignFuture = _computeCanAssign();
+
   bool get _canManage => widget.session.role.canManageCardholders;
+
+  Future<bool> _computeCanAssign() async {
+    final max = await widget.cardRepository.maxActiveCardsPerCardholder(_cardholder.clientId);
+    if (max == null) return true;
+    final cards = await widget.cardRepository.listByCardholder(_cardholder.id);
+    final activeCount = cards.where((c) => c.status == CardStatus.active).length;
+    return activeCount < max;
+  }
 
   Future<void> _editInfo() async {
     final updated = await showDialog<Cardholder>(
@@ -105,6 +121,7 @@ class _CardholderDetailViewState extends State<CardholderDetailView> {
       _cardholder = saved;
       _busy = false;
       _cardsListGeneration++;
+      _canAssignFuture = _computeCanAssign();
     });
     widget.onChanged(saved);
   }
@@ -140,6 +157,7 @@ class _CardholderDetailViewState extends State<CardholderDetailView> {
       setState(() {
         _busy = false;
         _cardsListGeneration++;
+        _canAssignFuture = _computeCanAssign();
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Tarjeta ${selected.maskedPan} asignada a ${_cardholder.fullName}.')),
@@ -265,10 +283,18 @@ class _CardholderDetailViewState extends State<CardholderDetailView> {
           _Section(
             title: 'Tarjetas',
             trailing: _canManage && c.isActive && !_busy
-                ? TextButton.icon(
-                    onPressed: _assignCard,
-                    icon: const Icon(Icons.add_card_rounded, size: 18),
-                    label: const Text('Asignar tarjeta'),
+                ? FutureBuilder<bool>(
+                    future: _canAssignFuture,
+                    builder: (context, snapshot) {
+                      // Mientras carga u oculto si ya alcanzó su límite —
+                      // nunca ofrecer un botón que `assign` va a rechazar.
+                      if (snapshot.data == false) return const SizedBox.shrink();
+                      return TextButton.icon(
+                        onPressed: _assignCard,
+                        icon: const Icon(Icons.add_card_rounded, size: 18),
+                        label: const Text('Asignar tarjeta'),
+                      );
+                    },
                   )
                 : null,
             children: [

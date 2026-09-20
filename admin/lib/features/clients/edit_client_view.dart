@@ -383,6 +383,7 @@ class _EditClientViewState extends State<EditClientView> {
                 ),
                 DropdownButtonFormField<TipoPoder>(
                   initialValue: _apoderadoTipoPoder,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Tipo de poder'),
                   items: [for (final tipo in TipoPoder.values) DropdownMenuItem(value: tipo, child: Text(tipo.label))],
                   onChanged: (value) => setState(() => _apoderadoTipoPoder = value ?? _apoderadoTipoPoder),

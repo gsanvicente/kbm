@@ -55,6 +55,11 @@ class _ClientesSectionState extends State<ClientesSection> {
   bool _creatingClient = false;
   bool _editingClient = false;
 
+  /// Empresa padre precargada en el Paso 0 del wizard cuando se llega
+  /// desde el botón "Agregar filial" de ClientDetailView — null cuando se
+  /// llega desde el botón general del listado de Clientes.
+  String? _creatingClientParentId;
+
   /// Todos los Clientes accesibles — usado solo para resolver la cadena
   /// de ancestros del breadcrumb (ver `_ancestorChainFor`). Se llena de
   /// forma asíncrona; hasta que cargue, el breadcrumb degrada con
@@ -96,6 +101,7 @@ class _ClientesSectionState extends State<ClientesSection> {
                   _selectedCardholder = null;
                   _selectedCard = null;
                   _creatingClient = false;
+                  _creatingClientParentId = null;
                   _editingClient = false;
                 })
             : null,
@@ -147,8 +153,11 @@ class _ClientesSectionState extends State<ClientesSection> {
         child: NewClientWizard(
           session: widget.session,
           clientRepository: widget.clientRepository,
+          treasuryRepository: widget.treasuryRepository,
+          initialParentClientId: _creatingClientParentId,
           onCreated: (created) => setState(() {
             _creatingClient = false;
+            _creatingClientParentId = null;
             _selectedClient = created;
           }),
         ),
@@ -170,6 +179,10 @@ class _ClientesSectionState extends State<ClientesSection> {
     }
     if (card != null && cardholder != null && client != null) {
       return CardDetailView(
+        // Sin esto, cambiar de tarjeta sin desmontar este widget (misma
+        // posición en el árbol) deja el estado de la anterior — ver la
+        // nota equivalente en ClientDetailView más abajo.
+        key: ValueKey('card-${card.id}'),
         card: card,
         cardholderName: cardholder.fullName,
         cardRepository: widget.cardRepository,
@@ -182,6 +195,7 @@ class _ClientesSectionState extends State<ClientesSection> {
     }
     if (cardholder != null && client != null) {
       return CardholderDetailView(
+        key: ValueKey('cardholder-${cardholder.id}'),
         cardholder: cardholder,
         clientName: client.name,
         repository: widget.cardholderRepository,
@@ -193,6 +207,15 @@ class _ClientesSectionState extends State<ClientesSection> {
     }
     if (client != null) {
       return ClientDetailView(
+        // El breadcrumb (Clientes > ... > este Cliente) cambia
+        // widget.client sin desmontar ClientDetailView (misma posición en
+        // el árbol) — sin un key que dependa del id, Flutter reutiliza el
+        // State existente (didUpdateWidget, no initState) y _TreasuryTab
+        // se queda con el Future del Cliente anterior. Bug real
+        // encontrado navegando Clientes > Grupo Koons Holding > Koons
+        // Subsidiaria A > Filiar 1 y de regreso: el título cambiaba, el
+        // saldo de la Concentradora no.
+        key: ValueKey('client-${client.id}'),
         client: client,
         session: widget.session,
         cardholderRepository: widget.cardholderRepository,
@@ -201,6 +224,12 @@ class _ClientesSectionState extends State<ClientesSection> {
         onSelectCardholder: (selected) => setState(() => _selectedCardholder = selected),
         onEdit: () => setState(() => _editingClient = true),
         onClientUpdated: (updated) => setState(() => _selectedClient = updated),
+        onAddSubsidiary: widget.session.role.canManageClients
+            ? () => setState(() {
+                  _creatingClientParentId = client.id;
+                  _creatingClient = true;
+                })
+            : null,
       );
     }
     return ClientListView(

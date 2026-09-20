@@ -76,6 +76,19 @@ class FakeTreasuryRepository implements TreasuryRepository {
   }
 
   @override
+  Future<ConcentratorAccount> createConcentratorAccount(String clientId) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    final account = ConcentratorAccount(
+      id: 'concentrator-${DateTime.now().microsecondsSinceEpoch}',
+      clientId: clientId,
+      currency: 'MXN',
+      balance: 0,
+    );
+    _concentratorByClient[clientId] = account;
+    return account;
+  }
+
+  @override
   Future<List<ConcentratorEntry>> listConcentratorEntries(String concentratorAccountId) async {
     await Future.delayed(const Duration(milliseconds: 200));
     final entries = _entries.where((e) => e.concentratorAccountId == concentratorAccountId).toList();

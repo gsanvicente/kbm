@@ -142,11 +142,23 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
   Future<void> _assign() async {
     setState(() => _busy = true);
     // Un Tarjetahabiente inactivo no puede recibir tarjetas nuevas — ver
-    // docs/business/desactivacion-de-tarjetahabientes.md. Se filtra aquí
-    // (no solo se confía en el chequeo del repositorio) para no ofrecer
-    // una opción que de todas formas se va a rechazar.
+    // docs/business/desactivacion-de-tarjetahabientes.md. Uno que ya
+    // alcanzó su límite de tarjetas activas tampoco — ver
+    // docs/business/tarjetas-y-asignacion.md, "Límite de tarjetas activas
+    // por Tarjetahabiente". Ambos se filtran aquí (no solo se confía en
+    // el chequeo del repositorio) para no ofrecer una opción que de
+    // todas formas se va a rechazar.
+    final max = await widget.cardRepository.maxActiveCardsPerCardholder(_card.clientId);
+    final clientCards = max != null ? await widget.cardRepository.listByClients([_card.clientId]) : const <PaymentCard>[];
+    final activeCountByCardholder = <String, int>{};
+    for (final c in clientCards) {
+      if (c.cardholderId != null && c.status == CardStatus.active) {
+        activeCountByCardholder[c.cardholderId!] = (activeCountByCardholder[c.cardholderId!] ?? 0) + 1;
+      }
+    }
     final candidates = (await widget.cardholderRepository.listByClient(_card.clientId))
         .where((c) => c.isActive)
+        .where((c) => max == null || (activeCountByCardholder[c.id] ?? 0) < max)
         .toList();
     if (!mounted) return;
     setState(() => _busy = false);

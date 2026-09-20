@@ -8,9 +8,18 @@ import '../../core/models/ledger_entry_type.dart';
 /// docs/business/tesoreria-cliente.md.
 abstract class TreasuryRepository {
   /// null solo si el Cliente todavía no tiene una — en esta iteración
-  /// todo Cliente semilla ya tiene una (ver 001_seed.sql), pero un
-  /// Cliente nuevo hipotético no la tendría hasta crearse.
+  /// todo Cliente semilla ya tiene una (ver 001_seed.sql); un Cliente
+  /// creado desde el wizard la obtiene de inmediato vía
+  /// [createConcentratorAccount], nunca queda en null.
   Future<ConcentratorAccount?> getConcentratorAccount(String clientId);
+
+  /// Se llama una sola vez, al crear un Cliente nuevo — nace con saldo
+  /// cero. La Cuenta Colectora no necesita una creación equivalente: es
+  /// solo una lista de depósitos por clientId, que empieza vacía sin
+  /// ningún paso adicional. Ver docs/business/tesoreria-cliente.md,
+  /// "Alcance: una Concentradora y una Colectora por Cliente" — todo
+  /// Cliente (incluidas subsidiarias) tiene la suya.
+  Future<ConcentratorAccount> createConcentratorAccount(String clientId);
 
   /// Movimientos de la Concentradora, más reciente primero.
   Future<List<ConcentratorEntry>> listConcentratorEntries(String concentratorAccountId);

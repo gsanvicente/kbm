@@ -13,6 +13,7 @@ import '../../core/models/tipo_poder.dart';
 import '../../core/utils/text_formatters.dart';
 import '../../shared_widgets/date_picker_field.dart';
 import '../../shared_widgets/section_label.dart';
+import '../treasury/treasury_repository.dart';
 import 'additional_people_widgets.dart';
 import 'client_repository.dart';
 
@@ -26,12 +27,21 @@ class NewClientWizard extends StatefulWidget {
     super.key,
     required this.session,
     required this.clientRepository,
+    required this.treasuryRepository,
     required this.onCreated,
+    this.initialParentClientId,
   });
 
   final Session session;
   final ClientRepository clientRepository;
+  final TreasuryRepository treasuryRepository;
   final ValueChanged<Client> onCreated;
+
+  /// Precarga el Paso 0 con la empresa desde la que se solicitó el alta
+  /// (botón "Agregar filial" en ClientDetailView) — el usuario sigue
+  /// pudiendo cambiarla ahí mismo. Null para el alta desde el listado
+  /// general de Clientes, donde no hay una empresa "de origen".
+  final String? initialParentClientId;
 
   @override
   State<NewClientWizard> createState() => _NewClientWizardState();
@@ -94,6 +104,7 @@ class _NewClientWizardState extends State<NewClientWizard> {
   void initState() {
     super.initState();
     _parentOptionsFuture = widget.clientRepository.listAccessibleClients(widget.session);
+    _parentClientId = widget.initialParentClientId;
   }
 
   @override
@@ -282,6 +293,10 @@ class _NewClientWizardState extends State<NewClientWizard> {
     );
 
     final created = await widget.clientRepository.create(draft);
+    // Toda empresa nace con su propia Cuenta Concentradora en cero — ver
+    // docs/business/tesoreria-cliente.md, "Alcance". Sin esto, su
+    // Tesorería mostraba "Sin Cuenta Concentradora" en vez de $0.00.
+    await widget.treasuryRepository.createConcentratorAccount(created.id);
     if (!mounted) return;
     setState(() => _saving = false);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -542,6 +557,7 @@ class _NewClientWizardState extends State<NewClientWizard> {
         ),
         DropdownButtonFormField<TipoPoder>(
           initialValue: _apoderadoTipoPoder,
+          isExpanded: true,
           decoration: const InputDecoration(labelText: 'Tipo de poder'),
           items: [for (final tipo in TipoPoder.values) DropdownMenuItem(value: tipo, child: Text(tipo.label))],
           onChanged: (value) => setState(() => _apoderadoTipoPoder = value ?? _apoderadoTipoPoder),

@@ -330,7 +330,8 @@ void main() {
     expect(find.text('**** **** **** 2001'), findsWidgets);
   });
 
-  testWidgets('assigning a card from the Tarjetahabiente page is rejected once at the default limit', (tester) async {
+  testWidgets('an already-at-limit Tarjetahabiente never shows the Asignar tarjeta button on their own page',
+      (tester) async {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
     await _login(tester, 'admin.subA@koons.test');
@@ -339,21 +340,10 @@ void main() {
     await _goToClientTab(tester, 'Tarjetahabientes');
     await _goToSection(tester, 'Juan Perez'); // ya tiene 1 tarjeta activa; default es 1
 
-    final assignButton = find.widgetWithText(TextButton, 'Asignar tarjeta');
-    await tester.ensureVisible(assignButton);
-    await tester.tap(assignButton);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('assign-card-dropdown')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('**** **** **** 2001').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.widgetWithText(FilledButton, 'Asignar'),
-    ));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('máximo de 1 tarjeta'), findsOneWidget);
+    // No basta con que `assign` lo rechace después — ver
+    // docs/business/tarjetas-y-asignacion.md, "Límite de tarjetas activas
+    // por Tarjetahabiente": si ya no hay cupo, el botón no se ofrece.
+    expect(find.widgetWithText(TextButton, 'Asignar tarjeta'), findsNothing);
   });
 
   testWidgets('assigning an available card succeeds within the configured limit', (tester) async {
@@ -383,12 +373,14 @@ void main() {
     expect(find.text('MARIA GOMEZ'), findsOneWidget); // printed on the card art
   });
 
-  testWidgets('assigning a card is rejected once the cardholder is at the client limit', (tester) async {
+  testWidgets('assigning a card excludes a Tarjetahabiente who already reached their card limit', (tester) async {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();
     await _login(tester, 'super.admin@koons.test');
 
-    // Subsidiaria A allows only 1 active card/cardholder; Juan already has 1.
+    // Subsidiaria A allows only 1 active card/cardholder; Juan already has 1,
+    // Ana Torres has none — same picker exclusion as an inactive
+    // Tarjetahabiente, see the sibling test above.
     await _goToSection(tester, 'Tarjetas');
     await _goToSection(tester, '**** **** **** 2001');
 
@@ -396,16 +388,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('assign-dropdown')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Juan Perez').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.widgetWithText(FilledButton, 'Asignar'),
-    ));
-    await tester.pumpAndSettle();
 
-    expect(find.textContaining('máximo de 1 tarjeta'), findsOneWidget);
-    expect(find.text('Disponible'), findsWidgets); // still unassigned
+    expect(find.text('Juan Perez'), findsNothing);
+    expect(find.text('Ana Torres'), findsWidgets);
   });
 
   testWidgets('Operador cannot see the Asignar button on an available card', (tester) async {
@@ -1467,6 +1452,91 @@ void main() {
     await tester.tap(find.byKey(const Key('breadcrumb-0')));
     await tester.pumpAndSettle();
     expect(find.text('Nueva Empresa de Prueba SA de CV'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Agregar filial precarga la empresa padre, la filial nace con Concentradora en cero, '
+      'y el breadcrumb refresca el saldo correcto al volver', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Agregar filial'));
+    await tester.pumpAndSettle();
+
+    // Paso 0: ya viene precargada "Koons Subsidiaria A" como empresa padre
+    // — el usuario solicitó la filial desde ahí, no debería tener que
+    // volver a elegirla.
+    expect(find.text('Koons Subsidiaria A'), findsWidgets);
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.pumpAndSettle();
+
+    // Paso 1: Datos generales.
+    await tester.enterText(find.widgetWithText(TextField, 'Razón social'), 'Filial Nueva SA de CV');
+    await tester.enterText(find.widgetWithText(TextField, 'RFC'), 'FIN250101AB1');
+    await tester.enterText(find.widgetWithText(TextField, 'Objeto social / giro'), 'Comercio al por menor');
+    await _confirmDatePicker(tester, 'Fecha de constitución');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de escritura'), '12345');
+    await tester.enterText(find.widgetWithText(TextField, 'Notario público (acta)'), 'Lic. Juan Notario');
+    await tester.enterText(find.widgetWithText(TextField, 'Plaza / ciudad del notario'), 'Ciudad de México');
+    await _confirmDatePicker(tester, 'Fecha del acta');
+    await tester.enterText(find.widgetWithText(TextField, 'Folio de Registro Público de Comercio'), 'RPC-9999');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.pumpAndSettle();
+
+    // Paso 2: Domicilio fiscal.
+    await tester.enterText(find.widgetWithText(TextField, 'Calle y número'), 'Av. Siempre Viva 123');
+    await tester.enterText(find.widgetWithText(TextField, 'Colonia'), 'Centro');
+    await tester.enterText(find.widgetWithText(TextField, 'Ciudad'), 'CDMX');
+    await tester.enterText(find.widgetWithText(TextField, 'Estado'), 'CDMX');
+    await tester.enterText(find.widgetWithText(TextField, 'Código postal'), '01000');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.pumpAndSettle();
+
+    // Paso 3: Apoderado principal.
+    await tester.enterText(find.widgetWithText(TextField, 'Nombre completo del apoderado'), 'Carlos Apoderado');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de identificación (apoderado)'), 'ID12345');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de escritura del poder'), '54321');
+    await tester.enterText(find.widgetWithText(TextField, 'Notario público (del poder)'), 'Lic. Ana Notaria');
+    await _confirmDatePicker(tester, 'Fecha del instrumento');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.pumpAndSettle();
+
+    // Paso 4: Beneficiario controlador mayoritario.
+    await tester.enterText(find.widgetWithText(TextField, 'Nombre completo del beneficiario'), 'Beatriz Beneficiaria');
+    await tester.enterText(find.widgetWithText(TextField, 'Número de identificación (beneficiario)'), 'ID67890');
+    await tester.enterText(find.widgetWithText(TextField, '% de participación'), '60');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Siguiente'));
+    await tester.pumpAndSettle();
+
+    // Paso 5: Revisión.
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Crear Cliente'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Crear Cliente'));
+    await tester.pumpAndSettle();
+
+    // Aterriza en el detalle de la filial recién creada: nace con su
+    // propia Cuenta Concentradora en cero, nunca "Sin Cuenta
+    // Concentradora" — ver docs/business/tesoreria-cliente.md.
+    expect(find.text('\$0.00 MXN'), findsOneWidget);
+    expect(find.text('Sin Cuenta Concentradora'), findsNothing);
+
+    // Bug real: el breadcrumb solo cambiaba el título mostrado, nunca el
+    // contenido — sin una key por id, ClientDetailView (y su
+    // _TreasuryTab interno) reutilizaban el estado del Cliente anterior
+    // en vez de volver a pedir sus datos. Navegar de regreso a Koons
+    // Subsidiaria A por el breadcrumb debe mostrar SU saldo real, no
+    // seguir pegado en el de la filial nueva.
+    await tester.tap(find.byKey(const Key('breadcrumb-2'))); // Clientes > Grupo Koons Holding > [Koons Subsidiaria A]
+    await tester.pumpAndSettle();
+    expect(find.text('\$10,000.00 MXN'), findsOneWidget);
   });
 
   testWidgets('searching the Clientes tree filters by name and keeps ancestors visible', (tester) async {

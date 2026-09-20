@@ -34,6 +34,7 @@ class ClientDetailView extends StatefulWidget {
     required this.onSelectCardholder,
     required this.onEdit,
     required this.onClientUpdated,
+    this.onAddSubsidiary,
   });
 
   final Client client;
@@ -44,6 +45,10 @@ class ClientDetailView extends StatefulWidget {
   final ValueChanged<Cardholder> onSelectCardholder;
   final VoidCallback onEdit;
   final ValueChanged<Client> onClientUpdated;
+
+  /// Null cuando el rol de la sesión no puede crear Clientes — mismo
+  /// criterio que el botón equivalente en ClientListView.
+  final VoidCallback? onAddSubsidiary;
 
   @override
   State<ClientDetailView> createState() => _ClientDetailViewState();
@@ -146,6 +151,14 @@ class _ClientDetailViewState extends State<ClientDetailView> with SingleTickerPr
                   ],
                 ),
               ),
+              if (widget.onAddSubsidiary != null) ...[
+                OutlinedButton.icon(
+                  onPressed: widget.onAddSubsidiary,
+                  icon: const Icon(Icons.add_business_outlined, size: 18),
+                  label: const Text('Agregar filial'),
+                ),
+                const SizedBox(width: 8),
+              ],
               if (canManage) ...[
                 OutlinedButton.icon(
                   onPressed: widget.onEdit,

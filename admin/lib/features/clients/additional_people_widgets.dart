@@ -114,6 +114,7 @@ class _AddApoderadoDialogState extends State<AddApoderadoDialog> {
               const SizedBox(height: 12),
               DropdownButtonFormField<TipoPoder>(
                 initialValue: _tipoPoder,
+                isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Tipo de poder'),
                 items: [for (final tipo in TipoPoder.values) DropdownMenuItem(value: tipo, child: Text(tipo.label))],
                 onChanged: (value) => setState(() => _tipoPoder = value ?? _tipoPoder),

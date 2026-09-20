@@ -68,6 +68,7 @@ class _TarjetasSectionState extends State<TarjetasSection> {
             clipBehavior: Clip.antiAlias,
             child: selected != null
                 ? CardDetailView(
+                    key: ValueKey('card-${selected.id}'),
                     card: selected,
                     cardholderName: _selectedCardholderName,
                     cardRepository: widget.cardRepository,

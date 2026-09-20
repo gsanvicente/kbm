@@ -86,6 +86,7 @@ class _TarjetahabientesSectionState extends State<TarjetahabientesSection> {
   Widget _buildBody(Cardholder? cardholder, PaymentCard? card) {
     if (card != null && cardholder != null) {
       return CardDetailView(
+        key: ValueKey('card-${card.id}'),
         card: card,
         cardholderName: cardholder.fullName,
         cardRepository: widget.cardRepository,
@@ -98,6 +99,7 @@ class _TarjetahabientesSectionState extends State<TarjetahabientesSection> {
     }
     if (cardholder != null) {
       return CardholderDetailView(
+        key: ValueKey('cardholder-${cardholder.id}'),
         cardholder: cardholder,
         clientName: _selectedClientName ?? '—',
         repository: widget.cardholderRepository,
