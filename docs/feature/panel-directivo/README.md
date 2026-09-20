@@ -86,13 +86,31 @@ jerarquía padre/hija"):
    Dispersión/Deducción/Transferencia, últimas 12 semanas) — ver nota de
    alcance dedicada abajo.
 
-## Volumen de movimientos: dato sintético (nota de alcance importante)
-La gráfica de la sección 4 **no refleja operaciones reales**. Se genera
-de forma determinista (semilla fija, sin `DateTime.now()`) dentro de
-`FakeBalanceOperationRepository.getWeeklyTrend`, deliberadamente separada
-de `listByClients` (el historial real que alimenta las pestañas
-"Pendientes de aprobación" e "Historial completo" del hub "Operaciones
-de saldo") — nunca se mezclan.
+## Volumen de movimientos: dato sintético en modo demo, real contra Postgres
+**Actualizado 2026-09-20** (ver
+`docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`):
+esto ya no es universalmente cierto. Contra el backend Postgres
+(`HttpBalanceOperationRepository.getWeeklyTrend`), la gráfica es un
+agregado real de `balance_operations` ejecutadas, agrupado por semana —
+`backend/internal/adapters/postgres/repository/approval.go`'s
+`GetWeeklyTrend`. Solo en modo demo (`FakeBalanceOperationRepository`,
+usado cuando `KbmAdminApp.backendClient` es null — `flutter test`, o
+correr sin backend) sigue siendo el dato sintético descrito abajo.
+
+El aviso visible en la UI ("Dato ilustrativo mientras no haya
+integración bancaria real...", `dashboard_section.dart`) todavía se
+muestra sin condicionar al modo — sigue siendo cierto en modo demo, pero
+ya es excesivamente cauteloso contra Postgres (los datos ahí sí son
+reales, solo que puede no haber suficiente volumen histórico todavía
+para que la gráfica diga mucho). Pendiente: condicionar ese aviso al
+modo, no se hizo en este incremento.
+
+Descripción original del dato sintético (modo demo, sigue vigente ahí):
+se genera de forma determinista (semilla fija, sin `DateTime.now()`)
+dentro de `FakeBalanceOperationRepository.getWeeklyTrend`,
+deliberadamente separada de `listByClients` (el historial real que
+alimenta las pestañas "Pendientes de aprobación" e "Historial completo"
+del hub "Operaciones de saldo") — nunca se mezclan.
 
 - **Por qué es sintética:** el objetivo de este panel es mostrar la forma
   final de un resumen ejecutivo con volumen histórico antes de que exista

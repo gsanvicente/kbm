@@ -30,6 +30,15 @@ class KbmBackendClient {
     return _decode(response);
   }
 
+  Future<dynamic> put(String path, [Map<String, dynamic>? body]) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl$path'),
+      headers: const {'Content-Type': 'application/json'},
+      body: body != null ? jsonEncode(body) : null,
+    );
+    return _decode(response);
+  }
+
   dynamic _decode(http.Response response) {
     final hasBody = response.bodyBytes.isNotEmpty;
     final decoded = hasBody ? jsonDecode(response.body) : null;

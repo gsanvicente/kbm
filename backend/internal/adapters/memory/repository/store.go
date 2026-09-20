@@ -54,6 +54,15 @@ type Store struct {
 
 	attemptsMu     sync.Mutex
 	failedAttempts map[string]int
+
+	// claimsMu protege claims — el modo demo nunca tuvo reclamos en Go
+	// antes (vivían 100% en admin/'s HttpLedgerRepository, ver
+	// docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md);
+	// ahora que el puerto LedgerRepository los exige, este Store también
+	// los implementa, para que ambos adaptadores sigan satisfaciendo la
+	// misma interfaz.
+	claimsMu sync.RWMutex
+	claims   map[string]ledger.MovementClaim // keyed by claim ID
 }
 
 func NewStore() *Store {
@@ -65,6 +74,7 @@ func NewStore() *Store {
 		maxActiveCardsByClient: seedCardLimits(),
 		panHashByCardID:        map[string]string{},
 		failedAttempts:         map[string]int{},
+		claims:                 map[string]ledger.MovementClaim{},
 	}
 	s.seedLedger()
 	s.seedPANHashes()
@@ -239,6 +249,18 @@ func sortCardsByID(cards []card.Card) {
 	sort.Slice(cards, func(i, j int) bool { return cards[i].ID < cards[j].ID })
 }
 
+// MaxActiveCardsPerCardholder — nil cuando [clientID] no tiene override
+// en maxActiveCardsByClient; el llamador aplica su propio default (ver
+// defaultMaxActiveCardsPerCardholder en Assign). El modo demo nunca tuvo
+// client_settings real — esto solo expone el mismo mapa sembrado que
+// Assign() ya usaba.
+func (s *Store) MaxActiveCardsPerCardholder(_ context.Context, clientID string) (*int, error) {
+	if max, ok := s.maxActiveCardsByClient[clientID]; ok {
+		return &max, nil
+	}
+	return nil, nil
+}
+
 // --- LedgerRepository ------------------------------------------------------
 
 func (s *Store) GetByCard(_ context.Context, cardID string) (ledger.Account, []ledger.Entry, error) {
@@ -287,6 +309,58 @@ func (s *Store) PostEntry(_ context.Context, cardID string, entryType ledger.Ent
 	return entry, nil
 }
 
+func (s *Store) GetClaim(_ context.Context, ledgerEntryID string) (*ledger.MovementClaim, error) {
+	s.claimsMu.RLock()
+	defer s.claimsMu.RUnlock()
+	for _, c := range s.claims {
+		if c.LedgerEntryID == ledgerEntryID {
+			found := c
+			return &found, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *Store) FileClaim(_ context.Context, ledgerEntryID, reason, requestedByEmail string) (ledger.MovementClaim, error) {
+	s.claimsMu.Lock()
+	defer s.claimsMu.Unlock()
+	for _, c := range s.claims {
+		if c.LedgerEntryID == ledgerEntryID {
+			return ledger.MovementClaim{}, shared.ErrInvalidState
+		}
+	}
+	claim := ledger.MovementClaim{
+		ID:               fmt.Sprintf("claim-%d", time.Now().UnixNano()),
+		LedgerEntryID:    ledgerEntryID,
+		Reason:           reason,
+		Status:           ledger.ClaimStatusOpen,
+		RequestedByEmail: requestedByEmail,
+		CreatedAt:        time.Now(),
+	}
+	s.claims[claim.ID] = claim
+	return claim, nil
+}
+
+func (s *Store) ResolveClaim(_ context.Context, claimID string, inFavor bool, resolutionNotes, resolvedByEmail string) (ledger.MovementClaim, error) {
+	s.claimsMu.Lock()
+	defer s.claimsMu.Unlock()
+	claim, ok := s.claims[claimID]
+	if !ok {
+		return ledger.MovementClaim{}, shared.ErrNotFound
+	}
+	status := ledger.ClaimStatusRejected
+	if inFavor {
+		status = ledger.ClaimStatusResolvedFavor
+	}
+	now := time.Now()
+	claim.Status = status
+	claim.ResolvedByEmail = &resolvedByEmail
+	claim.ResolutionNotes = &resolutionNotes
+	claim.ResolvedAt = &now
+	s.claims[claimID] = claim
+	return claim, nil
+}
+
 // --- CardholderAuthRepository ------------------------------------------------------
 
 func (s *Store) Login(_ context.Context, email, password string) (cardholder.Cardholder, error) {
@@ -294,7 +368,7 @@ func (s *Store) Login(_ context.Context, email, password string) (cardholder.Car
 	defer s.cardholdersMu.RUnlock()
 
 	for _, ch := range s.cardholders {
-		if ch.Email == email {
+		if ch.Email != nil && *ch.Email == email {
 			// Capa 1 — ver docs/business/desactivacion-de-tarjetahabientes.md.
 			// Mismo mensaje genérico para contraseña incorrecta e
 			// inactivo, nunca se distingue el motivo.

@@ -87,7 +87,11 @@ type LoginResponse struct {
 }
 
 func FromCardholder(c cardholder.Cardholder) LoginResponse {
-	return LoginResponse{CardholderID: c.ID, Email: c.Email, FullName: c.FullName}
+	email := ""
+	if c.Email != nil {
+		email = *c.Email
+	}
+	return LoginResponse{CardholderID: c.ID, Email: email, FullName: c.FullName}
 }
 
 type AssignRequest struct {

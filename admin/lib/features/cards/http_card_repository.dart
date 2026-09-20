@@ -30,16 +30,6 @@ class HttpCardRepository implements CardRepository {
   final CardholderRepository cardholderRepository;
 
   /// Duplicado del `seedCardLimits()` de
-  /// backend/internal/adapters/memory/repository/seed.go — el backend es
-  /// quien de verdad hace cumplir el límite (ver `assign`); esto solo
-  /// respalda `maxActiveCardsPerCardholder`, que hoy ningún widget llama
-  /// todavía. Default de 1 para cualquier Cliente no listado — ver
-  /// docs/business/tarjetas-y-asignacion.md.
-  static const _defaultMaxActiveCardsPerCardholder = 1;
-  static const _maxActiveCardsByClient = {
-    '00000000-0000-0000-0000-000000000003': 2,
-  };
-
   PaymentCard _fromJson(Map<String, dynamic> json) {
     return PaymentCard(
       id: json['id'] as String,
@@ -77,8 +67,26 @@ class HttpCardRepository implements CardRepository {
     }
   }
 
+  /// Clientes/Tarjetahabientes creados solo en los fakes de Dart (ver
+  /// docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md, el
+  /// alcance de Clientes/Tarjetahabientes nunca migra a este backend)
+  /// tienen ids sintéticos (`'client-1758...'`, ver
+  /// FakeClientRepository.create) que nunca existen en Postgres.
+  /// Pedirle tarjetas a este backend con uno de esos ids no falla con
+  /// "no tiene tarjetas" — Postgres rechaza el id de plano por no ser un
+  /// uuid válido, lo que este backend hoy responde como un 500 genérico.
+  /// Filtrar antes de llamar evita ese error y refleja la realidad: un
+  /// Cliente/Tarjetahabiente que este backend no conoce no puede tener
+  /// tarjetas en él. Bug real: crear una empresa nueva rompía la página
+  /// de "Tarjetas" completa para *todos* los Clientes, no solo la nueva
+  /// (un solo id inválido tumbaba el Future.wait de abajo).
+  static final _uuidPattern =
+      RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+  bool _looksLikeBackendId(String id) => _uuidPattern.hasMatch(id);
+
   @override
   Future<List<PaymentCard>> listByCardholder(String cardholderId) async {
+    if (!_looksLikeBackendId(cardholderId)) return const [];
     final json = await client.get('/v1/cards?cardholder_id=$cardholderId');
     return (json as List<dynamic>).map((e) => _fromJson(e as Map<String, dynamic>)).toList();
   }
@@ -89,15 +97,22 @@ class HttpCardRepository implements CardRepository {
     // varias llamadas en vez de agregar un parámetro nuevo al contrato
     // para esta iteración interina, ver
     // docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md.
-    final results = await Future.wait(clientIds.map((id) => client.get('/v1/cards?client_id=$id')));
+    final knownIds = clientIds.where(_looksLikeBackendId);
+    final results = await Future.wait(knownIds.map((id) => client.get('/v1/cards?client_id=$id')));
     return [
       for (final json in results) ...(json as List<dynamic>).map((e) => _fromJson(e as Map<String, dynamic>)),
     ];
   }
 
+  /// Configuración real de client_settings — ver
+  /// docs/business/tarjetas-y-asignacion.md. El backend ya aplica su
+  /// propio default (1) cuando el Cliente no tiene override, así que
+  /// esta respuesta nunca es null en la práctica contra Postgres, pero
+  /// se respeta la nulabilidad del contrato por si acaso.
   @override
   Future<int?> maxActiveCardsPerCardholder(String clientId) async {
-    return _maxActiveCardsByClient[clientId] ?? _defaultMaxActiveCardsPerCardholder;
+    final json = await client.get('/v1/clients/$clientId/settings') as Map<String, dynamic>;
+    return json['maxActiveCardsPerCardholder'] as int?;
   }
 
   @override

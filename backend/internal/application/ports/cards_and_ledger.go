@@ -42,6 +42,12 @@ type CardRepository interface {
 	// docs/business/desactivacion-de-tarjetahabientes.md. Una tarjeta ya
 	// bloqueada (por el motivo que sea) no se toca.
 	FreezeAllForCardholder(ctx context.Context, cardholderID string) error
+
+	// MaxActiveCardsPerCardholder — el límite configurado en
+	// client_settings para clientID, o nil si no hay override (ver
+	// docs/business/tarjetas-y-asignacion.md; el llamador decide el
+	// default cuando es nil, ver defaultMaxActiveCardsPerCardholder).
+	MaxActiveCardsPerCardholder(ctx context.Context, clientID string) (*int, error)
 }
 
 // LedgerRepository — el subconjunto de
@@ -53,6 +59,18 @@ type LedgerRepository interface {
 	// PostEntry lanza shared.ErrInsufficientFunds para un débito que
 	// dejaría el saldo negativo — ningún ledger se modifica en ese caso.
 	PostEntry(ctx context.Context, cardID string, entryType ledger.EntryType, amount float64, description string) (ledger.Entry, error)
+
+	// GetClaim devuelve nil sin error si [ledgerEntryID] no tiene reclamo
+	// — relación 1:1, ver docs/business/reclamos-de-movimientos.md.
+	GetClaim(ctx context.Context, ledgerEntryID string) (*ledger.MovementClaim, error)
+
+	// FileClaim lanza shared.ErrInvalidState si [ledgerEntryID] ya tiene
+	// un reclamo.
+	FileClaim(ctx context.Context, ledgerEntryID, reason, requestedByEmail string) (ledger.MovementClaim, error)
+
+	// ResolveClaim — inFavor elige resolved_favor vs rejected. Nunca
+	// toca el Entry subyacente.
+	ResolveClaim(ctx context.Context, claimID string, inFavor bool, resolutionNotes, resolvedByEmail string) (ledger.MovementClaim, error)
 }
 
 // CardholderAuthRepository respalda únicamente el login del portal de

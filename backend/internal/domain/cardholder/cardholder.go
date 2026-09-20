@@ -1,20 +1,46 @@
+// Package cardholder holds the Tarjetahabiente entity and its invariants.
 package cardholder
 
-// Cardholder aquí es deliberadamente mínimo — solo lo que el login del
-// portal de autoservicio y la resolución de destino de una transferencia
-// C2C necesitan (nombre para mostrar, a qué Cliente pertenece, si puede
-// operar). El expediente KYC completo (CURP, RFC, domicilio...) sigue
-// siendo responsabilidad exclusiva de admin/'s propio repositorio fake —
-// nunca migra aquí. Ver
-// docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md.
+import (
+	"time"
+
+	"github.com/koons/kbm/backend/internal/domain/shared"
+)
+
+// Cardholder — el expediente KYC completo (admin/'s vista de gestión) más
+// lo mínimo que el login del portal de autoservicio y la resolución de
+// destino de una transferencia C2C necesitan. Antes vivía dividido entre
+// este struct mínimo y admin/'s propio repositorio fake — ver
+// docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md,
+// "Alternativas consideradas" — ahora es un solo Cardholder real,
+// igual que en admin/lib/core/models/cardholder.dart.
 type Cardholder struct {
 	ID       string
 	ClientID string
 	FullName string
-	Email    string
-	// Password en texto plano — solo-desarrollo, mismo criterio que el
-	// resto del proyecto en esta etapa (ver login-administrativo). Nunca
-	// hacer esto en un backend real.
+
+	IDDocumentType   shared.IDDocumentType
+	IDDocumentNumber string
+	CURP             *string
+	RFC              *string
+	DateOfBirth      *time.Time
+	Nationality      string
+
+	AddressStreet       *string
+	AddressNeighborhood *string
+	AddressCity         *string
+	AddressState        *string
+	AddressPostalCode   *string
+	AddressCountry      string
+
+	IsPoliticallyExposed bool
+	Email                *string
+	Phone                *string
+	IsActive             bool
+
+	// Password — solo la usa el adaptador en memoria (modo demo), en
+	// texto plano, nunca en un backend real. El adaptador Postgres
+	// verifica contra cardholder_users.password_hash (bcrypt) y nunca
+	// llena este campo — ver internal/adapters/postgres/repository/auth.go.
 	Password string
-	IsActive bool
 }

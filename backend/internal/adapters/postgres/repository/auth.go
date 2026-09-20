@@ -40,10 +40,5 @@ func (s *Store) Login(ctx context.Context, email, password string) (cardholder.C
 	delete(s.failedAttempts, row.ID)
 	s.attemptsMu.Unlock()
 
-	// cardholder.Cardholder.Password documenta "texto plano, solo
-	// desarrollo" (ver internal/domain/cardholder/cardholder.go) — aquí
-	// nunca se llena con el hash bcrypt, ya verificado arriba y no usado
-	// por ningún llamador después del login (confirmado: no se serializa
-	// en ninguna respuesta HTTP).
-	return mapper.ToCardholder(row.ID, row.ClientID, row.FullName, row.Email, row.IsActive, ""), nil
+	return mapper.ToCardholderFromLogin(row.ID, row.ClientID, row.FullName, email, row.IsActive), nil
 }

@@ -7,10 +7,29 @@ import (
 	"time"
 
 	sqlcgen "github.com/koons/kbm/backend/internal/adapters/postgres/sqlc/gen"
+	"github.com/koons/kbm/backend/internal/domain/approval"
 	"github.com/koons/kbm/backend/internal/domain/card"
 	"github.com/koons/kbm/backend/internal/domain/cardholder"
+	kbmclient "github.com/koons/kbm/backend/internal/domain/client"
 	"github.com/koons/kbm/backend/internal/domain/ledger"
+	"github.com/koons/kbm/backend/internal/domain/shared"
+	"github.com/koons/kbm/backend/internal/domain/staff"
+	"github.com/koons/kbm/backend/internal/domain/treasury"
 )
+
+func strOrDefault(s *string, def string) string {
+	if s == nil {
+		return def
+	}
+	return *s
+}
+
+func floatOrZero(f *float64) float64 {
+	if f == nil {
+		return 0
+	}
+	return *f
+}
 
 // CardRow mirrors the exact column list every query in
 // internal/adapters/postgres/sqlc/queries/cards.sql selects (same names,
@@ -51,18 +70,310 @@ func ToCard(r CardRow) card.Card {
 	return c
 }
 
-func ToCardholder(id, clientID, fullName string, email *string, isActive bool, passwordHash string) cardholder.Cardholder {
-	e := ""
-	if email != nil {
-		e = *email
-	}
+// ToCardholderFromLogin — la fila de GetCardholderForLogin trae solo lo
+// mínimo para verificar credenciales; Email se llena con el correo de
+// login usado (email), no con el contacto KYC nullable de la fila (que
+// podría estar vacío o no coincidir) — ver
+// internal/adapters/postgres/repository/auth.go.
+func ToCardholderFromLogin(id, clientID, fullName, email string, isActive bool) cardholder.Cardholder {
 	return cardholder.Cardholder{
 		ID:       id,
 		ClientID: clientID,
 		FullName: fullName,
-		Email:    e,
-		Password: passwordHash,
+		Email:    &email,
 		IsActive: isActive,
+	}
+}
+
+// CardholderRow mirrors the exact column list every cardholder-management
+// query in cardholders.sql selects — same reasoning as CardRow above.
+type CardholderRow struct {
+	ID                   string
+	ClientID             string
+	FullName             string
+	IDDocumentType       sqlcgen.IDDocumentType
+	IDDocumentNumber     string
+	Curp                 *string
+	Rfc                  *string
+	DateOfBirth          *time.Time
+	Nationality          *string
+	AddressStreet        *string
+	AddressNeighborhood  *string
+	AddressCity          *string
+	AddressState         *string
+	AddressPostalCode    *string
+	AddressCountry       *string
+	IsPoliticallyExposed bool
+	Email                *string
+	Phone                *string
+	IsActive             bool
+}
+
+func ToCardholder(r CardholderRow) cardholder.Cardholder {
+	return cardholder.Cardholder{
+		ID:                   r.ID,
+		ClientID:             r.ClientID,
+		FullName:             r.FullName,
+		IDDocumentType:       shared.IDDocumentType(r.IDDocumentType),
+		IDDocumentNumber:     r.IDDocumentNumber,
+		CURP:                 r.Curp,
+		RFC:                  r.Rfc,
+		DateOfBirth:          r.DateOfBirth,
+		Nationality:          strOrDefault(r.Nationality, "Mexicana"),
+		AddressStreet:        r.AddressStreet,
+		AddressNeighborhood:  r.AddressNeighborhood,
+		AddressCity:          r.AddressCity,
+		AddressState:         r.AddressState,
+		AddressPostalCode:    r.AddressPostalCode,
+		AddressCountry:       strOrDefault(r.AddressCountry, "México"),
+		IsPoliticallyExposed: r.IsPoliticallyExposed,
+		Email:                r.Email,
+		Phone:                r.Phone,
+		IsActive:             r.IsActive,
+	}
+}
+
+// ClientRow mirrors the exact column list every query in clients.sql
+// selects for the base Client row (without Apoderados/Beneficiarios,
+// attached separately by the caller — see repository/client.go).
+type ClientRow struct {
+	ID                  string
+	Name                string
+	ParentClientID      *string
+	IsActive            bool
+	RazonSocial         *string
+	NombreComercial     *string
+	Rfc                 *string
+	FechaConstitucion   *time.Time
+	ObjetoSocial        *string
+	ActaNumeroEscritura *string
+	ActaNotario         *string
+	ActaPlaza           *string
+	ActaFecha           *time.Time
+	ActaFolioRpc        *string
+	AddressStreet       *string
+	AddressNeighborhood *string
+	AddressCity         *string
+	AddressState        *string
+	AddressPostalCode   *string
+	AddressCountry      *string
+}
+
+func ToClient(r ClientRow, apoderados []kbmclient.ApoderadoLegal, beneficiarios []kbmclient.BeneficiarioControlador) kbmclient.Client {
+	c := kbmclient.Client{
+		ID:                         r.ID,
+		Name:                       r.Name,
+		ParentClientID:             r.ParentClientID,
+		IsActive:                   r.IsActive,
+		RazonSocial:                r.RazonSocial,
+		NombreComercial:            r.NombreComercial,
+		RFC:                        r.Rfc,
+		FechaConstitucion:          r.FechaConstitucion,
+		ObjetoSocial:               r.ObjetoSocial,
+		AddressStreet:              r.AddressStreet,
+		AddressNeighborhood:        r.AddressNeighborhood,
+		AddressCity:                r.AddressCity,
+		AddressState:               r.AddressState,
+		AddressPostalCode:          r.AddressPostalCode,
+		AddressCountry:             strOrDefault(r.AddressCountry, "México"),
+		Apoderados:                 apoderados,
+		BeneficiariosControladores: beneficiarios,
+	}
+	if r.ActaNumeroEscritura != nil && r.ActaNotario != nil && r.ActaPlaza != nil && r.ActaFecha != nil && r.ActaFolioRpc != nil {
+		c.ActaConstitutiva = &kbmclient.ActaConstitutiva{
+			NumeroEscritura: *r.ActaNumeroEscritura,
+			Notario:         *r.ActaNotario,
+			Plaza:           *r.ActaPlaza,
+			Fecha:           *r.ActaFecha,
+			FolioRPC:        *r.ActaFolioRpc,
+		}
+	}
+	return c
+}
+
+// ApoderadoRow mirrors ListApoderadosByClientRow / CreateApoderadoRow.
+type ApoderadoRow struct {
+	ID                       string
+	ClientID                 string
+	FullName                 string
+	IDDocumentType           sqlcgen.IDDocumentType
+	IDDocumentNumber         string
+	Curp                     *string
+	Rfc                      *string
+	TipoPoder                sqlcgen.ClientTipoPoder
+	DescripcionPoderEspecial *string
+	NumeroEscritura          string
+	Notario                  string
+	FechaInstrumento         time.Time
+	Vigencia                 *time.Time
+	EsPrincipal              bool
+}
+
+func ToApoderado(r ApoderadoRow) kbmclient.ApoderadoLegal {
+	return kbmclient.ApoderadoLegal{
+		ID: r.ID,
+		Persona: shared.PersonaFisica{
+			FullName:         r.FullName,
+			IDDocumentType:   shared.IDDocumentType(r.IDDocumentType),
+			IDDocumentNumber: r.IDDocumentNumber,
+			CURP:             r.Curp,
+			RFC:              r.Rfc,
+		},
+		TipoPoder:                kbmclient.TipoPoder(r.TipoPoder),
+		DescripcionPoderEspecial: r.DescripcionPoderEspecial,
+		NumeroEscritura:          r.NumeroEscritura,
+		Notario:                  r.Notario,
+		FechaInstrumento:         r.FechaInstrumento,
+		Vigencia:                 r.Vigencia,
+		EsPrincipal:              r.EsPrincipal,
+	}
+}
+
+// BeneficiarioRow mirrors ListBeneficiariosByClientRow / CreateBeneficiarioRow.
+type BeneficiarioRow struct {
+	ID                      string
+	ClientID                string
+	FullName                string
+	IDDocumentType          sqlcgen.IDDocumentType
+	IDDocumentNumber        string
+	Curp                    *string
+	Rfc                     *string
+	PorcentajeParticipacion float64
+	IsPoliticallyExposed    bool
+	EsMayoritario           bool
+}
+
+func ToBeneficiario(r BeneficiarioRow) kbmclient.BeneficiarioControlador {
+	return kbmclient.BeneficiarioControlador{
+		ID: r.ID,
+		Persona: shared.PersonaFisica{
+			FullName:         r.FullName,
+			IDDocumentType:   shared.IDDocumentType(r.IDDocumentType),
+			IDDocumentNumber: r.IDDocumentNumber,
+			CURP:             r.Curp,
+			RFC:              r.Rfc,
+		},
+		PorcentajeParticipacion: r.PorcentajeParticipacion,
+		IsPoliticallyExposed:    r.IsPoliticallyExposed,
+		EsMayoritario:           r.EsMayoritario,
+	}
+}
+
+func ToConcentratorAccount(id, clientID, currency string, balance float64) treasury.ConcentratorAccount {
+	return treasury.ConcentratorAccount{ID: id, ClientID: clientID, Currency: currency, Balance: balance}
+}
+
+// ConcentratorEntryRow mirrors ListConcentratorEntriesRow / InsertConcentratorEntryRow.
+type ConcentratorEntryRow struct {
+	ID                    string
+	ConcentratorAccountID string
+	EntryType             sqlcgen.LedgerEntryType
+	Amount                float64
+	BalanceAfter          float64
+	Description           *string
+	CreatedAt             time.Time
+}
+
+func ToConcentratorEntry(r ConcentratorEntryRow) treasury.ConcentratorEntry {
+	return treasury.ConcentratorEntry{
+		ID:                    r.ID,
+		ConcentratorAccountID: r.ConcentratorAccountID,
+		Type:                  ledger.EntryType(r.EntryType),
+		Amount:                r.Amount,
+		BalanceAfter:          r.BalanceAfter,
+		Description:           strOrDefault(r.Description, ""),
+		CreatedAt:             r.CreatedAt,
+	}
+}
+
+// CollectorDepositRow mirrors ListCollectorDepositsByClientRow / GetCollectorDepositForUpdateRow.
+type CollectorDepositRow struct {
+	ID                string
+	ClientID          string
+	Amount            float64
+	Reference         string
+	Status            sqlcgen.CollectorDepositStatus
+	RegisteredByEmail string
+	ReconciledByEmail *string
+	CreatedAt         time.Time
+	ReconciledAt      *time.Time
+}
+
+func ToCollectorDeposit(r CollectorDepositRow) treasury.CollectorDeposit {
+	return treasury.CollectorDeposit{
+		ID:                r.ID,
+		ClientID:          r.ClientID,
+		Amount:            r.Amount,
+		Reference:         r.Reference,
+		Status:            treasury.CollectorDepositStatus(r.Status),
+		RegisteredByEmail: r.RegisteredByEmail,
+		ReconciledByEmail: r.ReconciledByEmail,
+		CreatedAt:         r.CreatedAt,
+		ReconciledAt:      r.ReconciledAt,
+	}
+}
+
+func ToStaffUser(id string, clientID *string, email string, role sqlcgen.UserRole, isActive bool) staff.User {
+	return staff.User{ID: id, ClientID: clientID, Email: email, Role: staff.Role(role), IsActive: isActive}
+}
+
+// BalanceOperationRow mirrors ListBalanceOperationsByClientsRow / GetBalanceOperationForUpdateRow.
+type BalanceOperationRow struct {
+	ID                string
+	ClientID          string
+	CardID            string
+	OperationType     sqlcgen.OperationType
+	Amount            *float64
+	DestinationCardID *string
+	Status            sqlcgen.OperationStatus
+	RequestedByEmail  string
+	ResolvedByEmail   *string
+	ResolutionNotes   *string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+func ToBalanceOperation(r BalanceOperationRow) approval.Operation {
+	return approval.Operation{
+		ID:                r.ID,
+		ClientID:          r.ClientID,
+		CardID:            r.CardID,
+		Type:              approval.OperationType(r.OperationType),
+		Amount:            floatOrZero(r.Amount),
+		DestinationCardID: r.DestinationCardID,
+		Status:            approval.OperationStatus(r.Status),
+		RequestedByEmail:  r.RequestedByEmail,
+		ResolvedByEmail:   r.ResolvedByEmail,
+		ResolutionNotes:   r.ResolutionNotes,
+		CreatedAt:         r.CreatedAt,
+		UpdatedAt:         r.UpdatedAt,
+	}
+}
+
+// MovementClaimRow mirrors GetClaimByLedgerEntryRow / ListClaimsByLedgerEntriesRow.
+type MovementClaimRow struct {
+	ID               string
+	LedgerEntryID    string
+	Reason           string
+	Status           sqlcgen.ClaimStatus
+	RequestedByEmail string
+	ResolvedByEmail  *string
+	ResolutionNotes  *string
+	CreatedAt        time.Time
+	ResolvedAt       *time.Time
+}
+
+func ToMovementClaim(r MovementClaimRow) ledger.MovementClaim {
+	return ledger.MovementClaim{
+		ID:               r.ID,
+		LedgerEntryID:    r.LedgerEntryID,
+		Reason:           r.Reason,
+		Status:           ledger.ClaimStatus(r.Status),
+		RequestedByEmail: r.RequestedByEmail,
+		ResolvedByEmail:  r.ResolvedByEmail,
+		ResolutionNotes:  r.ResolutionNotes,
+		CreatedAt:        r.CreatedAt,
+		ResolvedAt:       r.ResolvedAt,
 	}
 }
 

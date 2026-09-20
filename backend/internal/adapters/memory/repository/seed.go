@@ -114,25 +114,25 @@ func seedCardholders() map[string]cardholder.Cardholder {
 	cardholders := []cardholder.Cardholder{
 		{
 			ID: "20000000-0000-0000-0000-000000000001", ClientID: clientA,
-			FullName: "Juan Perez", Email: "juan.perez@cardholder.test", Password: devPassword, IsActive: true,
+			FullName: "Juan Perez", Email: strPtr("juan.perez@cardholder.test"), Password: devPassword, IsActive: true,
 		},
 		{
 			ID: "20000000-0000-0000-0000-000000000002", ClientID: clientB,
-			FullName: "Maria Gomez", Email: "maria.gomez@cardholder.test", Password: devPassword, IsActive: true,
+			FullName: "Maria Gomez", Email: strPtr("maria.gomez@cardholder.test"), Password: devPassword, IsActive: true,
 		},
 		{
 			ID: "20000000-0000-0000-0000-000000000003", ClientID: clientA,
-			FullName: "Ana Torres", Email: "ana.torres@cardholder.test", Password: devPassword, IsActive: true,
+			FullName: "Ana Torres", Email: strPtr("ana.torres@cardholder.test"), Password: devPassword, IsActive: true,
 		},
 		{
 			ID: "20000000-0000-0000-0000-000000000004", ClientID: clientB,
-			FullName: "Carlos Ruiz", Email: "carlos.ruiz@cardholder.test", Password: devPassword, IsActive: true,
+			FullName: "Carlos Ruiz", Email: strPtr("carlos.ruiz@cardholder.test"), Password: devPassword, IsActive: true,
 		},
 		// Cuenta de demo dedicada a ejercer la Capa 1 de
 		// docs/business/desactivacion-de-tarjetahabientes.md.
 		{
 			ID: "20000000-0000-0000-0000-000000000099", ClientID: clientA,
-			FullName: "Tarjetahabiente Inactivo (demo)", Email: "inactivo@cardholder.test",
+			FullName: "Tarjetahabiente Inactivo (demo)", Email: strPtr("inactivo@cardholder.test"),
 			Password: devPassword, IsActive: false,
 		},
 	}

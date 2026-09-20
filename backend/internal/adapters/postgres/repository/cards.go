@@ -182,3 +182,18 @@ func (s *Store) SetFrozen(ctx context.Context, cardID, cardholderID string, froz
 func (s *Store) FreezeAllForCardholder(ctx context.Context, cardholderID string) error {
 	return s.q.FreezeAllUnblockedCardsForCardholder(ctx, &cardholderID)
 }
+
+func (s *Store) MaxActiveCardsPerCardholder(ctx context.Context, clientID string) (*int, error) {
+	row, err := s.q.GetClientMaxActiveCards(ctx, clientID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !row.Valid {
+		return nil, nil
+	}
+	max := int(row.Int32)
+	return &max, nil
+}

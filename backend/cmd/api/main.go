@@ -46,6 +46,16 @@ func main() {
 		}
 		store := pgrepo.NewStore(pool)
 		h = handler.New(store, store, store, store)
+		// Clientes, Tesorería, login administrativo, Aprobaciones,
+		// Cardholders (KYC) y Reclamos — ver
+		// docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md.
+		// Solo el adaptador Postgres los implementa; en modo memoria estos
+		// campos quedan nil y Routes() no registra sus rutas.
+		h.Clients = store
+		h.Treasury = store
+		h.StaffAuth = pgrepo.NewStaffAuthStore(store)
+		h.BalanceOps = store
+		h.Cardholders = pgrepo.NewManagementStore(store)
 		backend = "postgres"
 		closeFn = store.Close
 	default:

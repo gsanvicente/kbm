@@ -17,7 +17,8 @@ services:
       - kbm_postgres_data:/var/lib/postgresql/data
       - ./migrations/0001_init.sql:/docker-entrypoint-initdb.d/0001_init.sql:ro
       - ./migrations/0002_card_pan_hash_and_blocked_reason.sql:/docker-entrypoint-initdb.d/0002_migration.sql:ro
-      - ./scripts/init-db/001_seed.sql:/docker-entrypoint-initdb.d/0003_seed.sql:ro
+      - ./migrations/0003_client_kyb.sql:/docker-entrypoint-initdb.d/0003_migration.sql:ro
+      - ./scripts/init-db/001_seed.sql:/docker-entrypoint-initdb.d/0004_seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kbm -d kbm"]
       interval: 5s

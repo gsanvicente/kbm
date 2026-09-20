@@ -27,6 +27,17 @@ type Handler struct {
 	Ledger    ports.LedgerRepository
 	Auth      ports.CardholderAuthRepository
 	Transfers ports.TransferService
+
+	// Nil en modo memoria (STORAGE_BACKEND=memory) — esos ports nunca
+	// formaron parte del alcance del adaptador en memoria (ver
+	// docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md);
+	// solo el adaptador Postgres los implementa. Routes() solo registra
+	// las rutas correspondientes cuando el campo no es nil.
+	Clients     ports.ClientRepository
+	Treasury    ports.TreasuryRepository
+	StaffAuth   ports.StaffAuthRepository
+	BalanceOps  ports.BalanceOperationRepository
+	Cardholders ports.CardholderManagementRepository
 }
 
 func New(cards ports.CardRepository, ledgerRepo ports.LedgerRepository, auth ports.CardholderAuthRepository, transfers ports.TransferService) *Handler {
@@ -52,6 +63,54 @@ func (h *Handler) Routes() chi.Router {
 
 	r.Post("/v1/transfers/resolve", h.resolveTransfer)
 	r.Post("/v1/transfers/execute", h.executeTransfer)
+
+	if h.StaffAuth != nil {
+		r.Post("/v1/staff-sessions", h.staffLogin)
+	}
+
+	if h.Clients != nil {
+		r.Get("/v1/clients", h.listClients)
+		r.Post("/v1/clients", h.createClient)
+		r.Put("/v1/clients/{clientID}", h.updateClient)
+		r.Post("/v1/clients/{clientID}/active-status", h.setClientActive)
+		r.Get("/v1/clients/{clientID}/operable", h.isClientOperable)
+	}
+	if h.Cards != nil {
+		r.Get("/v1/clients/{clientID}/settings", h.getClientSettings)
+	}
+
+	if h.Treasury != nil {
+		r.Get("/v1/clients/{clientID}/treasury/concentrator", h.getConcentratorAccount)
+		r.Post("/v1/clients/{clientID}/treasury/concentrator", h.createConcentratorAccount)
+		r.Get("/v1/concentrator-accounts/{accountID}/entries", h.listConcentratorEntries)
+		r.Post("/v1/concentrator-accounts/{accountID}/entries", h.postConcentratorEntry)
+		r.Get("/v1/clients/{clientID}/treasury/collector-deposits", h.listCollectorDeposits)
+		r.Post("/v1/clients/{clientID}/treasury/collector-deposits", h.registerDeposit)
+		r.Post("/v1/collector-deposits/{depositID}/reconcile", h.reconcileDeposit)
+	}
+
+	if h.Cardholders != nil {
+		r.Get("/v1/cardholders", h.listCardholders)
+		r.Get("/v1/cardholders/{cardholderID}", h.getCardholder)
+		r.Post("/v1/cardholders", h.createCardholder)
+		r.Put("/v1/cardholders/{cardholderID}", h.updateCardholder)
+		r.Post("/v1/cardholders/{cardholderID}/active-status", h.setCardholderActive)
+	}
+
+	if h.BalanceOps != nil {
+		r.Get("/v1/balance-operations", h.listBalanceOperations)
+		r.Get("/v1/balance-operations/pending", h.listPendingBalanceOperations)
+		r.Get("/v1/balance-operations/weekly-trend", h.weeklyTrend)
+		r.Post("/v1/balance-operations", h.requestBalanceOperation)
+		r.Post("/v1/balance-operations/{operationID}/approve", h.approveBalanceOperation)
+		r.Post("/v1/balance-operations/{operationID}/reject", h.rejectBalanceOperation)
+	}
+
+	if h.Ledger != nil {
+		r.Get("/v1/ledger-entries/{entryID}/claim", h.getClaim)
+		r.Post("/v1/ledger-entries/{entryID}/claim", h.fileClaim)
+		r.Post("/v1/claims/{claimID}/resolve", h.resolveClaim)
+	}
 
 	return r
 }
@@ -253,6 +312,12 @@ func writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, shared.ErrNotFound):
 		writeErrorMessage(w, http.StatusNotFound, "no encontrado")
+	case errors.Is(err, shared.ErrForbidden):
+		// El Cliente (o Tarjetahabiente) involucrado está inactivo — admin/
+		// remapea 403 a su propia excepción tipada
+		// (ClientInactiveException/CardholderInactiveException) con el
+		// mensaje exacto que espera mostrar, no usa este texto tal cual.
+		writeErrorMessage(w, http.StatusForbidden, "esta empresa o tarjetahabiente está inactivo y no puede operar")
 	case errors.Is(err, shared.ErrInvalidCredentials):
 		writeErrorMessage(w, http.StatusUnauthorized, "Email o contraseña incorrectos.")
 	case errors.Is(err, shared.ErrTooManyFailedAttempts):

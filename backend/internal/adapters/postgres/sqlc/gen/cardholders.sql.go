@@ -7,7 +7,168 @@ package sqlcgen
 
 import (
 	"context"
+	"time"
 )
+
+const createCardholder = `-- name: CreateCardholder :one
+INSERT INTO cardholders (
+    client_id, full_name, id_document_type, id_document_number, curp, rfc,
+    date_of_birth, nationality, address_street, address_neighborhood, address_city,
+    address_state, address_postal_code, address_country, is_politically_exposed,
+    email, phone
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+)
+RETURNING id, client_id, full_name, id_document_type, id_document_number, curp, rfc,
+          date_of_birth, nationality, address_street, address_neighborhood, address_city,
+          address_state, address_postal_code, address_country, is_politically_exposed,
+          email, phone, is_active
+`
+
+type CreateCardholderParams struct {
+	ClientID             string
+	FullName             string
+	IDDocumentType       IDDocumentType
+	IDDocumentNumber     string
+	Curp                 *string
+	Rfc                  *string
+	DateOfBirth          *time.Time
+	Nationality          *string
+	AddressStreet        *string
+	AddressNeighborhood  *string
+	AddressCity          *string
+	AddressState         *string
+	AddressPostalCode    *string
+	AddressCountry       *string
+	IsPoliticallyExposed bool
+	Email                *string
+	Phone                *string
+}
+
+type CreateCardholderRow struct {
+	ID                   string
+	ClientID             string
+	FullName             string
+	IDDocumentType       IDDocumentType
+	IDDocumentNumber     string
+	Curp                 *string
+	Rfc                  *string
+	DateOfBirth          *time.Time
+	Nationality          *string
+	AddressStreet        *string
+	AddressNeighborhood  *string
+	AddressCity          *string
+	AddressState         *string
+	AddressPostalCode    *string
+	AddressCountry       *string
+	IsPoliticallyExposed bool
+	Email                *string
+	Phone                *string
+	IsActive             bool
+}
+
+func (q *Queries) CreateCardholder(ctx context.Context, arg CreateCardholderParams) (CreateCardholderRow, error) {
+	row := q.db.QueryRow(ctx, createCardholder,
+		arg.ClientID,
+		arg.FullName,
+		arg.IDDocumentType,
+		arg.IDDocumentNumber,
+		arg.Curp,
+		arg.Rfc,
+		arg.DateOfBirth,
+		arg.Nationality,
+		arg.AddressStreet,
+		arg.AddressNeighborhood,
+		arg.AddressCity,
+		arg.AddressState,
+		arg.AddressPostalCode,
+		arg.AddressCountry,
+		arg.IsPoliticallyExposed,
+		arg.Email,
+		arg.Phone,
+	)
+	var i CreateCardholderRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.FullName,
+		&i.IDDocumentType,
+		&i.IDDocumentNumber,
+		&i.Curp,
+		&i.Rfc,
+		&i.DateOfBirth,
+		&i.Nationality,
+		&i.AddressStreet,
+		&i.AddressNeighborhood,
+		&i.AddressCity,
+		&i.AddressState,
+		&i.AddressPostalCode,
+		&i.AddressCountry,
+		&i.IsPoliticallyExposed,
+		&i.Email,
+		&i.Phone,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const getCardholderByID = `-- name: GetCardholderByID :one
+SELECT id, client_id, full_name, id_document_type, id_document_number, curp, rfc,
+       date_of_birth, nationality, address_street, address_neighborhood, address_city,
+       address_state, address_postal_code, address_country, is_politically_exposed,
+       email, phone, is_active
+FROM cardholders
+WHERE id = $1
+`
+
+type GetCardholderByIDRow struct {
+	ID                   string
+	ClientID             string
+	FullName             string
+	IDDocumentType       IDDocumentType
+	IDDocumentNumber     string
+	Curp                 *string
+	Rfc                  *string
+	DateOfBirth          *time.Time
+	Nationality          *string
+	AddressStreet        *string
+	AddressNeighborhood  *string
+	AddressCity          *string
+	AddressState         *string
+	AddressPostalCode    *string
+	AddressCountry       *string
+	IsPoliticallyExposed bool
+	Email                *string
+	Phone                *string
+	IsActive             bool
+}
+
+func (q *Queries) GetCardholderByID(ctx context.Context, id string) (GetCardholderByIDRow, error) {
+	row := q.db.QueryRow(ctx, getCardholderByID, id)
+	var i GetCardholderByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.FullName,
+		&i.IDDocumentType,
+		&i.IDDocumentNumber,
+		&i.Curp,
+		&i.Rfc,
+		&i.DateOfBirth,
+		&i.Nationality,
+		&i.AddressStreet,
+		&i.AddressNeighborhood,
+		&i.AddressCity,
+		&i.AddressState,
+		&i.AddressPostalCode,
+		&i.AddressCountry,
+		&i.IsPoliticallyExposed,
+		&i.Email,
+		&i.Phone,
+		&i.IsActive,
+	)
+	return i, err
+}
 
 const getCardholderForLogin = `-- name: GetCardholderForLogin :one
 SELECT ch.id, ch.client_id, ch.full_name, ch.email, ch.is_active, cu.password_hash
@@ -48,4 +209,311 @@ func (q *Queries) GetCardholderNameByID(ctx context.Context, id string) (string,
 	var full_name string
 	err := row.Scan(&full_name)
 	return full_name, err
+}
+
+const listCardholdersByClient = `-- name: ListCardholdersByClient :many
+SELECT id, client_id, full_name, id_document_type, id_document_number, curp, rfc,
+       date_of_birth, nationality, address_street, address_neighborhood, address_city,
+       address_state, address_postal_code, address_country, is_politically_exposed,
+       email, phone, is_active
+FROM cardholders
+WHERE client_id = $1
+ORDER BY full_name
+`
+
+type ListCardholdersByClientRow struct {
+	ID                   string
+	ClientID             string
+	FullName             string
+	IDDocumentType       IDDocumentType
+	IDDocumentNumber     string
+	Curp                 *string
+	Rfc                  *string
+	DateOfBirth          *time.Time
+	Nationality          *string
+	AddressStreet        *string
+	AddressNeighborhood  *string
+	AddressCity          *string
+	AddressState         *string
+	AddressPostalCode    *string
+	AddressCountry       *string
+	IsPoliticallyExposed bool
+	Email                *string
+	Phone                *string
+	IsActive             bool
+}
+
+func (q *Queries) ListCardholdersByClient(ctx context.Context, clientID string) ([]ListCardholdersByClientRow, error) {
+	rows, err := q.db.Query(ctx, listCardholdersByClient, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCardholdersByClientRow
+	for rows.Next() {
+		var i ListCardholdersByClientRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClientID,
+			&i.FullName,
+			&i.IDDocumentType,
+			&i.IDDocumentNumber,
+			&i.Curp,
+			&i.Rfc,
+			&i.DateOfBirth,
+			&i.Nationality,
+			&i.AddressStreet,
+			&i.AddressNeighborhood,
+			&i.AddressCity,
+			&i.AddressState,
+			&i.AddressPostalCode,
+			&i.AddressCountry,
+			&i.IsPoliticallyExposed,
+			&i.Email,
+			&i.Phone,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCardholdersByClients = `-- name: ListCardholdersByClients :many
+SELECT id, client_id, full_name, id_document_type, id_document_number, curp, rfc,
+       date_of_birth, nationality, address_street, address_neighborhood, address_city,
+       address_state, address_postal_code, address_country, is_politically_exposed,
+       email, phone, is_active
+FROM cardholders
+WHERE client_id = ANY($1::uuid[])
+ORDER BY full_name
+`
+
+type ListCardholdersByClientsRow struct {
+	ID                   string
+	ClientID             string
+	FullName             string
+	IDDocumentType       IDDocumentType
+	IDDocumentNumber     string
+	Curp                 *string
+	Rfc                  *string
+	DateOfBirth          *time.Time
+	Nationality          *string
+	AddressStreet        *string
+	AddressNeighborhood  *string
+	AddressCity          *string
+	AddressState         *string
+	AddressPostalCode    *string
+	AddressCountry       *string
+	IsPoliticallyExposed bool
+	Email                *string
+	Phone                *string
+	IsActive             bool
+}
+
+func (q *Queries) ListCardholdersByClients(ctx context.Context, clientIds []string) ([]ListCardholdersByClientsRow, error) {
+	rows, err := q.db.Query(ctx, listCardholdersByClients, clientIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCardholdersByClientsRow
+	for rows.Next() {
+		var i ListCardholdersByClientsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClientID,
+			&i.FullName,
+			&i.IDDocumentType,
+			&i.IDDocumentNumber,
+			&i.Curp,
+			&i.Rfc,
+			&i.DateOfBirth,
+			&i.Nationality,
+			&i.AddressStreet,
+			&i.AddressNeighborhood,
+			&i.AddressCity,
+			&i.AddressState,
+			&i.AddressPostalCode,
+			&i.AddressCountry,
+			&i.IsPoliticallyExposed,
+			&i.Email,
+			&i.Phone,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setCardholderActive = `-- name: SetCardholderActive :one
+UPDATE cardholders SET is_active = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, client_id, full_name, id_document_type, id_document_number, curp, rfc,
+          date_of_birth, nationality, address_street, address_neighborhood, address_city,
+          address_state, address_postal_code, address_country, is_politically_exposed,
+          email, phone, is_active
+`
+
+type SetCardholderActiveParams struct {
+	ID       string
+	IsActive bool
+}
+
+type SetCardholderActiveRow struct {
+	ID                   string
+	ClientID             string
+	FullName             string
+	IDDocumentType       IDDocumentType
+	IDDocumentNumber     string
+	Curp                 *string
+	Rfc                  *string
+	DateOfBirth          *time.Time
+	Nationality          *string
+	AddressStreet        *string
+	AddressNeighborhood  *string
+	AddressCity          *string
+	AddressState         *string
+	AddressPostalCode    *string
+	AddressCountry       *string
+	IsPoliticallyExposed bool
+	Email                *string
+	Phone                *string
+	IsActive             bool
+}
+
+func (q *Queries) SetCardholderActive(ctx context.Context, arg SetCardholderActiveParams) (SetCardholderActiveRow, error) {
+	row := q.db.QueryRow(ctx, setCardholderActive, arg.ID, arg.IsActive)
+	var i SetCardholderActiveRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.FullName,
+		&i.IDDocumentType,
+		&i.IDDocumentNumber,
+		&i.Curp,
+		&i.Rfc,
+		&i.DateOfBirth,
+		&i.Nationality,
+		&i.AddressStreet,
+		&i.AddressNeighborhood,
+		&i.AddressCity,
+		&i.AddressState,
+		&i.AddressPostalCode,
+		&i.AddressCountry,
+		&i.IsPoliticallyExposed,
+		&i.Email,
+		&i.Phone,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const updateCardholder = `-- name: UpdateCardholder :one
+UPDATE cardholders SET
+    full_name = $2, id_document_type = $3, id_document_number = $4, curp = $5, rfc = $6,
+    date_of_birth = $7, nationality = $8, address_street = $9, address_neighborhood = $10,
+    address_city = $11, address_state = $12, address_postal_code = $13, address_country = $14,
+    is_politically_exposed = $15, email = $16, phone = $17, updated_at = now()
+WHERE id = $1
+RETURNING id, client_id, full_name, id_document_type, id_document_number, curp, rfc,
+          date_of_birth, nationality, address_street, address_neighborhood, address_city,
+          address_state, address_postal_code, address_country, is_politically_exposed,
+          email, phone, is_active
+`
+
+type UpdateCardholderParams struct {
+	ID                   string
+	FullName             string
+	IDDocumentType       IDDocumentType
+	IDDocumentNumber     string
+	Curp                 *string
+	Rfc                  *string
+	DateOfBirth          *time.Time
+	Nationality          *string
+	AddressStreet        *string
+	AddressNeighborhood  *string
+	AddressCity          *string
+	AddressState         *string
+	AddressPostalCode    *string
+	AddressCountry       *string
+	IsPoliticallyExposed bool
+	Email                *string
+	Phone                *string
+}
+
+type UpdateCardholderRow struct {
+	ID                   string
+	ClientID             string
+	FullName             string
+	IDDocumentType       IDDocumentType
+	IDDocumentNumber     string
+	Curp                 *string
+	Rfc                  *string
+	DateOfBirth          *time.Time
+	Nationality          *string
+	AddressStreet        *string
+	AddressNeighborhood  *string
+	AddressCity          *string
+	AddressState         *string
+	AddressPostalCode    *string
+	AddressCountry       *string
+	IsPoliticallyExposed bool
+	Email                *string
+	Phone                *string
+	IsActive             bool
+}
+
+func (q *Queries) UpdateCardholder(ctx context.Context, arg UpdateCardholderParams) (UpdateCardholderRow, error) {
+	row := q.db.QueryRow(ctx, updateCardholder,
+		arg.ID,
+		arg.FullName,
+		arg.IDDocumentType,
+		arg.IDDocumentNumber,
+		arg.Curp,
+		arg.Rfc,
+		arg.DateOfBirth,
+		arg.Nationality,
+		arg.AddressStreet,
+		arg.AddressNeighborhood,
+		arg.AddressCity,
+		arg.AddressState,
+		arg.AddressPostalCode,
+		arg.AddressCountry,
+		arg.IsPoliticallyExposed,
+		arg.Email,
+		arg.Phone,
+	)
+	var i UpdateCardholderRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.FullName,
+		&i.IDDocumentType,
+		&i.IDDocumentNumber,
+		&i.Curp,
+		&i.Rfc,
+		&i.DateOfBirth,
+		&i.Nationality,
+		&i.AddressStreet,
+		&i.AddressNeighborhood,
+		&i.AddressCity,
+		&i.AddressState,
+		&i.AddressPostalCode,
+		&i.AddressCountry,
+		&i.IsPoliticallyExposed,
+		&i.Email,
+		&i.Phone,
+		&i.IsActive,
+	)
+	return i, err
 }

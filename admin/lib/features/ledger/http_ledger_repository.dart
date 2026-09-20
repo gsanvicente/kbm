@@ -12,13 +12,11 @@ import '../clients/client_repository.dart';
 import 'ledger_repository.dart';
 
 /// Implementación real de `LedgerRepository` contra el backend compartido
-/// para saldo/movimientos — ver
-/// docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md.
-/// Reclamos (`MovementClaim`) se quedan 100% en memoria local de Dart, tal
-/// como esa ADR decidió: no forman parte del alcance de datos
-/// compartidos, y esta clase mezcla ambas fuentes sin que su interfaz
-/// pública lo note — mismo criterio que `FakeCardholderBackend` del lado
-/// de `cardholder/`.
+/// para saldo/movimientos y reclamos — ver
+/// docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md y
+/// docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md
+/// (reclamos migraron a Postgres en ese segundo incremento; hasta
+/// entonces vivían 100% en memoria local de esta clase).
 ///
 /// `ledgerAccountId` es, en este esquema, literalmente el `cardId` — el
 /// backend en memoria no tiene un concepto de cuenta separado del de
@@ -42,18 +40,36 @@ class HttpLedgerRepository implements LedgerRepository {
   /// docs/business/desactivacion-de-clientes.md, "Capa 2".
   final ClientRepository clientRepository;
 
-  final List<MovementClaim> _claims = [
-    // Mismo dato de demo que ya traía FakeLedgerRepository — Juan Perez
-    // disputa su "Compra en restaurante", dejado en revisión.
-    MovementClaim(
-      id: '70000000-0000-0000-0000-000000000001',
-      ledgerEntryId: '60000000-0000-0000-0000-000000000002',
-      reason: 'No reconozco este cargo.',
-      status: ClaimStatus.inReview,
-      requestedByEmail: 'operador.subA@koons.test',
-      createdAt: DateTime(2026, 1, 16, 8, 0),
-    ),
-  ];
+  MovementClaim _claimFromJson(Map<String, dynamic> json) {
+    return MovementClaim(
+      id: json['id'] as String,
+      ledgerEntryId: json['ledgerEntryId'] as String,
+      reason: json['reason'] as String,
+      status: _claimStatusFromJson(json['status'] as String),
+      requestedByEmail: json['requestedByEmail'] as String,
+      resolvedByEmail: json['resolvedByEmail'] as String?,
+      resolutionNotes: json['resolutionNotes'] as String?,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      resolvedAt: json['resolvedAt'] != null ? DateTime.parse(json['resolvedAt'] as String) : null,
+    );
+  }
+
+  // El wire trae snake_case (in_review/resolved_favor) — no coincide con
+  // los identificadores Dart (camelCase), se mapea a mano.
+  ClaimStatus _claimStatusFromJson(String v) {
+    switch (v) {
+      case 'open':
+        return ClaimStatus.open;
+      case 'in_review':
+        return ClaimStatus.inReview;
+      case 'resolved_favor':
+        return ClaimStatus.resolvedFavor;
+      case 'rejected':
+        return ClaimStatus.rejected;
+      default:
+        return ClaimStatus.open;
+    }
+  }
 
   LedgerEntry _entryFromJson(String ledgerAccountId, Map<String, dynamic> json) {
     return LedgerEntry(
@@ -105,18 +121,24 @@ class HttpLedgerRepository implements LedgerRepository {
 
   @override
   Future<Map<String, MovementClaim>> getClaims(List<String> ledgerEntryIds) async {
+    // Sin endpoint por lote — se combinan varias llamadas, mismo criterio
+    // que HttpCardRepository.listByClients.
+    final results = await Future.wait(ledgerEntryIds.map((id) async => MapEntry(id, await getClaim(id))));
     return {
-      for (final claim in _claims)
-        if (ledgerEntryIds.contains(claim.ledgerEntryId)) claim.ledgerEntryId: claim,
+      for (final entry in results)
+        if (entry.value != null) entry.key: entry.value!,
     };
   }
 
   @override
   Future<MovementClaim?> getClaim(String ledgerEntryId) async {
-    for (final claim in _claims) {
-      if (claim.ledgerEntryId == ledgerEntryId) return claim;
+    try {
+      final json = await client.get('/v1/ledger-entries/$ledgerEntryId/claim') as Map<String, dynamic>;
+      return _claimFromJson(json);
+    } on KbmBackendException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
     }
-    return null;
   }
 
   /// Verifica que el Cliente dueño de [cardId] pueda operar — igual que
@@ -140,19 +162,16 @@ class HttpLedgerRepository implements LedgerRepository {
     if (!await _isOperableForCard(cardId)) {
       throw const ClientInactiveException();
     }
-    if (_claims.any((c) => c.ledgerEntryId == ledgerEntryId)) {
-      throw StateError('Este movimiento ya tiene un reclamo.');
+    try {
+      final json = await client.post('/v1/ledger-entries/$ledgerEntryId/claim', {
+        'reason': reason,
+        'requestedByEmail': requestedByEmail,
+      }) as Map<String, dynamic>;
+      return _claimFromJson(json);
+    } on KbmBackendException catch (e) {
+      if (e.statusCode == 409) throw StateError('Este movimiento ya tiene un reclamo.');
+      rethrow;
     }
-    final claim = MovementClaim(
-      id: 'claim-${DateTime.now().microsecondsSinceEpoch}',
-      ledgerEntryId: ledgerEntryId,
-      reason: reason,
-      status: ClaimStatus.open,
-      requestedByEmail: requestedByEmail,
-      createdAt: DateTime.now(),
-    );
-    _claims.add(claim);
-    return claim;
   }
 
   @override
@@ -163,19 +182,20 @@ class HttpLedgerRepository implements LedgerRepository {
     required String resolutionNotes,
     required String resolvedByEmail,
   }) async {
-    final index = _claims.indexWhere((c) => c.id == claimId);
-    if (index == -1) throw NotFoundException('Reclamo $claimId no encontrado');
     if (!await _isOperableForCard(cardId)) {
       throw const ClientInactiveException();
     }
-    final updated = _claims[index].copyWith(
-      status: inFavor ? ClaimStatus.resolvedFavor : ClaimStatus.rejected,
-      resolvedByEmail: resolvedByEmail,
-      resolutionNotes: resolutionNotes,
-      resolvedAt: DateTime.now(),
-    );
-    _claims[index] = updated;
-    return updated;
+    try {
+      final json = await client.post('/v1/claims/$claimId/resolve', {
+        'inFavor': inFavor,
+        'resolutionNotes': resolutionNotes,
+        'resolvedByEmail': resolvedByEmail,
+      }) as Map<String, dynamic>;
+      return _claimFromJson(json);
+    } on KbmBackendException catch (e) {
+      if (e.statusCode == 404) throw NotFoundException('Reclamo $claimId no encontrado');
+      rethrow;
+    }
   }
 
   @override

@@ -185,6 +185,50 @@ func (ns NullClaimStatus) Value() (driver.Value, error) {
 	return string(ns.ClaimStatus), nil
 }
 
+type ClientTipoPoder string
+
+const (
+	ClientTipoPoderActosDeAdministracion ClientTipoPoder = "actos_de_administracion"
+	ClientTipoPoderPleitosYCobranzas     ClientTipoPoder = "pleitos_y_cobranzas"
+	ClientTipoPoderActosDeDominio        ClientTipoPoder = "actos_de_dominio"
+	ClientTipoPoderEspecial              ClientTipoPoder = "especial"
+)
+
+func (e *ClientTipoPoder) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ClientTipoPoder(s)
+	case string:
+		*e = ClientTipoPoder(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ClientTipoPoder: %T", src)
+	}
+	return nil
+}
+
+type NullClientTipoPoder struct {
+	ClientTipoPoder ClientTipoPoder
+	Valid           bool // Valid is true if ClientTipoPoder is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullClientTipoPoder) Scan(value interface{}) error {
+	if value == nil {
+		ns.ClientTipoPoder, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ClientTipoPoder.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullClientTipoPoder) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ClientTipoPoder), nil
+}
+
 type CollectorDepositStatus string
 
 const (
@@ -451,7 +495,7 @@ type ApprovalRule struct {
 	ClientID         string
 	OperationType    OperationType
 	RequiresApproval bool
-	MinAmount        pgtype.Numeric
+	MinAmount        *float64
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -472,7 +516,7 @@ type BalanceOperation struct {
 	ClientID          string
 	CardID            string
 	OperationType     OperationType
-	Amount            pgtype.Numeric
+	Amount            *float64
 	DestinationCardID *string
 	Status            OperationStatus
 	RequestedBy       string
@@ -508,7 +552,7 @@ type Cardholder struct {
 	IDDocumentNumber     string
 	Curp                 *string
 	Rfc                  *string
-	DateOfBirth          pgtype.Date
+	DateOfBirth          *time.Time
 	Nationality          *string
 	AddressStreet        *string
 	AddressNeighborhood  *string
@@ -534,12 +578,60 @@ type CardholderUser struct {
 }
 
 type Client struct {
-	ID             string
-	Name           string
-	ParentClientID *string
-	IsActive       bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                  string
+	Name                string
+	ParentClientID      *string
+	IsActive            bool
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	RazonSocial         *string
+	NombreComercial     *string
+	Rfc                 *string
+	FechaConstitucion   *time.Time
+	ObjetoSocial        *string
+	ActaNumeroEscritura *string
+	ActaNotario         *string
+	ActaPlaza           *string
+	ActaFecha           *time.Time
+	ActaFolioRpc        *string
+	AddressStreet       *string
+	AddressNeighborhood *string
+	AddressCity         *string
+	AddressState        *string
+	AddressPostalCode   *string
+	AddressCountry      *string
+}
+
+type ClientApoderado struct {
+	ID                       string
+	ClientID                 string
+	FullName                 string
+	IDDocumentType           IDDocumentType
+	IDDocumentNumber         string
+	Curp                     *string
+	Rfc                      *string
+	TipoPoder                ClientTipoPoder
+	DescripcionPoderEspecial *string
+	NumeroEscritura          string
+	Notario                  string
+	FechaInstrumento         time.Time
+	Vigencia                 *time.Time
+	EsPrincipal              bool
+	CreatedAt                time.Time
+}
+
+type ClientBeneficiario struct {
+	ID                      string
+	ClientID                string
+	FullName                string
+	IDDocumentType          IDDocumentType
+	IDDocumentNumber        string
+	Curp                    *string
+	Rfc                     *string
+	PorcentajeParticipacion float64
+	IsPoliticallyExposed    bool
+	EsMayoritario           bool
+	CreatedAt               time.Time
 }
 
 type ClientHierarchy struct {

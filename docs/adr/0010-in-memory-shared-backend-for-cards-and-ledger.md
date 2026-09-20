@@ -32,12 +32,16 @@ lo mínimo que necesita reflejarse entre ambas apps:
    portal y para resolver el destino de una transferencia C2C
    (`cardholders`, sin sus campos KYC — esos siguen sin ser necesarios
    fuera de `admin/`).
-2. **Explícitamente fuera de este alcance** (siguen 100% en los
-   repositorios fake de `admin/`, sin cambio): jerarquía de Clientes,
+2. **Explícitamente fuera de este alcance** en ese momento (seguían
+   100% en los repositorios fake de `admin/`): jerarquía de Clientes,
    expediente KYB, Tesorería (Concentradora/Colectora), `approval_rules`
    y el estado `pending_approval` de una operación, reclamos
-   (`movement_claims`). Ninguno de estos necesita ser visible desde
-   `cardholder/` todavía.
+   (`movement_claims`). Ninguno de estos necesitaba ser visible desde
+   `cardholder/` todavía — eso sigue siendo cierto. **Actualizado
+   2026-09-20**: todos esos dominios sí migraron a Postgres (siguen sin
+   ser consumidos por `cardholder/`, esa parte del razonamiento no
+   cambió) — ver
+   `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`.
 3. **El hash de PAN se calcula en el servidor**, no en el cliente Dart —
    corrige la implementación interina de
    `docs/feature/transferencia-c2c-tarjetahabiente/README.md` (que,

@@ -12,8 +12,11 @@ como opción explícita. Este TDR es la implementación de esa decisión:
 cómo se estructura el adaptador Postgres real, con el mismo alcance que
 ya cubre el adaptador en memoria — Cards, Ledger, login del portal de
 autoservicio y transferencias C2C. Clientes, Tarjetahabientes (KYC),
-Aprobaciones, Tesorería y Reclamos siguen 100% en los fakes de Dart de
-`admin/`, sin cambio.
+Aprobaciones, Tesorería y Reclamos seguían 100% en los fakes de Dart de
+`admin/` en ese momento — migraron a Postgres poco después, ver
+`docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`.
+El adaptador en memoria (modo demo) nunca cubrió esos dominios ni los
+cubrirá — quedan fuera de su alcance, ver ADR-0010.
 
 ## Decisión
 `internal/adapters/postgres/repository.Store` implementa los mismos
