@@ -26,6 +26,13 @@ class CardholderAuthController extends ChangeNotifier {
       _session = await _repository.login(email: email, password: password);
     } on AuthException catch (e) {
       _error = e.message;
+    } catch (_) {
+      // No es un rechazo de credenciales (AuthException) — típicamente un
+      // error de red hacia el backend compartido (ver
+      // docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md).
+      // Sin este catch, el error quedaba sin mostrar: el botón se
+      // reactivaba y parecía que "no pasaba nada".
+      _error = 'No se pudo conectar. Verifica tu conexión e intenta de nuevo.';
     } finally {
       _isLoading = false;
       notifyListeners();

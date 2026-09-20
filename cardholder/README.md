@@ -46,14 +46,16 @@ not be read as a planned feature.
 Implementado: login (con la misma regla de Cliente/Tarjetahabiente
 inactivo que `admin/`), selector de tarjeta cuando hay más de una,
 navegación persistente por tarjeta (Inicio/Movimientos, `CardholderShell`)
-con tarjeta visual (`CardArt`) en vez de solo texto, Movimientos (lista de
-la cuenta, sin filtro de fechas), y la transferencia C2C completa — ver
-`docs/feature/transferencia-c2c-tarjetahabiente/README.md`.
+con tarjeta visual (`PaymentCardVisual`) en vez de solo texto, Movimientos
+(lista de la cuenta, sin filtro de fechas), la transferencia C2C completa
+— ver `docs/feature/transferencia-c2c-tarjetahabiente/README.md` — y el
+bloqueo temporal de la propia tarjeta ("Congelar vs. bloquear", ver
+`docs/business/autoservicio-tarjetahabiente.md`).
 
-Pendiente: filtro de fechas/resumen de periodo en Movimientos,
-congelar/descongelar la propia tarjeta, presentar reclamos — ver
-"Pantallas" en `docs/feature/portal-autoservicio-tarjetahabiente/README.md`
-para el detalle.
+Pendiente: filtro de fechas/resumen de periodo en Movimientos, presentar
+reclamos — ver "Pantallas" en
+`docs/feature/portal-autoservicio-tarjetahabiente/README.md` para el
+detalle.
 
 ## Backend: compartido en memoria con `admin/` (ver ADR-0010)
 
@@ -90,9 +92,54 @@ arriba.
 Puerto `8766` a propósito (junto al `8765` de `admin/`) para poder correr
 ambas apps al mismo tiempo durante desarrollo, contra el mismo backend.
 
-Android/iOS (`--platforms=android,ios`) no se generaron todavía — se
-agregan cuando haya necesidad real de probar en un dispositivo/emulador
-móvil.
+## Probar en mobile/desktop nativo (2026-09-19)
+
+`android/` y `macos/` ya se generaron (`flutter create --platforms=android,macos .`,
+sin tocar `lib/`) — `ios/` todavía no, se agrega igual cuando haga falta.
+El código Dart no cambia entre plataformas (nada de `dart:html`/`kIsWeb`);
+lo que sí cambia es cómo cada una llega al backend en `127.0.0.1:8080` y
+qué permisos de red nativos hace falta declarar:
+
+- **macOS** (`flutter run -d macos`): comparte el loopback de esta
+  máquina, así que el default (`127.0.0.1:8080`) funciona tal cual — pero
+  macOS sandboxea la app por default y **no** da salida de red a menos
+  que se declare. Se agregó `com.apple.security.network.client` a
+  `macos/Runner/{Debug,Release}.entitlements` — sin esto, toda petición
+  de `HttpCardholderBackend` falla en silencio.
+- **Emulador de Android** (`flutter run -d <emulator-id>`): tiene su
+  propia red virtual — `127.0.0.1` ahí apunta al emulador, no al host.
+  Se resuelve con `10.0.2.2` en vez de `127.0.0.1`, nunca tocando dónde
+  escucha el backend (sigue en loopback, ver threat-model punto 15).
+  `lib/main.dart` acepta esto vía `--dart-define=KBM_BACKEND_URL=http://10.0.2.2:8080`,
+  sin hardcodear nada específico de Android en el código. Android 9+
+  también bloquea HTTP sin cifrar por default (el backend interino no
+  tiene TLS todavía) — se agregó
+  `android/app/src/debug/res/xml/network_security_config.xml`
+  (solo debug, nunca se mergea en release) permitiendo cleartext hacia
+  `10.0.2.2`/`127.0.0.1`/`localhost`.
+- **Dispositivo físico** (Android o iOS): no comparte el loopback de esta
+  máquina — necesitaría la IP de LAN, lo cual implica decidir si el
+  backend escucha temporalmente fuera de `127.0.0.1`. Deliberadamente no
+  resuelto todavía — es una excepción a una decisión de seguridad ya
+  documentada (threat-model punto 15), se pregunta antes de tocarla.
+
+Verificado en vivo (emulador Android, API 34, arm64) contra el backend
+real: login, saldo, Movimientos y el ciclo completo de bloqueo
+temporal/quitarlo — los tres corriendo con datos reales del mismo
+backend que usa `admin/`.
+
+Este entorno de desarrollo no tenía Android SDK ni Xcode completo
+instalados — si vuelve a hacer falta desde cero: `brew install openjdk@17`
+(Gradle actual no soporta el JDK más nuevo, ver más abajo) y
+`brew install --cask android-commandlinetools`, luego
+`flutter config --jdk-dir="$(brew --prefix openjdk@17)"` y
+`flutter config --android-sdk "$(brew --prefix)/share/android-commandlinetools"`.
+
+**Nota de esta máquina**: `brew install openjdk` (sin versión) instala el
+JDK más reciente, que Gradle todavía no soporta del todo ("Unsupported
+class file major version") — por eso el JDK que realmente usa Flutter
+para Android es la versión 17 fijada explícitamente vía
+`flutter config --jdk-dir`, no la que quede primero en el `PATH`.
 
 ## Credenciales de prueba
 

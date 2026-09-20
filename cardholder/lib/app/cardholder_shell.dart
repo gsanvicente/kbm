@@ -102,17 +102,27 @@ class _CardholderShellState extends State<CardholderShell> {
           )
         : MovementsTab(card: _card, cardRepository: widget.cardRepository);
 
-    final content = Column(
-      children: [
-        _TopBar(
-          title: _selected.label,
-          cardholderName: widget.cardholderName,
-          cardholderEmail: widget.cardholderEmail,
-          onBack: widget.onBack,
-          onLogout: widget.onLogout,
-        ),
-        Expanded(child: body),
-      ],
+    // SafeArea (top) — un AppBar real de Flutter evita la barra de estado
+    // del sistema automáticamente; _TopBar es un Container a mano y no lo
+    // hace solo. Sin esto, en un teléfono real/emulador (nunca en
+    // web/desktop, donde no hay barra de estado) el encabezado queda
+    // dibujado debajo del reloj/batería del sistema. bottom: false — la
+    // barra inferior (NavigationBar) ya respeta su propio inset de
+    // sistema por su cuenta.
+    final content = SafeArea(
+      bottom: false,
+      child: Column(
+        children: [
+          _TopBar(
+            title: _selected.label,
+            cardholderName: widget.cardholderName,
+            cardholderEmail: widget.cardholderEmail,
+            onBack: widget.onBack,
+            onLogout: widget.onLogout,
+          ),
+          Expanded(child: body),
+        ],
+      ),
     );
 
     return Scaffold(
