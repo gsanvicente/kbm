@@ -19,6 +19,12 @@ contenerizar y desplegar en AWS sin rediseño.
   conteneriza localmente** (`backend/docker-compose.yml`), con scripts de
   inicialización (`backend/migrations/`, `backend/scripts/init-db/`) para
   levantar datos de prueba automáticamente.
+- **Herramienta de contenedores local: Podman, no Docker Desktop**
+  (actualizado 2026-09-20) — más ligero, sin el daemon en background.
+  `backend/docker-compose.yml` no cambia (Podman lo consume igual, vía
+  `podman compose`); solo cambia qué motor lo ejecuta en desarrollo. Para
+  el despliegue en AWS (`backend/deploy/docker/`) esto es irrelevante —
+  ECS Fargate no usa ni Docker Desktop ni Podman.
 - Ya existen `Dockerfile`s (`backend/deploy/docker/`) para el despliegue en
   AWS, pero no se usan en desarrollo local.
 
@@ -37,3 +43,6 @@ contenerizar y desplegar en AWS sin rediseño.
   independiente del lenguaje de la app.
 - **Desarrollo local totalmente contenerizado (app incluida)**: descartado
   por requisito explícito del usuario.
+- **Docker Desktop** (motor original elegido para Postgres local):
+  reemplazado por Podman — mismo `docker-compose.yml`, motor más ligero,
+  sin daemon persistente en background.

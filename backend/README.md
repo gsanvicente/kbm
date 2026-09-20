@@ -25,12 +25,13 @@ internal/application
 internal/adapters
   http/                  REST handlers, middleware, DTOs (driving adapter)
   memory/                 in-memory repositories for cards/ledger/cardholder
-                          login — temporary, see
+                          login — modo demo explícito
+                          (STORAGE_BACKEND=memory), see
                           docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md
                           and docs/tdr/0003-in-memory-repository-adapter.md
-  postgres/               repositories + sqlc + domain<->row mappers (not
-                          wired up yet — `memory/` is what's actually used
-                          today, see ADR-0010)
+  postgres/               repositories + sqlc + domain<->row mappers — el
+                          backend por defecto (STORAGE_BACKEND=postgres),
+                          see docs/tdr/0004-postgres-repository-adapter.md
   processor/              external card processor gateway
   queue/{local,sqs}       async messaging, swappable per environment
   auth/{local,cognito}    identity provider, swappable per environment
@@ -45,42 +46,56 @@ deploy/docker/       Dockerfile for AWS deployment (not used locally)
 docs/tdr/            technical decisions local to this component
 ```
 
-## Running locally (current: in-memory, no Postgres)
+## Running locally — Postgres real (persistente, vía Podman) — default
 
-As of `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`,
-`cmd/api` runs against `internal/adapters/memory/` — no Docker, no
-Postgres, no `.env` setup needed. It's the shared source of truth for
-Tarjetas/Ledger/Tarjetahabiente-login used by both `../admin` and
-`../cardholder` while developing — **both Flutter apps expect this
-process running on `127.0.0.1:8080`** before they can list cards, show
-balances, or transfer.
-
-```
-go run ./cmd/api
-```
-
-Data resets every time this process restarts (seeded fresh from
-`internal/adapters/memory` on boot, same IDs the two Flutter apps'
-former fake repositories used) — see the ADR for why this is accepted for
-now.
-
-## Running locally (later: real Postgres)
-
-Requires Go 1.22+ and Docker (for Postgres only — the app itself runs
-natively, no containers needed for the backend process). Not wired up to
-`cmd/api` yet — this is the target state once
-`internal/adapters/postgres/` replaces `memory/`.
+`cmd/api` corre contra `internal/adapters/postgres/` por default
+(`STORAGE_BACKEND=postgres`, ver
+`docs/adr/0011-processor-integration-architecture-and-postgres-default.md`
+y `docs/tdr/0004-postgres-repository-adapter.md`). Requiere Go 1.23+ y
+[Podman](https://podman.io) (no Docker Desktop, ver
+`docs/adr/0004-aws-fargate-terraform-local-no-containers.md`) — la app
+en sí sigue corriendo nativa, nunca en contenedor, en desarrollo local.
 
 ```
+brew install podman podman-compose   # una sola vez
+podman machine init && podman machine start   # una sola vez
 cp .env.example .env
-make db-up      # starts Postgres, applies migrations/0001_init.sql and
-                # scripts/init-db/001_seed.sql automatically on first boot
+make db-up      # levanta Postgres, aplica migrations/*.sql y
+                # scripts/init-db/001_seed.sql automáticamente la primera vez
 make run        # go run ./cmd/api
-make run-worker # in a separate terminal, go run ./cmd/worker
+make run-worker # en otra terminal, go run ./cmd/worker
 ```
 
-`make db-reset` wipes the local Postgres volume so the init scripts re-run
-from scratch (useful after editing the schema or seed data).
+Es el que hoy usan `../admin` y `../cardholder` — **ambas apps esperan
+este proceso en `127.0.0.1:8080`** para listar tarjetas, ver saldos o
+transferir. Los datos ahora **persisten** entre reinicios del backend y
+del propio contenedor — el volumen (`kbm_postgres_data`) es nombrado y
+sobrevive a `podman compose down` (o `make db-down`) sin bandera `-v`.
+Verificado en vivo, incluyendo tras el cambio a este adaptador: se bajó
+el contenedor por completo y se volvió a levantar sin perder los datos
+sembrados ni el resultado de operaciones hechas contra la API mientras
+tanto (asignaciones, transferencias). `make db-reset` sí lo borra a
+propósito (`down -v`), para cuando se edite el schema o el seed y haga
+falta reaplicar desde cero — necesario también si tu Postgres local
+todavía tiene el volumen de antes de `migrations/0002_card_pan_hash_and_blocked_reason.sql`,
+ya que `/docker-entrypoint-initdb.d` solo corre en un volumen nuevo.
+
+Si `DATABASE_URL` no está configurada, `cmd/api` falla al arrancar con
+un mensaje explícito — no cae en silencio al modo memoria.
+
+## Running locally — modo demo (en memoria, sin Postgres)
+
+`STORAGE_BACKEND=memory go run ./cmd/api` corre contra
+`internal/adapters/memory/` en su lugar — sin Podman, sin `.env`, datos
+sembrados en memoria en cada arranque y **nunca persistidos**. Se
+conserva a propósito para pruebas rápidas de UI que no necesitan que el
+dato sobreviva un reinicio. Ver
+`docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md` y
+`docs/tdr/0003-in-memory-repository-adapter.md`.
+
+```
+STORAGE_BACKEND=memory go run ./cmd/api
+```
 
 ## Deploying (later)
 

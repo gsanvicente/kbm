@@ -76,8 +76,14 @@ el destino de una transferencia C2C, bajo estas reglas estrictas:
   versión interina de
   `docs/feature/transferencia-c2c-tarjetahabiente/README.md`, que a
   falta de backend calculaba el HMAC dentro del repositorio fake de
-  `cardholder/`. Sigue siendo en memoria (sin Postgres todavía), no el
-  almacén persistente final.
+  `cardholder/`.
+- **Actualizado** (2026-09-20,
+  `docs/adr/0011-processor-integration-architecture-and-postgres-default.md`):
+  el adaptador Postgres real (`internal/adapters/postgres/`, ver
+  `backend/docs/tdr/0004-postgres-repository-adapter.md`) ya persiste el
+  hash en `cards.pan_hash` — este es ahora el almacén persistente final
+  para el alcance vigente (Cards/Ledger/login/transferencias C2C); el
+  adaptador en memoria sigue existiendo solo como modo demo explícito.
 
 ## Alternativas consideradas
 - **Cifrado reversible en vez de hash**: descartado — no hay ningún caso

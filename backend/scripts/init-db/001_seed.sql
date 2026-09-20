@@ -52,15 +52,24 @@ INSERT INTO cardholder_users (id, cardholder_id, email, password_hash) VALUES
     ('30000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'maria.gomez@cardholder.test', crypt('LocalDevOnly123!', gen_salt('bf'))),
     ('30000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000004', 'carlos.ruiz@cardholder.test', crypt('LocalDevOnly123!', gen_salt('bf')));
 
--- Ana Torres intentionally has no card yet — exercises the empty-state UI
--- in docs/feature/tarjetas-de-tarjetahabiente/, and is the natural demo
--- target for assigning her one from the available pool below (Subsidiaria
--- A's limit is 1 active card/tarjetahabiente — she's under it, Juan is
--- already at it — see docs/feature/pool-y-asignacion-de-tarjetas/).
-INSERT INTO cards (id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, assigned_at) VALUES
-    ('40000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', '**** **** **** 1234', 'visa', 8, 2027, 'active', now()),
-    ('40000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002', '**** **** **** 5678', 'mastercard', 3, 2026, 'active', now()),
-    ('40000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000004', '**** **** **** 7890', 'visa', 11, 2026, 'blocked', now());
+-- pan_hash values below are the HMAC-SHA256 (pgcrypto's hmac(), same
+-- algorithm as internal/adapters/memory/repository/transfer.go's
+-- hashPAN()) of a synthetic full PAN that's never itself stored — see
+-- migrations/0002_card_pan_hash.sql and
+-- docs/adr/0009-pan-hash-transit-for-c2c-transfers.md. The dev-only key
+-- matches the one hardcoded in the memory adapter, purely so both
+-- backends' demo data stay traceable to the same fake PANs — there's no
+-- technical relationship between the two.
+--
+-- Ana Torres has a card too (added here — she started card-less to
+-- exercise the pool/assignment empty-state UI, but keeping her card-less
+-- would make the Postgres-backed demo diverge from the in-memory one now
+-- that Postgres is the default, see ADR-0011).
+INSERT INTO cards (id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, assigned_at, pan_hash, blocked_reason) VALUES
+    ('40000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', '**** **** **** 1234', 'visa', 8, 2027, 'active', now(), encode(hmac('4111111111111234', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), NULL),
+    ('40000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002', '**** **** **** 5678', 'mastercard', 3, 2026, 'active', now(), encode(hmac('5500000000005678', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), NULL),
+    ('40000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000004', '**** **** **** 7890', 'visa', 11, 2026, 'blocked', now(), encode(hmac('4111111111117890', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), 'manual'),
+    ('40000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000003', '**** **** **** 5566', 'mastercard', 2, 2028, 'active', '2026-01-22 09:00:00-06', encode(hmac('5500000000005566', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), NULL);
 
 -- Available pool: belongs to a Cliente already, not yet assigned to anyone.
 INSERT INTO cards (id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, assigned_at) VALUES
@@ -72,6 +81,7 @@ INSERT INTO cards (id, client_id, cardholder_id, masked_pan, network, expiry_mon
 INSERT INTO ledger_accounts (id, client_id, card_id, currency) VALUES
     ('50000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000001', 'MXN'),
     ('50000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000002', 'MXN'),
+    ('50000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000010', 'MXN'),
     ('50000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000004', 'MXN');
 
 -- Movement history so the balance shown in the UI has real traceability
@@ -85,7 +95,8 @@ INSERT INTO ledger_entries (id, client_id, ledger_account_id, entry_type, amount
     ('60000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000001', 'credit', 400.00, 1250.00, 'Carga de fondos', '2026-01-20 10:00:00-06'),
     ('60000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000002', 'credit', 500.00, 500.00, 'Carga inicial', '2026-01-12 09:00:00-06'),
     ('60000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000002', 'debit', 159.50, 340.50, 'Compra en línea', '2026-01-18 16:45:00-06'),
-    ('60000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000004', 'credit', 75.00, 75.00, 'Carga inicial', '2026-01-15 09:00:00-06');
+    ('60000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000004', 'credit', 75.00, 75.00, 'Carga inicial', '2026-01-15 09:00:00-06'),
+    ('60000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000003', 'credit', 300.00, 300.00, 'Carga inicial', '2026-01-22 09:00:00-06');
 
 -- Demo claim: Juan Perez disputes his "Compra en restaurante" debit.
 -- Filed by the Operador, left "in_review" (a status no UI action sets

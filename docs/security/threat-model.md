@@ -191,8 +191,10 @@ desbloquea sus tarjetas automáticamente, para que ese paso quede sujeto a
 una revisión manual explícita — ver
 `docs/business/desactivacion-de-tarjetahabientes.md`.
 
-## 15. Backend compartido en memoria expuesto más allá de localhost, o con CORS abierto
+## 15. Backend compartido (memoria o Postgres) expuesto más allá de localhost, o con CORS abierto
 **Riesgo:** `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`
+(y, desde que Postgres pasó a ser el default,
+`docs/adr/0011-processor-integration-architecture-and-postgres-default.md`)
 introduce un proceso Go real (no solo repositorios fake dentro de cada
 app Flutter) que recibe el PAN completo en claro
 (`docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`) en el cuerpo de
