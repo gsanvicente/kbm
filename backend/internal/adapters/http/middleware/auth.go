@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/koons/kbm/backend/internal/adapters/auth/local"
+	"github.com/koons/kbm/backend/internal/domain/staff"
 )
 
 type claimsCtxKey struct{}
@@ -73,4 +74,31 @@ func RequireStaff(next http.Handler) http.Handler {
 func ClaimsFromContext(ctx context.Context) (*local.Claims, bool) {
 	claims, ok := ctx.Value(claimsCtxKey{}).(*local.Claims)
 	return claims, ok
+}
+
+// RequireRole se monta después de RequireStaff (nunca antes — un token
+// de Tarjetahabiente no tiene Role) para las rutas cuyo permiso depende
+// del rol de staff exacto, no solo de "ser staff" — ver
+// internal/adapters/http/handler/authz.go, que agrupa cada endpoint en
+// uno de los dos conjuntos de docs/business/roles-and-permissions.md
+// (mismo criterio que admin/lib/core/models/role.dart ya aplica del lado
+// del cliente; esto es la misma regla reforzada en el servidor, para que
+// no dependa únicamente de que la UI oculte el botón correcto).
+func RequireRole(allowed ...staff.Role) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, ok := ClaimsFromContext(r.Context())
+			if !ok || claims.Type != local.SubjectStaff {
+				writeForbidden(w)
+				return
+			}
+			for _, role := range allowed {
+				if claims.Role == string(role) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			writeForbidden(w)
+		})
+	}
 }

@@ -1,7 +1,7 @@
 # Login administrativo
 
 - Estado: Implementado contra Postgres (`HttpAuthRepository` por default; `FakeAuthRepository` solo para `flutter test`, ver nota de alcance)
-- ADR/TDR relacionados: `docs/adr/0001-go-hexagonal-modular-monolith.md`, `docs/adr/0006-openapi-contract.md`, `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`, `docs/adr/0013-jwt-session-authentication.md`
+- ADR/TDR relacionados: `docs/adr/0001-go-hexagonal-modular-monolith.md`, `docs/adr/0006-openapi-contract.md`, `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`, `docs/adr/0013-jwt-session-authentication.md`, `docs/adr/0015-server-side-role-authorization-and-login-audit-log.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 (control de acceso), 7 (secretos/credenciales) y 13 (enforcement de Cliente inactivo)
 - Roles/actores involucrados: Super Admin, Admin Cliente, Operador, Auditor (todos los roles de staff — ver `docs/business/roles-and-permissions.md`)
 
@@ -38,7 +38,11 @@ producción.
    ancestro) está inactivo → se rechaza con un mensaje genérico (no se
    revela cuál de los motivos fue).
 5. Todo intento (éxito o fallo) queda registrado en `audit_log` (backend
-   real — no aplica al repositorio fake de esta iteración).
+   real — no aplica al repositorio fake de esta iteración). El motivo
+   exacto de un fallo (`invalid_password`, `inactive`, `client_inactive`)
+   se guarda ahí para uso interno de auditoría — nunca se expone en la
+   respuesta HTTP, que sigue devolviendo el mismo mensaje genérico. Ver
+   `docs/adr/0015-server-side-role-authorization-and-login-audit-log.md`.
 6. El token expira a las 12 horas (sin refresh) — pasado ese tiempo,
    cualquier petición falla y exige volver a iniciar sesión. El token
    vive solo en memoria del proceso de `admin/`; recargar la página

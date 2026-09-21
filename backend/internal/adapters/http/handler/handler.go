@@ -93,61 +93,89 @@ func (h *Handler) Routes() chi.Router {
 
 		r.Group(func(r chi.Router) {
 			r.Use(authmw.RequireStaff)
-			r.Post("/v1/cards/{cardID}/assign", h.assignCard)
-			r.Post("/v1/cards/{cardID}/block-status", h.setBlockStatus)
-			r.Post("/v1/cards/{cardID}/ledger/entries", h.postLedgerEntry)
-			r.Post("/v1/cardholders/{cardholderID}/freeze-cards", h.freezeCards)
 
+			// Lecturas — cualquier rol de staff dentro de su alcance (RLS
+			// ya lo acota), incluido Auditor. Ver
+			// docs/business/roles-and-permissions.md: "ver" nunca requiere
+			// más que ser staff.
 			if h.Clients != nil {
 				r.Get("/v1/clients", h.listClients)
-				r.Post("/v1/clients", h.createClient)
-				r.Put("/v1/clients/{clientID}", h.updateClient)
-				r.Post("/v1/clients/{clientID}/active-status", h.setClientActive)
 				r.Get("/v1/clients/{clientID}/operable", h.isClientOperable)
 			}
 			if h.Cards != nil {
 				r.Get("/v1/clients/{clientID}/settings", h.getClientSettings)
-				r.Put("/v1/clients/{clientID}/settings", h.setClientSettings)
 			}
 			if h.BalanceOps != nil {
 				r.Get("/v1/clients/{clientID}/approval-rules", h.listApprovalRules)
-				r.Put("/v1/clients/{clientID}/approval-rules/{operationType}", h.setApprovalRule)
-				r.Delete("/v1/clients/{clientID}/approval-rules/{operationType}", h.deleteApprovalRule)
-			}
-
-			if h.Treasury != nil {
-				r.Get("/v1/clients/{clientID}/treasury/concentrator", h.getConcentratorAccount)
-				r.Post("/v1/clients/{clientID}/treasury/concentrator", h.createConcentratorAccount)
-				r.Get("/v1/concentrator-accounts/{accountID}/entries", h.listConcentratorEntries)
-				r.Post("/v1/concentrator-accounts/{accountID}/entries", h.postConcentratorEntry)
-				r.Get("/v1/clients/{clientID}/treasury/collector-deposits", h.listCollectorDeposits)
-				r.Post("/v1/clients/{clientID}/treasury/collector-deposits", h.registerDeposit)
-				r.Post("/v1/collector-deposits/{depositID}/reconcile", h.reconcileDeposit)
-			}
-
-			if h.Cardholders != nil {
-				r.Get("/v1/cardholders", h.listCardholders)
-				r.Get("/v1/cardholders/{cardholderID}", h.getCardholder)
-				r.Post("/v1/cardholders", h.createCardholder)
-				r.Put("/v1/cardholders/{cardholderID}", h.updateCardholder)
-				r.Post("/v1/cardholders/{cardholderID}/active-status", h.setCardholderActive)
-			}
-
-			if h.BalanceOps != nil {
 				r.Get("/v1/balance-operations", h.listBalanceOperations)
 				r.Get("/v1/balance-operations/pending", h.listPendingBalanceOperations)
 				r.Get("/v1/balance-operations/weekly-trend", h.weeklyTrend)
-				r.Post("/v1/balance-operations", h.requestBalanceOperation)
-				r.Post("/v1/balance-operations/{operationID}/approve", h.approveBalanceOperation)
-				r.Post("/v1/balance-operations/{operationID}/reject", h.rejectBalanceOperation)
 			}
-
+			if h.Treasury != nil {
+				r.Get("/v1/clients/{clientID}/treasury/concentrator", h.getConcentratorAccount)
+				r.Get("/v1/concentrator-accounts/{accountID}/entries", h.listConcentratorEntries)
+				r.Get("/v1/clients/{clientID}/treasury/collector-deposits", h.listCollectorDeposits)
+			}
+			if h.Cardholders != nil {
+				r.Get("/v1/cardholders", h.listCardholders)
+				r.Get("/v1/cardholders/{cardholderID}", h.getCardholder)
+			}
 			if h.Ledger != nil {
 				r.Get("/v1/ledger-entries/{entryID}/claim", h.getClaim)
-				r.Post("/v1/ledger-entries/{entryID}/claim", h.fileClaim)
-				r.Post("/v1/claims/{claimID}/resolve", h.resolveClaim)
 				r.Get("/v1/claims", h.listClaims)
 			}
+
+			// manageRoles — Super Admin/Admin Cliente, ver authz.go.
+			r.Group(func(r chi.Router) {
+				r.Use(authmw.RequireRole(manageRoles...))
+				r.Post("/v1/cards/{cardID}/assign", h.assignCard)
+				r.Post("/v1/cardholders/{cardholderID}/freeze-cards", h.freezeCards)
+
+				if h.Clients != nil {
+					r.Post("/v1/clients", h.createClient)
+					r.Put("/v1/clients/{clientID}", h.updateClient)
+					r.Post("/v1/clients/{clientID}/active-status", h.setClientActive)
+				}
+				if h.Cards != nil {
+					r.Put("/v1/clients/{clientID}/settings", h.setClientSettings)
+				}
+				if h.BalanceOps != nil {
+					r.Put("/v1/clients/{clientID}/approval-rules/{operationType}", h.setApprovalRule)
+					r.Delete("/v1/clients/{clientID}/approval-rules/{operationType}", h.deleteApprovalRule)
+					r.Post("/v1/balance-operations/{operationID}/approve", h.approveBalanceOperation)
+					r.Post("/v1/balance-operations/{operationID}/reject", h.rejectBalanceOperation)
+				}
+				if h.Treasury != nil {
+					r.Post("/v1/clients/{clientID}/treasury/concentrator", h.createConcentratorAccount)
+					r.Post("/v1/collector-deposits/{depositID}/reconcile", h.reconcileDeposit)
+				}
+				if h.Cardholders != nil {
+					r.Post("/v1/cardholders", h.createCardholder)
+					r.Put("/v1/cardholders/{cardholderID}", h.updateCardholder)
+					r.Post("/v1/cardholders/{cardholderID}/active-status", h.setCardholderActive)
+				}
+				if h.Ledger != nil {
+					r.Post("/v1/claims/{claimID}/resolve", h.resolveClaim)
+				}
+			})
+
+			// operateRoles — todos salvo Auditor, ver authz.go.
+			r.Group(func(r chi.Router) {
+				r.Use(authmw.RequireRole(operateRoles...))
+				r.Post("/v1/cards/{cardID}/block-status", h.setBlockStatus)
+				r.Post("/v1/cards/{cardID}/ledger/entries", h.postLedgerEntry)
+
+				if h.Treasury != nil {
+					r.Post("/v1/concentrator-accounts/{accountID}/entries", h.postConcentratorEntry)
+					r.Post("/v1/clients/{clientID}/treasury/collector-deposits", h.registerDeposit)
+				}
+				if h.BalanceOps != nil {
+					r.Post("/v1/balance-operations", h.requestBalanceOperation)
+				}
+				if h.Ledger != nil {
+					r.Post("/v1/ledger-entries/{entryID}/claim", h.fileClaim)
+				}
+			})
 		})
 	})
 

@@ -17,17 +17,19 @@ casos de uso (no solo por el handler HTTP) — ver
 `backend/internal/application/ports/doc.go` — más Row-Level Security en
 Postgres como segunda barrera (defensa en profundidad, ver ADR-0003).
 **Estado (2026-09-21):** identidad verificada por request (JWT, ver
-`docs/adr/0013-jwt-session-authentication.md`) y Row-Level Security con
-políticas reales (ver `docs/adr/0014-row-level-security-policies.md`)
-ya existen como segunda barrera de verdad — verificado en vivo que un
-query mal filtrado del lado de la aplicación ya no alcanza datos de otro
-Cliente. `AuthorizationPort` en sí (una decisión de autorización
-centralizada invocada por todos los casos de uso) sigue sin construirse;
-hoy el filtrado por rol/jerarquía para decidir qué **acciones** puede
-tomar un rol sigue viviendo client-side en `admin/` (ver ADR-0012, punto
-7), y los ownership-checks de "alcance mixto" (Cards/Ledger/
-transferencias, ADR-0013 punto 4) se resuelven a mano en el handler, no
-vía un port de autorización genérico.
+`docs/adr/0013-jwt-session-authentication.md`), Row-Level Security con
+políticas reales (`docs/adr/0014-row-level-security-policies.md`), y
+autorización por rol reforzada en el servidor
+(`docs/adr/0015-server-side-role-authorization-and-login-audit-log.md`,
+`middleware.RequireRole`) — verificado en vivo que un Auditor ya no
+puede aprobar una operación de saldo ni un Operador conciliar un
+depósito golpeando el endpoint directamente, aunque la UI de `admin/`
+nunca les muestre ese botón. Sigue sin existir un `AuthorizationPort`
+genérico invocado por una capa de casos de uso (este backend interino no
+tiene esa capa todavía) — el equivalente hoy es `RequireRole` montado
+explícitamente en `Routes()`, y los ownership-checks de "alcance mixto"
+(Cards/Ledger/transferencias, ADR-0013 punto 4) se siguen resolviendo a
+mano en el handler.
 
 ## 2. Fuga de datos entre tenants
 **Riesgo:** un query mal filtrado devuelve datos de otro Cliente,
@@ -60,6 +62,13 @@ operación de saldo, dificultando la auditoría después de un incidente.
 **Mitigación de diseño:** `balance_operations` guarda `requested_by`,
 `approved_by`, y cada transición pasa por el patrón Outbox
 (`outbox_events`) hacia `audit_log`.
+**Estado (2026-09-21):** `requested_by`/`resolved_by` en
+`balance_operations` ya existen y se pueblan (ver ADR-0012). `audit_log`
+en sí ya recibe escrituras reales, pero acotadas a intentos de login
+(ver `docs/adr/0015-server-side-role-authorization-and-login-audit-log.md`)
+— el patrón Outbox hacia `audit_log` para las transiciones de
+`balance_operations` (solicitar/aprobar/rechazar) sigue sin construirse;
+`outbox_events` sigue sin ningún escritor.
 
 ## 5. Integración con el procesador de tarjetas externo
 **Riesgo:** un webhook falso o repetido del procesador (spoofing, replay)

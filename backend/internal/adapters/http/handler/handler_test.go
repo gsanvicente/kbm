@@ -44,6 +44,26 @@ func cardholderToken(t *testing.T, srv http.Handler) string {
 	return resp.AccessToken
 }
 
+// staffToken loguea a cualquiera de los usuarios de staff sembrados en
+// memory/repository/staff_auth.go y devuelve su JWT.
+func staffToken(t *testing.T, srv http.Handler, email string) string {
+	t.Helper()
+	rec := postJSON(t, srv, "", "/v1/staff-sessions", dto.StaffLoginRequest{
+		Email: email, Password: "LocalDevOnly123!",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("staff login failed for %s: %d: %s", email, rec.Code, rec.Body.String())
+	}
+	var resp dto.StaffLoginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.AccessToken == "" {
+		t.Fatalf("expected a non-empty accessToken for %s", email)
+	}
+	return resp.AccessToken
+}
+
 func postJSON(t *testing.T, srv http.Handler, token, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	b, err := json.Marshal(body)
@@ -257,5 +277,53 @@ func TestStaffLogin_IssuesTokenForStaffOnlyEndpoint(t *testing.T) {
 	allowed := postJSON(t, srv, resp.AccessToken, "/v1/cards/40000000-0000-0000-0000-000000000001/block-status", dto.BlockStatusRequest{Blocked: true})
 	if allowed.Code != http.StatusOK {
 		t.Fatalf("expected 200 for a staff token on a staff-only endpoint, got %d: %s", allowed.Code, allowed.Body.String())
+	}
+}
+
+// TestOperateRoles_BlockStatus — bloquear/desbloquear una tarjeta es
+// operateRoles (todos salvo Auditor), ver
+// internal/adapters/http/handler/authz.go y
+// docs/business/roles-and-permissions.md.
+func TestOperateRoles_BlockStatus(t *testing.T) {
+	srv := newTestServer()
+	const cardID = "40000000-0000-0000-0000-000000000001"
+
+	auditorTok := staffToken(t, srv, "auditor.subA@koons.test")
+	auditorRec := postJSON(t, srv, auditorTok, "/v1/cards/"+cardID+"/block-status", dto.BlockStatusRequest{Blocked: true})
+	if auditorRec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for auditor, got %d: %s", auditorRec.Code, auditorRec.Body.String())
+	}
+
+	operatorTok := staffToken(t, srv, "operador.subA@koons.test")
+	operatorRec := postJSON(t, srv, operatorTok, "/v1/cards/"+cardID+"/block-status", dto.BlockStatusRequest{Blocked: true})
+	if operatorRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for operator, got %d: %s", operatorRec.Code, operatorRec.Body.String())
+	}
+}
+
+// TestManageRoles_AssignCard — asignar una tarjeta del pool es
+// manageRoles (Super Admin/Admin Cliente únicamente); un Operador puede
+// bloquear/desbloquear (ver TestOperateRoles_BlockStatus) pero no
+// asignar. Ver internal/adapters/http/handler/authz.go.
+func TestManageRoles_AssignCard(t *testing.T) {
+	srv := newTestServer()
+	const availableCardID = "40000000-0000-0000-0000-000000000006" // pool disponible, Koons Subsidiaria A
+	const anaTorresID = "20000000-0000-0000-0000-000000000003"     // sin tarjeta propia todavía
+
+	operatorTok := staffToken(t, srv, "operador.subA@koons.test")
+	forbidden := postJSON(t, srv, operatorTok, "/v1/cards/"+availableCardID+"/assign", dto.AssignRequest{CardholderID: anaTorresID})
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for operator, got %d: %s", forbidden.Code, forbidden.Body.String())
+	}
+
+	// Ana Torres ya tiene una tarjeta activa en el seed (límite de 1 por
+	// defecto, ver docs/business/tarjetas-y-asignacion.md) — este
+	// endpoint pasa el chequeo de rol y llega a la regla de negocio, que
+	// lo rechaza con 409, no 403. Lo que importa aquí es que
+	// client_admin nunca reciba el 403 de rol que sí recibió operator.
+	adminTok := staffToken(t, srv, "admin.subA@koons.test")
+	allowed := postJSON(t, srv, adminTok, "/v1/cards/"+availableCardID+"/assign", dto.AssignRequest{CardholderID: anaTorresID})
+	if allowed.Code == http.StatusForbidden {
+		t.Fatalf("expected client_admin to pass the role check (business-rule status is fine), got 403: %s", allowed.Body.String())
 	}
 }

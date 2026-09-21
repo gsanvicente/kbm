@@ -56,7 +56,10 @@ de la gestión de saldos del staff (sin Concentradora/Colectora, sin
   transferencias) verifica que el `cardholderId` del token coincida con
   el del recurso pedido — pedir el de otro Tarjetahabiente se rechaza
   con el mismo 404 genérico que ya usaba el resto del sistema para
-  "nunca revelar que el recurso existe pero es de alguien más".
+  "nunca revelar que el recurso existe pero es de alguien más". Todo
+  intento de login (éxito o fallo con email conocido) queda registrado
+  en `audit_log`, ver
+  `docs/adr/0015-server-side-role-authorization-and-login-audit-log.md`.
 
 ## Pantallas / flujo principal
 1. **Login** — email + contraseña. **Implementado.**
