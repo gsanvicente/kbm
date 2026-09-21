@@ -1,7 +1,7 @@
 # Tesorería del Cliente (Cuenta Concentradora / Cuenta Colectora)
 
-- Estado: En desarrollo (esta iteración: `admin/` con repositorio fake)
-- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`
+- Estado: Implementado contra Postgres (`HttpTreasuryRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `FakeTreasuryRepository` solo para `flutter test`)
+- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`, `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1, 2, 4 y 10
 - Roles/actores involucrados: Operador de Saldos (registra depósitos), Admin Cliente/Super Admin (concilian), Auditor (solo ve)
 

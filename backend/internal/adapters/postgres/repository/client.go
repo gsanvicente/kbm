@@ -13,8 +13,8 @@ import (
 	"github.com/koons/kbm/backend/internal/domain/shared"
 )
 
-func (s *Store) loadClientDetails(ctx context.Context, row sqlcgen.ListAllClientsRow) (kbmclient.Client, error) {
-	apoderadoRows, err := s.q.ListApoderadosByClient(ctx, row.ID)
+func loadClientDetails(ctx context.Context, q *sqlcgen.Queries, row sqlcgen.ListAllClientsRow) (kbmclient.Client, error) {
+	apoderadoRows, err := q.ListApoderadosByClient(ctx, row.ID)
 	if err != nil {
 		return kbmclient.Client{}, err
 	}
@@ -23,7 +23,7 @@ func (s *Store) loadClientDetails(ctx context.Context, row sqlcgen.ListAllClient
 		apoderados = append(apoderados, mapper.ToApoderado(mapper.ApoderadoRow(r)))
 	}
 
-	beneficiarioRows, err := s.q.ListBeneficiariosByClient(ctx, row.ID)
+	beneficiarioRows, err := q.ListBeneficiariosByClient(ctx, row.ID)
 	if err != nil {
 		return kbmclient.Client{}, err
 	}
@@ -36,17 +36,24 @@ func (s *Store) loadClientDetails(ctx context.Context, row sqlcgen.ListAllClient
 }
 
 func (s *Store) ListAll(ctx context.Context) ([]kbmclient.Client, error) {
-	rows, err := s.q.ListAllClients(ctx)
+	var out []kbmclient.Client
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		rows, err := q.ListAllClients(ctx)
+		if err != nil {
+			return err
+		}
+		out = make([]kbmclient.Client, 0, len(rows))
+		for _, r := range rows {
+			c, err := loadClientDetails(ctx, q, r)
+			if err != nil {
+				return err
+			}
+			out = append(out, c)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	out := make([]kbmclient.Client, 0, len(rows))
-	for _, r := range rows {
-		c, err := s.loadClientDetails(ctx, r)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, c)
 	}
 	return out, nil
 }
@@ -57,7 +64,7 @@ func (s *Store) ListAll(ctx context.Context) ([]kbmclient.Client, error) {
 // Apoderados/BeneficiariosControladores, todo en una transacción — ver
 // migrations/0001_init.sql, comentario de client_hierarchy.
 func (s *Store) Create(ctx context.Context, draft kbmclient.Client) (kbmclient.Client, error) {
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginRLS(ctx)
 	if err != nil {
 		return kbmclient.Client{}, err
 	}
@@ -190,7 +197,7 @@ func insertBeneficiarios(ctx context.Context, q *sqlcgen.Queries, clientID strin
 // llamador manda la lista final) — ParentClientID e IsActive nunca se
 // tocan aquí.
 func (s *Store) Update(ctx context.Context, updated kbmclient.Client) (kbmclient.Client, error) {
-	tx, err := s.pool.Begin(ctx)
+	tx, err := s.beginRLS(ctx)
 	if err != nil {
 		return kbmclient.Client{}, err
 	}
@@ -263,27 +270,55 @@ func (s *Store) Update(ctx context.Context, updated kbmclient.Client) (kbmclient
 // SetActive — cascada a [clientID] y TODOS sus descendientes, un solo
 // UPDATE — ver docs/business/desactivacion-de-clientes.md.
 func (s *Store) SetActive(ctx context.Context, clientID string, active bool) (kbmclient.Client, error) {
-	descendantIDs, err := s.q.ListDescendantClientIDs(ctx, clientID)
-	if err != nil {
-		return kbmclient.Client{}, err
-	}
-	targets := append([]string{clientID}, descendantIDs...)
+	var result kbmclient.Client
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		descendantIDs, err := q.ListDescendantClientIDs(ctx, clientID)
+		if err != nil {
+			return err
+		}
+		targets := append([]string{clientID}, descendantIDs...)
 
-	rows, err := s.q.SetClientActiveByIDs(ctx, sqlcgen.SetClientActiveByIDsParams{
-		IsActive:  active,
-		ClientIds: targets,
+		rows, err := q.SetClientActiveByIDs(ctx, sqlcgen.SetClientActiveByIDsParams{
+			IsActive:  active,
+			ClientIds: targets,
+		})
+		if err != nil {
+			return err
+		}
+		for _, r := range rows {
+			if r.ID == clientID {
+				result, err = loadClientDetails(ctx, q, sqlcgen.ListAllClientsRow(r))
+				return err
+			}
+		}
+		return shared.ErrNotFound
 	})
 	if err != nil {
 		return kbmclient.Client{}, err
 	}
-	for _, r := range rows {
-		if r.ID == clientID {
-			return s.loadClientDetails(ctx, sqlcgen.ListAllClientsRow(r))
-		}
-	}
-	return kbmclient.Client{}, shared.ErrNotFound
+	return result, nil
 }
 
+// IsOperable — comprueba [clientID] y TODA su cadena de ANCESTROS (no
+// descendientes), ver migrations/0001_init.sql, comentario de
+// IsClientOperable. El GUC de RLS de un llamador normal solo cubre su
+// propio subárbol de descendientes, nunca sus ancestros — si esta query
+// corriera con ese alcance, un padre inactivo por encima del alcance del
+// llamador se volvería invisible bajo RLS y el chequeo devolvería
+// "operable" por defecto, un falso negativo peligroso que rompería la
+// cascada de inactividad documentada en
+// docs/business/desactivacion-de-clientes.md. Por eso corre siempre con
+// RLS bypaseado — es un derivado de estado de un client_id ya conocido
+// por el llamador, no una lista que pueda filtrar datos de otro tenant.
 func (s *Store) IsOperable(ctx context.Context, clientID string) (bool, error) {
-	return s.q.IsClientOperable(ctx, clientID)
+	var operable bool
+	err := s.withRLSBypass(ctx, func(q *sqlcgen.Queries) error {
+		var err error
+		operable, err = q.IsClientOperable(ctx, clientID)
+		return err
+	})
+	if err != nil {
+		return false, err
+	}
+	return operable, nil
 }

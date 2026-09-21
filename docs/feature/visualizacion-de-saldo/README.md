@@ -1,7 +1,7 @@
 # Visualización de saldo de Tarjeta
 
-- Estado: En desarrollo (esta iteración: `admin/` con repositorio fake, solo lectura)
-- ADR/TDR relacionados: ninguno nuevo
+- Estado: Implementado contra Postgres (`HttpLedgerRepository` por default — ver `docs/adr/0011-processor-integration-architecture-and-postgres-default.md`; `FakeLedgerRepository` solo para `flutter test`, solo lectura)
+- ADR/TDR relacionados: `docs/adr/0011-processor-integration-architecture-and-postgres-default.md`
 - Amenazas relevantes: `docs/security/threat-model.md` punto 1 (control de acceso a datos financieros)
 - Roles/actores involucrados: todos los roles de staff (ver `docs/business/roles-and-permissions.md`) — es solo lectura, no hay gating de rol nuevo
 

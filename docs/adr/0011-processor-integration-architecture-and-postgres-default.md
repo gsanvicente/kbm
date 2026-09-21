@@ -99,12 +99,13 @@ inicia el movimiento.
   `mapper`) implementa los mismos puertos que ya implementa el adaptador
   en memoria — `admin/` y `cardholder/` no se enteraron del cambio,
   verificado en vivo contra la API real.
-- Row-Level Security sigue habilitada en las tablas relevantes
-  (`migrations/0001_init.sql`) pero **sin políticas todavía** — la app
-  se conecta como dueño de las tablas (por default no sujeto a RLS), así
-  que hoy el aislamiento sigue siendo el mismo que ya existía (filtrado
-  en la capa de aplicación), simplemente no reforzado también en la base
-  de datos. Sigue siendo trabajo futuro explícito, no un olvido.
+- Row-Level Security se habilitó en las tablas relevantes
+  (`migrations/0001_init.sql`) pero se dejó **sin políticas** hasta tener
+  una identidad de llamador verificada — resuelto en
+  `docs/adr/0013-jwt-session-authentication.md` (la sesión) y
+  `docs/adr/0014-row-level-security-policies.md` (las políticas en sí,
+  más un rol de aplicación sin privilegios de owner, requisito para que
+  RLS tuviera algún efecto).
 - El trabajo de integración real del procesador (adaptador concreto,
   contrato exacto, autenticación) queda bloqueado hasta que se elija un
   procesador — mientras tanto, todo se construye y prueba contra el

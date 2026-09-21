@@ -31,42 +31,50 @@ func (s *Store) ResolveDestination(ctx context.Context, cardholderID, originCard
 		return nil, shared.ErrTooManyFailedAttempts
 	}
 
-	origin, err := s.GetByID(ctx, originCardID)
+	var result *ports.ResolvedTransferDestination
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		origin, err := s.getByIDTx(ctx, q, originCardID)
+		if err != nil {
+			return err
+		}
+
+		hash := hashPAN(pan)
+		row, err := q.GetCardByClientAndPANHash(ctx, sqlcgen.GetCardByClientAndPANHashParams{
+			ClientID:     origin.ClientID,
+			PanHash:      &hash,
+			CardholderID: origin.CardholderID,
+		})
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+
+		if errors.Is(err, pgx.ErrNoRows) {
+			s.attemptsMu.Lock()
+			next := s.failedAttempts[cardholderID] + 1
+			s.failedAttempts[cardholderID] = next
+			s.attemptsMu.Unlock()
+			if next >= maxFailedAttempts {
+				return shared.ErrTooManyFailedAttempts
+			}
+			return nil
+		}
+
+		match := mapper.ToCard(mapper.CardRow(row))
+
+		name := "Tarjetahabiente" // ver ADR-0010, "Alternativas consideradas": sin onboarding, no siempre hay nombre que mostrar.
+		if match.CardholderID != nil {
+			if fullName, chErr := q.GetCardholderNameByID(ctx, *match.CardholderID); chErr == nil {
+				name = fullName
+			}
+		}
+
+		result = &ports.ResolvedTransferDestination{Card: match, CardholderName: name}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	hash := hashPAN(pan)
-	row, err := s.q.GetCardByClientAndPANHash(ctx, sqlcgen.GetCardByClientAndPANHashParams{
-		ClientID:     origin.ClientID,
-		PanHash:      &hash,
-		CardholderID: origin.CardholderID,
-	})
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return nil, err
-	}
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		s.attemptsMu.Lock()
-		next := s.failedAttempts[cardholderID] + 1
-		s.failedAttempts[cardholderID] = next
-		s.attemptsMu.Unlock()
-		if next >= maxFailedAttempts {
-			return nil, shared.ErrTooManyFailedAttempts
-		}
-		return nil, nil
-	}
-
-	match := mapper.ToCard(mapper.CardRow(row))
-
-	name := "Tarjetahabiente" // ver ADR-0010, "Alternativas consideradas": sin onboarding, no siempre hay nombre que mostrar.
-	if match.CardholderID != nil {
-		if fullName, chErr := s.q.GetCardholderNameByID(ctx, *match.CardholderID); chErr == nil {
-			name = fullName
-		}
-	}
-
-	return &ports.ResolvedTransferDestination{Card: match, CardholderName: name}, nil
+	return result, nil
 }
 
 // Execute — débito inmediato en origen, crédito inmediato en destino,

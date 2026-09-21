@@ -1,7 +1,7 @@
 # Panel directivo ("Inicio")
 
-- Estado: En desarrollo (esta iteración: `admin/` con repositorio fake)
-- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`
+- Estado: Implementado contra Postgres (KPIs y tendencia semanal ya son agregados reales, no datos sintéticos — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `Fake*Repository` solo para `flutter test`)
+- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`, `docs/adr/0011-processor-integration-architecture-and-postgres-default.md`, `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 y 2
   (control de acceso, fuga de datos entre tenants) — un panel que agrega
   cifras de varios Clientes es exactamente el tipo de pantalla donde un

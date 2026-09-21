@@ -1,7 +1,7 @@
 # Listado global de Tarjetahabientes
 
-- Estado: En desarrollo (esta iteración: `admin/` con repositorio fake)
-- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`
+- Estado: Implementado contra Postgres (`HttpCardholderRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `FakeCardholderRepository` solo para `flutter test`)
+- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`, `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 y 2
 - Roles/actores involucrados: todos los roles de staff
 

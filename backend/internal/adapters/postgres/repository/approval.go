@@ -14,67 +14,98 @@ import (
 )
 
 func (s *Store) ListByClients(ctx context.Context, clientIDs []string) ([]approval.Operation, error) {
-	rows, err := s.q.ListBalanceOperationsByClients(ctx, clientIDs)
+	var out []approval.Operation
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		rows, err := q.ListBalanceOperationsByClients(ctx, clientIDs)
+		if err != nil {
+			return err
+		}
+		out = make([]approval.Operation, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, mapper.ToBalanceOperation(mapper.BalanceOperationRow(r)))
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	out := make([]approval.Operation, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, mapper.ToBalanceOperation(mapper.BalanceOperationRow(r)))
 	}
 	return out, nil
 }
 
 func (s *Store) ListApprovalRules(ctx context.Context, clientID string) ([]approval.Rule, error) {
-	rows, err := s.q.ListApprovalRulesByClient(ctx, clientID)
+	var out []approval.Rule
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		rows, err := q.ListApprovalRulesByClient(ctx, clientID)
+		if err != nil {
+			return err
+		}
+		out = make([]approval.Rule, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, approval.Rule{
+				ClientID:         r.ClientID,
+				OperationType:    approval.OperationType(r.OperationType),
+				RequiresApproval: r.RequiresApproval,
+				MinAmount:        r.MinAmount,
+			})
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	out := make([]approval.Rule, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, approval.Rule{
-			ClientID:         r.ClientID,
-			OperationType:    approval.OperationType(r.OperationType),
-			RequiresApproval: r.RequiresApproval,
-			MinAmount:        r.MinAmount,
-		})
 	}
 	return out, nil
 }
 
 func (s *Store) SetApprovalRule(ctx context.Context, clientID string, opType approval.OperationType, requiresApproval bool, minAmount *float64) (approval.Rule, error) {
-	row, err := s.q.UpsertApprovalRule(ctx, sqlcgen.UpsertApprovalRuleParams{
-		ClientID:         clientID,
-		OperationType:    sqlcgen.OperationType(opType),
-		RequiresApproval: requiresApproval,
-		MinAmount:        minAmount,
+	var result approval.Rule
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		row, err := q.UpsertApprovalRule(ctx, sqlcgen.UpsertApprovalRuleParams{
+			ClientID:         clientID,
+			OperationType:    sqlcgen.OperationType(opType),
+			RequiresApproval: requiresApproval,
+			MinAmount:        minAmount,
+		})
+		if err != nil {
+			return err
+		}
+		result = approval.Rule{
+			ClientID:         row.ClientID,
+			OperationType:    approval.OperationType(row.OperationType),
+			RequiresApproval: row.RequiresApproval,
+			MinAmount:        row.MinAmount,
+		}
+		return nil
 	})
 	if err != nil {
 		return approval.Rule{}, err
 	}
-	return approval.Rule{
-		ClientID:         row.ClientID,
-		OperationType:    approval.OperationType(row.OperationType),
-		RequiresApproval: row.RequiresApproval,
-		MinAmount:        row.MinAmount,
-	}, nil
+	return result, nil
 }
 
 func (s *Store) DeleteApprovalRule(ctx context.Context, clientID string, opType approval.OperationType) error {
-	return s.q.DeleteApprovalRule(ctx, sqlcgen.DeleteApprovalRuleParams{
-		ClientID:      clientID,
-		OperationType: sqlcgen.OperationType(opType),
+	return s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		return q.DeleteApprovalRule(ctx, sqlcgen.DeleteApprovalRuleParams{
+			ClientID:      clientID,
+			OperationType: sqlcgen.OperationType(opType),
+		})
 	})
 }
 
 func (s *Store) ListPendingByClients(ctx context.Context, clientIDs []string) ([]approval.Operation, error) {
-	rows, err := s.q.ListPendingBalanceOperationsByClients(ctx, clientIDs)
+	var out []approval.Operation
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		rows, err := q.ListPendingBalanceOperationsByClients(ctx, clientIDs)
+		if err != nil {
+			return err
+		}
+		out = make([]approval.Operation, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, mapper.ToBalanceOperation(mapper.BalanceOperationRow(r)))
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	out := make([]approval.Operation, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, mapper.ToBalanceOperation(mapper.BalanceOperationRow(r)))
 	}
 	return out, nil
 }
@@ -82,61 +113,80 @@ func (s *Store) ListPendingByClients(ctx context.Context, clientIDs []string) ([
 // GetWeeklyTrend — volumen real ejecutado por semana/tipo, últimas 12
 // semanas — ver docs/feature/panel-directivo/README.md, "Visión futura".
 func (s *Store) GetWeeklyTrend(ctx context.Context, clientIDs []string) ([]approval.WeekVolume, error) {
-	rows, err := s.q.GetWeeklyOperationVolume(ctx, clientIDs)
+	var out []approval.WeekVolume
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		rows, err := q.GetWeeklyOperationVolume(ctx, clientIDs)
+		if err != nil {
+			return err
+		}
+		byWeek := map[string]*approval.WeekVolume{}
+		var order []string
+		for _, r := range rows {
+			key := r.WeekStart.Format("2006-01-02")
+			wv, ok := byWeek[key]
+			if !ok {
+				wv = &approval.WeekVolume{WeekStart: r.WeekStart}
+				byWeek[key] = wv
+				order = append(order, key)
+			}
+			switch approval.OperationType(r.OperationType) {
+			case approval.OperationTypeLoad:
+				wv.Dispersion = r.Total
+			case approval.OperationTypeDebit:
+				wv.Deduccion = r.Total
+			case approval.OperationTypeTransfer:
+				wv.Transferencia = r.Total
+			}
+		}
+		out = make([]approval.WeekVolume, 0, len(order))
+		for _, key := range order {
+			out = append(out, *byWeek[key])
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	byWeek := map[string]*approval.WeekVolume{}
-	var order []string
-	for _, r := range rows {
-		key := r.WeekStart.Format("2006-01-02")
-		wv, ok := byWeek[key]
-		if !ok {
-			wv = &approval.WeekVolume{WeekStart: r.WeekStart}
-			byWeek[key] = wv
-			order = append(order, key)
-		}
-		switch approval.OperationType(r.OperationType) {
-		case approval.OperationTypeLoad:
-			wv.Dispersion = r.Total
-		case approval.OperationTypeDebit:
-			wv.Deduccion = r.Total
-		case approval.OperationTypeTransfer:
-			wv.Transferencia = r.Total
-		}
-	}
-	out := make([]approval.WeekVolume, 0, len(order))
-	for _, key := range order {
-		out = append(out, *byWeek[key])
 	}
 	return out, nil
 }
 
 func (s *Store) needsApproval(ctx context.Context, clientID string, opType approval.OperationType, amount float64) (bool, error) {
-	row, err := s.q.GetApprovalRule(ctx, sqlcgen.GetApprovalRuleParams{
-		ClientID:      clientID,
-		OperationType: sqlcgen.OperationType(opType),
+	var result bool
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		row, err := q.GetApprovalRule(ctx, sqlcgen.GetApprovalRuleParams{
+			ClientID:      clientID,
+			OperationType: sqlcgen.OperationType(opType),
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			result = true // sin regla configurada => requiere aprobación (fail-safe)
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !row.RequiresApproval {
+			result = false
+			return nil
+		}
+		if row.MinAmount == nil {
+			result = true
+			return nil
+		}
+		result = amount > *row.MinAmount
+		return nil
 	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return true, nil // sin regla configurada => requiere aprobación (fail-safe)
-	}
 	if err != nil {
 		return false, err
 	}
-	if !row.RequiresApproval {
-		return false, nil
-	}
-	if row.MinAmount == nil {
-		return true, nil
-	}
-	return amount > *row.MinAmount, nil
+	return result, nil
 }
 
 // tryExecute — mismo criterio "nunca a medias" que
 // internal/adapters/memory/repository/transfer.go: el primer movimiento
 // que fallaría por fondos insuficientes se revisa antes de tocar el
 // segundo. Reutiliza los métodos de LedgerRepository/TreasuryRepository
-// que este mismo Store ya implementa.
+// que este mismo Store ya implementa — cada uno ya trae su propio
+// alcance de RLS, así que esta orquestación no necesita el suyo.
 func (s *Store) tryExecute(ctx context.Context, op approval.Operation) (approval.Operation, error) {
 	var execErr error
 	switch op.Type {
@@ -190,40 +240,45 @@ func (s *Store) Request(ctx context.Context, clientID, cardID string, opType app
 		return approval.Operation{}, shared.ErrForbidden
 	}
 
-	requestedByID, err := s.q.GetStaffUserIDByEmail(ctx, requestedByEmail)
-	if err != nil {
-		return approval.Operation{}, err
-	}
-
 	needsApproval, err := s.needsApproval(ctx, clientID, opType, amount)
 	if err != nil {
 		return approval.Operation{}, err
 	}
 
-	status := sqlcgen.OperationStatusPendingApproval
-	row, err := s.q.InsertBalanceOperation(ctx, sqlcgen.InsertBalanceOperationParams{
-		ClientID:          clientID,
-		CardID:            cardID,
-		OperationType:     sqlcgen.OperationType(opType),
-		Amount:            &amount,
-		DestinationCardID: destinationCardID,
-		Status:            status,
-		RequestedBy:       requestedByID,
+	var op approval.Operation
+	err = s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		requestedByID, err := q.GetStaffUserIDByEmail(ctx, requestedByEmail)
+		if err != nil {
+			return err
+		}
+		row, err := q.InsertBalanceOperation(ctx, sqlcgen.InsertBalanceOperationParams{
+			ClientID:          clientID,
+			CardID:            cardID,
+			OperationType:     sqlcgen.OperationType(opType),
+			Amount:            &amount,
+			DestinationCardID: destinationCardID,
+			Status:            sqlcgen.OperationStatusPendingApproval,
+			RequestedBy:       requestedByID,
+		})
+		if err != nil {
+			return err
+		}
+		op = approval.Operation{
+			ID:                row.ID,
+			ClientID:          clientID,
+			CardID:            cardID,
+			Type:              opType,
+			Amount:            amount,
+			DestinationCardID: destinationCardID,
+			Status:            approval.OperationStatusPendingApproval,
+			RequestedByEmail:  requestedByEmail,
+			CreatedAt:         row.CreatedAt,
+			UpdatedAt:         row.UpdatedAt,
+		}
+		return nil
 	})
 	if err != nil {
 		return approval.Operation{}, err
-	}
-	op := approval.Operation{
-		ID:                row.ID,
-		ClientID:          clientID,
-		CardID:            cardID,
-		Type:              opType,
-		Amount:            amount,
-		DestinationCardID: destinationCardID,
-		Status:            approval.OperationStatusPendingApproval,
-		RequestedByEmail:  requestedByEmail,
-		CreatedAt:         row.CreatedAt,
-		UpdatedAt:         row.UpdatedAt,
 	}
 
 	if !needsApproval {
@@ -231,20 +286,22 @@ func (s *Store) Request(ctx context.Context, clientID, cardID string, opType app
 		if err != nil {
 			return approval.Operation{}, err
 		}
-		if err := s.q.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
-			ID:              op.ID,
-			Status:          sqlcgen.OperationStatus(op.Status),
-			ResolutionNotes: op.ResolutionNotes,
-		}); err != nil {
+		err = s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+			return q.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
+				ID:              op.ID,
+				Status:          sqlcgen.OperationStatus(op.Status),
+				ResolutionNotes: op.ResolutionNotes,
+			})
+		})
+		if err != nil {
 			return approval.Operation{}, err
 		}
 	}
 	return op, nil
 }
 
-func (s *Store) getOperationForUpdate(ctx context.Context, tx pgx.Tx, operationID string) (approval.Operation, error) {
-	qtx := s.q.WithTx(tx)
-	row, err := qtx.GetBalanceOperationForUpdate(ctx, operationID)
+func (s *Store) getOperationForUpdate(ctx context.Context, q *sqlcgen.Queries, operationID string) (approval.Operation, error) {
+	row, err := q.GetBalanceOperationForUpdate(ctx, operationID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return approval.Operation{}, shared.ErrNotFound
 	}
@@ -257,13 +314,12 @@ func (s *Store) getOperationForUpdate(ctx context.Context, tx pgx.Tx, operationI
 // Approve — intenta ejecutar ahora, termina en executed o failed. Lanza
 // shared.ErrInvalidState si la operación no estaba pending_approval.
 func (s *Store) Approve(ctx context.Context, operationID, approvedByEmail string) (approval.Operation, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return approval.Operation{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	op, err := s.getOperationForUpdate(ctx, tx, operationID)
+	var op approval.Operation
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		var err error
+		op, err = s.getOperationForUpdate(ctx, q, operationID)
+		return err
+	})
 	if err != nil {
 		return approval.Operation{}, err
 	}
@@ -277,25 +333,25 @@ func (s *Store) Approve(ctx context.Context, operationID, approvedByEmail string
 	if !operable {
 		return approval.Operation{}, shared.ErrForbidden
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return approval.Operation{}, err
-	}
 
 	executed, err := s.tryExecute(ctx, op)
 	if err != nil {
 		return approval.Operation{}, err
 	}
 	executed.ResolvedByEmail = &approvedByEmail
-	approvedByID, err := s.q.GetStaffUserIDByEmail(ctx, approvedByEmail)
+	err = s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		approvedByID, err := q.GetStaffUserIDByEmail(ctx, approvedByEmail)
+		if err != nil {
+			return err
+		}
+		return q.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
+			ID:              executed.ID,
+			Status:          sqlcgen.OperationStatus(executed.Status),
+			ResolvedBy:      &approvedByID,
+			ResolutionNotes: executed.ResolutionNotes,
+		})
+	})
 	if err != nil {
-		return approval.Operation{}, err
-	}
-	if err := s.q.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
-		ID:              executed.ID,
-		Status:          sqlcgen.OperationStatus(executed.Status),
-		ResolvedBy:      &approvedByID,
-		ResolutionNotes: executed.ResolutionNotes,
-	}); err != nil {
 		return approval.Operation{}, err
 	}
 	return executed, nil
@@ -304,13 +360,12 @@ func (s *Store) Approve(ctx context.Context, operationID, approvedByEmail string
 // Reject — nunca toca el ledger. Lanza shared.ErrInvalidState si la
 // operación no estaba pending_approval.
 func (s *Store) Reject(ctx context.Context, operationID, rejectedByEmail, reason string) (approval.Operation, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return approval.Operation{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	op, err := s.getOperationForUpdate(ctx, tx, operationID)
+	var op approval.Operation
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		var err error
+		op, err = s.getOperationForUpdate(ctx, q, operationID)
+		return err
+	})
 	if err != nil {
 		return approval.Operation{}, err
 	}
@@ -325,20 +380,19 @@ func (s *Store) Reject(ctx context.Context, operationID, rejectedByEmail, reason
 		return approval.Operation{}, shared.ErrForbidden
 	}
 
-	rejectedByID, err := s.q.GetStaffUserIDByEmail(ctx, rejectedByEmail)
+	err = s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		rejectedByID, err := q.GetStaffUserIDByEmail(ctx, rejectedByEmail)
+		if err != nil {
+			return err
+		}
+		return q.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
+			ID:              operationID,
+			Status:          sqlcgen.OperationStatusRejected,
+			ResolvedBy:      &rejectedByID,
+			ResolutionNotes: &reason,
+		})
+	})
 	if err != nil {
-		return approval.Operation{}, err
-	}
-	qtx := s.q.WithTx(tx)
-	if err := qtx.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
-		ID:              operationID,
-		Status:          sqlcgen.OperationStatusRejected,
-		ResolvedBy:      &rejectedByID,
-		ResolutionNotes: &reason,
-	}); err != nil {
-		return approval.Operation{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return approval.Operation{}, err
 	}
 

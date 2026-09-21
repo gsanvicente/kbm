@@ -1,7 +1,7 @@
 # Panel principal de administración
 
-- Estado: En desarrollo (esta iteración: shell de navegación + listado de Clientes con repositorio fake)
-- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`, `docs/adr/0002-flutter-web-mobile-two-apps.md`
+- Estado: Implementado contra Postgres (`HttpClientRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `FakeClientRepository` solo para `flutter test`)
+- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`, `docs/adr/0002-flutter-web-mobile-two-apps.md`, `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 y 2 (control de acceso, fuga de datos entre tenants)
 - Roles/actores involucrados: todos los roles de staff (ver `docs/business/roles-and-permissions.md`)
 

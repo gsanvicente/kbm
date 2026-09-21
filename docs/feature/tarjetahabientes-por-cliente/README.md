@@ -1,7 +1,7 @@
 # Tarjetahabientes por Cliente
 
-- Estado: En desarrollo (esta iteración: drill-down en `admin/` con repositorio fake)
-- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`, `docs/adr/0007-custom-design-system-koons-tokens.md`
+- Estado: Implementado contra Postgres (`HttpCardholderRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `FakeCardholderRepository` solo para `flutter test`)
+- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`, `docs/adr/0007-custom-design-system-koons-tokens.md`, `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 y 2 (control de acceso, fuga de datos entre tenants)
 - Roles/actores involucrados: todos los roles de staff (ver `docs/business/roles-and-permissions.md`)
 

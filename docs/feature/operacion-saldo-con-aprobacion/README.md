@@ -1,7 +1,7 @@
 # Operación de saldo con aprobación configurable
 
-- Estado: En desarrollo (esta iteración: `admin/` con repositorio fake)
-- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`
+- Estado: Implementado contra Postgres (`HttpBalanceOperationRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; reglas de aprobación ahora editables desde la pestaña Configuración, ver `docs/feature/configuracion-de-cliente/README.md`; `FakeBalanceOperationRepository` solo para `flutter test`)
+- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`, `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1, 2, 4 y 9
 - Roles/actores involucrados: Operador (solicita), Admin Cliente/Super Admin (solicitan y aprueban/rechazan), Auditor (solo ve)
 

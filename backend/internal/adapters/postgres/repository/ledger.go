@@ -13,31 +13,41 @@ import (
 )
 
 func (s *Store) GetByCard(ctx context.Context, cardID string) (ledger.Account, []ledger.Entry, error) {
-	account, err := s.q.GetLedgerAccountByCardID(ctx, cardID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ledger.Account{}, nil, shared.ErrNotFound
-	}
+	var (
+		outAccount ledger.Account
+		outEntries []ledger.Entry
+	)
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		account, err := q.GetLedgerAccountByCardID(ctx, cardID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return shared.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+
+		balance, err := q.GetLatestLedgerBalance(ctx, account.ID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		// pgx.ErrNoRows — cuenta recién creada, sin movimientos todavía: nace
+		// en 0, igual que el adaptador en memoria.
+
+		rows, err := q.ListLedgerEntriesByAccountID(ctx, account.ID)
+		if err != nil {
+			return err
+		}
+		outEntries = make([]ledger.Entry, 0, len(rows))
+		for _, r := range rows {
+			outEntries = append(outEntries, mapper.ToLedgerEntry(cardID, mapper.LedgerEntryRow(r)))
+		}
+		outAccount = mapper.ToLedgerAccount(cardID, balance, account.Currency)
+		return nil
+	})
 	if err != nil {
 		return ledger.Account{}, nil, err
 	}
-
-	balance, err := s.q.GetLatestLedgerBalance(ctx, account.ID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return ledger.Account{}, nil, err
-	}
-	// pgx.ErrNoRows — cuenta recién creada, sin movimientos todavía: nace
-	// en 0, igual que el adaptador en memoria.
-
-	rows, err := s.q.ListLedgerEntriesByAccountID(ctx, account.ID)
-	if err != nil {
-		return ledger.Account{}, nil, err
-	}
-	entries := make([]ledger.Entry, 0, len(rows))
-	for _, r := range rows {
-		entries = append(entries, mapper.ToLedgerEntry(cardID, mapper.LedgerEntryRow(r)))
-	}
-
-	return mapper.ToLedgerAccount(cardID, balance, account.Currency), entries, nil
+	return outAccount, outEntries, nil
 }
 
 // PostEntry — bloquea la fila de ledger_accounts (FOR UPDATE) antes de
@@ -46,51 +56,48 @@ func (s *Store) GetByCard(ctx context.Context, cardID string) (ledger.Account, [
 // del adaptador en memoria (store.go, ledgerMu), aplicado a nivel de fila
 // de Postgres en vez de en memoria de proceso.
 func (s *Store) PostEntry(ctx context.Context, cardID string, entryType ledger.EntryType, amount float64, description string) (ledger.Entry, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return ledger.Entry{}, err
-	}
-	defer tx.Rollback(ctx)
-	qtx := s.q.WithTx(tx)
+	var result ledger.Entry
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		account, err := q.GetLedgerAccountByCardIDForUpdate(ctx, cardID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return shared.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
 
-	account, err := qtx.GetLedgerAccountByCardIDForUpdate(ctx, cardID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ledger.Entry{}, shared.ErrNotFound
-	}
-	if err != nil {
-		return ledger.Entry{}, err
-	}
+		current, err := q.GetLatestLedgerBalance(ctx, account.ID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
 
-	current, err := qtx.GetLatestLedgerBalance(ctx, account.ID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return ledger.Entry{}, err
-	}
+		newBalance := current
+		if entryType == ledger.EntryCredit {
+			newBalance += amount
+		} else {
+			newBalance -= amount
+		}
+		if newBalance < 0 {
+			return shared.ErrInsufficientFunds
+		}
 
-	newBalance := current
-	if entryType == ledger.EntryCredit {
-		newBalance += amount
-	} else {
-		newBalance -= amount
-	}
-	if newBalance < 0 {
-		return ledger.Entry{}, shared.ErrInsufficientFunds
-	}
-
-	desc := description
-	row, err := qtx.InsertLedgerEntry(ctx, sqlcgen.InsertLedgerEntryParams{
-		ClientID:        account.ClientID,
-		LedgerAccountID: account.ID,
-		EntryType:       sqlcgen.LedgerEntryType(entryType),
-		Amount:          amount,
-		BalanceAfter:    newBalance,
-		Description:     &desc,
+		desc := description
+		row, err := q.InsertLedgerEntry(ctx, sqlcgen.InsertLedgerEntryParams{
+			ClientID:        account.ClientID,
+			LedgerAccountID: account.ID,
+			EntryType:       sqlcgen.LedgerEntryType(entryType),
+			Amount:          amount,
+			BalanceAfter:    newBalance,
+			Description:     &desc,
+		})
+		if err != nil {
+			return err
+		}
+		result = mapper.ToLedgerEntry(cardID, mapper.LedgerEntryRow(row))
+		return nil
 	})
 	if err != nil {
 		return ledger.Entry{}, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return ledger.Entry{}, err
-	}
-
-	return mapper.ToLedgerEntry(cardID, mapper.LedgerEntryRow(row)), nil
+	return result, nil
 }

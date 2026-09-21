@@ -105,15 +105,10 @@ construir la sesión real — este ADR cubre esa pieza (Fase 1). RLS
   staff (403), ownership check cruzado (404 genérico) — ver
   `internal/adapters/http/handler/handler_test.go` para los mismos
   casos como tests automatizados.
-- **RLS (Fase 2) sigue sin políticas** — este ADR resuelve la
-  precondición que faltaba (identidad verificada por request) pero no
-  escribe las políticas todavía. Wirear correctamente el GUC
-  (`SET LOCAL app.accessible_client_ids` por transacción) requiere
-  convertir del orden de 60-80 sitios de llamada directa
-  `s.q.XXX(ctx, ...)` en `internal/adapters/postgres/repository/*.go` a
-  un patrón transaccional que primero fije el GUC — un refactor grande
-  de código ya en producción y probado, no incluido en este incremento;
-  queda como decisión explícita pendiente para un futuro incremento.
+- **RLS (Fase 2)**: este ADR resolvió la precondición que faltaba
+  (identidad verificada por request); las políticas en sí se
+  implementaron el mismo día en
+  `docs/adr/0014-row-level-security-policies.md`.
 - El `Handler` struct ganó un campo `Tokens *local.TokenIssuer`,
   requerido por `New(...)` — cualquier otro lugar que construya un
   `Handler` a mano (tests, herramientas) necesita pasarlo.

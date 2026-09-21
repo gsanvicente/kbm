@@ -1,7 +1,7 @@
 # Movimientos y Reclamos
 
-- Estado: En desarrollo (esta iteración: `admin/` con repositorio fake mutable)
-- ADR/TDR relacionados: ninguno nuevo
+- Estado: Implementado contra Postgres (`HttpLedgerRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `FakeLedgerRepository` solo para `flutter test`). Solo desde `admin/` — el Tarjetahabiente todavía no puede presentar un reclamo desde `cardholder/`, ver `docs/feature/portal-autoservicio-tarjetahabiente/README.md`, "pendiente".
+- ADR/TDR relacionados: `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 (control de acceso — resolver sin verificar rol) y 4 (trazabilidad)
 - Roles/actores involucrados: Super Admin, Admin Cliente (solicitan y resuelven); Operador (solo solicita); Auditor (solo ve)
 

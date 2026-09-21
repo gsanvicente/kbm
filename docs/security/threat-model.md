@@ -16,14 +16,16 @@ o acciones cruzando tenants.
 casos de uso (no solo por el handler HTTP) — ver
 `backend/internal/application/ports/doc.go` — más Row-Level Security en
 Postgres como segunda barrera (defensa en profundidad, ver ADR-0003).
-**Estado (2026-09-21):** la precondición que faltaba para que cualquiera
-de las dos barreras fuera real — una identidad verificada por request —
-ya existe (JWT firmado, verificado por `RequireAuth`/`RequireStaff` en
-cada endpoint salvo login/healthz, ver
-`docs/adr/0013-jwt-session-authentication.md`). `AuthorizationPort` y las
-políticas de RLS en sí siguen sin construirse; hoy el filtrado por
-rol/jerarquía sigue viviendo client-side en `admin/` (ver ADR-0012,
-punto 7) y los ownership-checks de "alcance mixto" (Cards/Ledger/
+**Estado (2026-09-21):** identidad verificada por request (JWT, ver
+`docs/adr/0013-jwt-session-authentication.md`) y Row-Level Security con
+políticas reales (ver `docs/adr/0014-row-level-security-policies.md`)
+ya existen como segunda barrera de verdad — verificado en vivo que un
+query mal filtrado del lado de la aplicación ya no alcanza datos de otro
+Cliente. `AuthorizationPort` en sí (una decisión de autorización
+centralizada invocada por todos los casos de uso) sigue sin construirse;
+hoy el filtrado por rol/jerarquía para decidir qué **acciones** puede
+tomar un rol sigue viviendo client-side en `admin/` (ver ADR-0012, punto
+7), y los ownership-checks de "alcance mixto" (Cards/Ledger/
 transferencias, ADR-0013 punto 4) se resuelven a mano en el handler, no
 vía un port de autorización genérico.
 
@@ -34,10 +36,15 @@ hermanas o hacia el padre).
 **Mitigación de diseño:** `client_hierarchy` + GUC de sesión
 `app.accessible_client_ids` fuerza el filtro a nivel de base de datos
 incluso si la capa de aplicación tiene un bug.
-**Estado (2026-09-21):** el GUC en sí sigue sin escribirse (ver ADR-0013,
-"Consecuencias", Fase 2 pendiente) — hoy nada en Postgres impide un query
-mal filtrado; la única barrera activa es el filtrado client-side ya
-mencionado en el punto 1.
+**Estado (2026-09-21):** implementado y verificado en vivo (ver
+`docs/adr/0014-row-level-security-policies.md`) — el backend ahora se
+conecta como `kbm_app`, un rol sin privilegios de superusuario ni de
+dueño de tabla (ninguno de los dos queda sujeto a RLS, sin excepción),
+con una política `tenant_isolation` en las 14 tablas por Cliente. Un
+Operador de una Subsidiaria confirmadamente no puede leer datos de una
+Subsidiaria hermana (Concentradora, Cardholders, movimientos) ni por la
+API ni con una query directa a la base de datos — la aplicación ya no es
+la única barrera.
 
 ## 3. Integridad del ledger
 **Riesgo:** un movimiento se edita o borra (por error de aplicación o

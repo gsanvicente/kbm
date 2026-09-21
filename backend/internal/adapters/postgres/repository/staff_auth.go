@@ -28,7 +28,9 @@ func NewStaffAuthStore(s *Store) *StaffAuthStore {
 // CardholderAuthRepository: credenciales incorrectas, usuario inactivo, o
 // el Cliente del usuario (o alguno de sus ancestros) inactivo, todo
 // responde igual — ver docs/business/desactivacion-de-clientes.md,
-// "Capa 1".
+// "Capa 1". GetStaffUserForLogin solo toca `users`, sin RLS. IsOperable
+// ya bypasea RLS por su cuenta (ver client.go) — necesario aquí también,
+// no solo por ser pre-autenticación.
 func (s *StaffAuthStore) Login(ctx context.Context, email, password string) (staff.User, error) {
 	row, err := s.q.GetStaffUserForLogin(ctx, email)
 	if errors.Is(err, pgx.ErrNoRows) {

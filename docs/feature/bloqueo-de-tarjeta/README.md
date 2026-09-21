@@ -1,7 +1,7 @@
 # Bloqueo / desbloqueo de Tarjeta
 
-- Estado: En desarrollo (esta iteración: `admin/` con repositorio fake mutable)
-- ADR/TDR relacionados: ninguno nuevo
+- Estado: Implementado contra Postgres (`HttpCardRepository` por default — ver `docs/adr/0011-processor-integration-architecture-and-postgres-default.md`; `FakeCardRepository` solo para `flutter test`)
+- ADR/TDR relacionados: `docs/adr/0011-processor-integration-architecture-and-postgres-default.md`
 - Amenazas relevantes: `docs/security/threat-model.md` punto 1 (control de acceso — bloquear sin verificar rol)
 - Roles/actores involucrados: Super Admin, Admin Cliente, Operador (pueden operar); Auditor (solo ve)
 

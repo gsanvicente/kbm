@@ -64,6 +64,21 @@ func (h *Handler) Routes() chi.Router {
 
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.RequireAuth(h.Tokens))
+		// Traduce las claims JWT ya verificadas a lo que el adaptador
+		// Postgres necesita para fijar app.accessible_client_ids (Row-Level
+		// Security, ver docs/adr/0014-row-level-security-policies.md) — un
+		// nil aquí significa alcance global (Super Admin), nunca "no
+		// establecido" (eso lo distingue ports.WithCallerClientID).
+		r.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				claims, _ := authmw.ClaimsFromContext(r.Context())
+				var clientID *string
+				if claims != nil {
+					clientID = claims.ClientID
+				}
+				next.ServeHTTP(w, r.WithContext(ports.WithCallerClientID(r.Context(), clientID)))
+			})
+		})
 
 		// Cards/Ledger/Transferencias — alcance mixto (staff y
 		// Tarjetahabiente, cada handler decide qué le corresponde a
