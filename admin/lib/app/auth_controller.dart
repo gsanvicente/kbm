@@ -36,6 +36,7 @@ class AuthController extends ChangeNotifier {
   }
 
   void logout() {
+    _repository.logout();
     _session = null;
     _error = null;
     notifyListeners();

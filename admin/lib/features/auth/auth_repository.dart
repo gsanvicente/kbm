@@ -10,4 +10,9 @@ abstract class AuthRepository {
   /// or an inactive user — never reveals which of the two it was (avoids
   /// user enumeration, see docs/feature/login-administrativo/README.md).
   Future<Session> login({required String email, required String password});
+
+  /// Limpia cualquier credencial de sesión guardada localmente (el JWT en
+  /// `HttpAuthRepository`; no-op en `FakeAuthRepository`) — ver
+  /// docs/adr/0013-jwt-session-authentication.md.
+  void logout();
 }

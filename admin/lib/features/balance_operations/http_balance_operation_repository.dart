@@ -1,4 +1,5 @@
 import '../../core/http/kbm_backend_client.dart';
+import '../../core/models/approval_rule.dart';
 import '../../core/models/balance_operation.dart';
 import '../../core/models/movement_trend_point.dart';
 import '../../core/models/operation_status.dart';
@@ -17,6 +18,9 @@ class HttpBalanceOperationRepository implements BalanceOperationRepository {
   HttpBalanceOperationRepository({required this.client});
 
   final KbmBackendClient client;
+
+  @override
+  bool get producesSyntheticWeeklyTrend => false;
 
   OperationStatus _statusFromJson(String v) {
     switch (v) {
@@ -137,5 +141,37 @@ class HttpBalanceOperationRepository implements BalanceOperationRepository {
       if (e.statusCode == 409) throw StateError('Esta operación ya fue resuelta.');
       rethrow;
     }
+  }
+
+  ApprovalRule _ruleFromJson(Map<String, dynamic> json) => ApprovalRule(
+        clientId: json['clientId'] as String,
+        operationType: OperationType.values.byName(json['operationType'] as String),
+        requiresApproval: json['requiresApproval'] as bool,
+        minAmount: (json['minAmount'] as num?)?.toDouble(),
+      );
+
+  @override
+  Future<List<ApprovalRule>> listApprovalRules(String clientId) async {
+    final json = await client.get('/v1/clients/$clientId/approval-rules') as List<dynamic>;
+    return json.map((e) => _ruleFromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  @override
+  Future<ApprovalRule> setApprovalRule({
+    required String clientId,
+    required OperationType type,
+    required bool requiresApproval,
+    double? minAmount,
+  }) async {
+    final json = await client.put('/v1/clients/$clientId/approval-rules/${type.name}', {
+      'requiresApproval': requiresApproval,
+      'minAmount': minAmount,
+    }) as Map<String, dynamic>;
+    return _ruleFromJson(json);
+  }
+
+  @override
+  Future<void> deleteApprovalRule({required String clientId, required OperationType type}) async {
+    await client.delete('/v1/clients/$clientId/approval-rules/${type.name}');
   }
 }

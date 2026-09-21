@@ -125,8 +125,11 @@ class FakeCardRepository implements CardRepository {
   // "Límite de tarjetas activas por Tarjetahabiente". Solo overrides
   // explícitos van en este mapa; Subsidiaria B tiene uno (2), para
   // demostrar que sí varía por Cliente y no queda solo en el default.
+  // Mutable (no `static const`) desde
+  // docs/feature/configuracion-de-cliente/README.md: Super Admin/Admin
+  // Cliente pueden editar este límite en vivo.
   static const _defaultMaxActiveCardsPerCardholder = 1;
-  static const _maxActiveCardsByClient = {
+  final Map<String, int> _maxActiveCardsByClient = {
     '00000000-0000-0000-0000-000000000003': 2,
   };
 
@@ -158,6 +161,17 @@ class FakeCardRepository implements CardRepository {
   Future<int?> maxActiveCardsPerCardholder(String clientId) async {
     await Future.delayed(const Duration(milliseconds: 100));
     return _maxActiveCardsFor(clientId);
+  }
+
+  @override
+  Future<int?> setMaxActiveCardsPerCardholder(String clientId, int? max) async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (max == null) {
+      _maxActiveCardsByClient.remove(clientId);
+    } else {
+      _maxActiveCardsByClient[clientId] = max;
+    }
+    return max;
   }
 
   @override

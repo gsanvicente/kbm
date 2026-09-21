@@ -34,7 +34,14 @@ func (h *Handler) staffLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, dto.FromStaffUser(u))
+	token, err := h.Tokens.IssueStaff(u.ID, string(u.Role), u.ClientID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	resp := dto.FromStaffUser(u)
+	resp.AccessToken = token
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // --- Clientes ------------------------------------------------------
@@ -108,6 +115,64 @@ func (h *Handler) getClientSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, dto.ClientSettingsResponse{MaxActiveCardsPerCardholder: max})
+}
+
+func (h *Handler) setClientSettings(w http.ResponseWriter, r *http.Request) {
+	var req dto.SetClientSettingsRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	max, err := h.Cards.SetMaxActiveCardsPerCardholder(r.Context(), chi.URLParam(r, "clientID"), req.MaxActiveCardsPerCardholder)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dto.ClientSettingsResponse{MaxActiveCardsPerCardholder: max})
+}
+
+func (h *Handler) listApprovalRules(w http.ResponseWriter, r *http.Request) {
+	rules, err := h.BalanceOps.ListApprovalRules(r.Context(), chi.URLParam(r, "clientID"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out := make([]dto.ApprovalRule, 0, len(rules))
+	for _, rule := range rules {
+		out = append(out, dto.FromApprovalRule(rule))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) setApprovalRule(w http.ResponseWriter, r *http.Request) {
+	var req dto.SetApprovalRuleRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	rule, err := h.BalanceOps.SetApprovalRule(
+		r.Context(),
+		chi.URLParam(r, "clientID"),
+		approval.OperationType(chi.URLParam(r, "operationType")),
+		req.RequiresApproval,
+		req.MinAmount,
+	)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dto.FromApprovalRule(rule))
+}
+
+func (h *Handler) deleteApprovalRule(w http.ResponseWriter, r *http.Request) {
+	err := h.BalanceOps.DeleteApprovalRule(
+		r.Context(),
+		chi.URLParam(r, "clientID"),
+		approval.OperationType(chi.URLParam(r, "operationType")),
+	)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // --- Cardholders (KYC) ------------------------------------------------------
@@ -389,6 +454,29 @@ func (h *Handler) getClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, dto.FromMovementClaim(*claim))
+}
+
+// listClaims — forma en lote de getClaim, ver
+// ports.LedgerRepository.GetClaimsByLedgerEntries: evita una llamada HTTP
+// por movimiento en pantallas como el Panel directivo (antes:
+// admin/lib/features/ledger/http_ledger_repository.dart hacía
+// Future.wait de N getClaim, un patrón N+1 real).
+func (h *Handler) listClaims(w http.ResponseWriter, r *http.Request) {
+	ids := splitCSV(r.URL.Query().Get("ledger_entry_ids"))
+	if len(ids) == 0 {
+		writeErrorMessage(w, http.StatusBadRequest, "ledger_entry_ids es requerido")
+		return
+	}
+	claims, err := h.Ledger.GetClaimsByLedgerEntries(r.Context(), ids)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out := make([]dto.MovementClaim, 0, len(claims))
+	for _, c := range claims {
+		out = append(out, dto.FromMovementClaim(c))
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) fileClaim(w http.ResponseWriter, r *http.Request) {

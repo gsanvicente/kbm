@@ -97,13 +97,17 @@ agregado real de `balance_operations` ejecutadas, agrupado por semana —
 usado cuando `KbmAdminApp.backendClient` es null — `flutter test`, o
 correr sin backend) sigue siendo el dato sintético descrito abajo.
 
-El aviso visible en la UI ("Dato ilustrativo mientras no haya
-integración bancaria real...", `dashboard_section.dart`) todavía se
-muestra sin condicionar al modo — sigue siendo cierto en modo demo, pero
-ya es excesivamente cauteloso contra Postgres (los datos ahí sí son
-reales, solo que puede no haber suficiente volumen histórico todavía
-para que la gráfica diga mucho). Pendiente: condicionar ese aviso al
-modo, no se hizo en este incremento.
+**Resuelto 2026-09-21**: el aviso ("Dato ilustrativo mientras no haya
+integración bancaria real...", `dashboard_section.dart`'s
+`_TrendChartCard`) ahora se muestra solo cuando
+`DashboardSummary.isWeeklyTrendSynthetic` es true — ese campo viene de
+`BalanceOperationRepository.producesSyntheticWeeklyTrend` (`true` solo
+en `FakeBalanceOperationRepository`, `false` en
+`HttpBalanceOperationRepository`), no de un chequeo de tipo ni de una
+bandera de "modo demo" separada — cada repositorio declara si su propio
+dato es sintético. Contra Postgres el aviso nunca aparece, aunque haya
+poco volumen histórico todavía para que la gráfica diga mucho (eso es
+un problema distinto — de cantidad de datos, no de si son reales).
 
 Descripción original del dato sintético (modo demo, sigue vigente ahí):
 se genera de forma determinista (semilla fija, sin `DateTime.now()`)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/koons/kbm/backend/internal/adapters/auth/local"
 	"github.com/koons/kbm/backend/internal/adapters/http/handler"
 	"github.com/koons/kbm/backend/internal/adapters/http/middleware"
 	memrepo "github.com/koons/kbm/backend/internal/adapters/memory/repository"
@@ -16,6 +17,10 @@ import (
 
 func main() {
 	cfg := config.Load()
+	if cfg.JWTSecret == "" {
+		log.Fatal("JWT_SECRET es requerido — ver .env.example")
+	}
+	issuer := local.NewTokenIssuer(cfg.JWTSecret)
 
 	var (
 		h       *handler.Handler
@@ -30,7 +35,14 @@ func main() {
 		// docs/tdr/0003-in-memory-repository-adapter.md. Un solo Store
 		// implementa los cuatro ports que este slice necesita.
 		store := memrepo.NewStore()
-		h = handler.New(store, store, store, store)
+		h = handler.New(store, store, store, store, issuer)
+		// El login administrativo nunca fue parte del alcance original de
+		// este adaptador — se agrega solo porque
+		// docs/adr/0013-jwt-session-authentication.md ahora exige sesión
+		// de staff para las acciones de Cards/Ledger que sí implementa
+		// (sin esto, el modo demo hubiera quedado inutilizable). Ver
+		// internal/adapters/memory/repository/staff_auth.go.
+		h.StaffAuth = memrepo.NewStaffAuthStore(store)
 		backend = "in-memory"
 	case "postgres":
 		if cfg.DatabaseURL == "" {
@@ -45,7 +57,7 @@ func main() {
 			log.Fatalf("Postgres no responde (¿está corriendo? ver backend/README.md, \"Postgres real\"): %v", err)
 		}
 		store := pgrepo.NewStore(pool)
-		h = handler.New(store, store, store, store)
+		h = handler.New(store, store, store, store, issuer)
 		// Clientes, Tesorería, login administrativo, Aprobaciones,
 		// Cardholders (KYC) y Reclamos — ver
 		// docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md.

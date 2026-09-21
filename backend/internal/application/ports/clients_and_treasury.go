@@ -103,4 +103,21 @@ type BalanceOperationRepository interface {
 	// Reject nunca toca el ledger. Lanza shared.ErrInvalidState si no
 	// estaba pending_approval.
 	Reject(ctx context.Context, operationID, rejectedByEmail, reason string) (approval.Operation, error)
+
+	// ListApprovalRules — las reglas configuradas para clientID, una por
+	// OperationType como máximo (ver approval_rules_client_operation_unique
+	// en migrations/0004_approval_rules_unique_constraint.sql). Un
+	// OperationType ausente de la lista usa el default fail-safe
+	// (requiere aprobación) — ver docs/business/approval-policy.md.
+	ListApprovalRules(ctx context.Context, clientID string) ([]approval.Rule, error)
+
+	// SetApprovalRule — crea o actualiza la regla de clientID+opType
+	// (upsert). minAmount=nil significa "cualquier monto" cuando
+	// requiresApproval es true. Ver
+	// docs/feature/configuracion-de-cliente/README.md.
+	SetApprovalRule(ctx context.Context, clientID string, opType approval.OperationType, requiresApproval bool, minAmount *float64) (approval.Rule, error)
+
+	// DeleteApprovalRule quita el override — el Cliente vuelve al
+	// default fail-safe (requiere aprobación) para ese OperationType.
+	DeleteApprovalRule(ctx context.Context, clientID string, opType approval.OperationType) error
 }

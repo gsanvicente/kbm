@@ -3,6 +3,30 @@ SELECT client_id, operation_type, requires_approval, min_amount, id
 FROM approval_rules
 WHERE client_id = $1 AND operation_type = $2;
 
+-- name: DeleteApprovalRule :exec
+-- Quita el override — el Cliente vuelve al default fail-safe (requiere
+-- aprobación) para ese OperationType. Ver
+-- docs/business/approval-policy.md.
+DELETE FROM approval_rules WHERE client_id = $1 AND operation_type = $2;
+
+-- name: ListApprovalRulesByClient :many
+SELECT id, client_id, operation_type, requires_approval, min_amount
+FROM approval_rules
+WHERE client_id = $1
+ORDER BY operation_type;
+
+-- name: UpsertApprovalRule :one
+-- Ver approval_rules_client_operation_unique
+-- (migrations/0004_approval_rules_unique_constraint.sql) — sin esa
+-- restricción este ON CONFLICT no sería válido.
+INSERT INTO approval_rules (client_id, operation_type, requires_approval, min_amount)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (client_id, operation_type) DO UPDATE SET
+    requires_approval = EXCLUDED.requires_approval,
+    min_amount = EXCLUDED.min_amount,
+    updated_at = now()
+RETURNING id, client_id, operation_type, requires_approval, min_amount;
+
 -- name: ListBalanceOperationsByClients :many
 SELECT bo.id, bo.client_id, bo.card_id, bo.operation_type, bo.amount, bo.destination_card_id,
        bo.status, rq.email AS requested_by_email, rs.email AS resolved_by_email,

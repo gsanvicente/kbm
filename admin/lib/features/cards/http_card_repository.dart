@@ -116,6 +116,14 @@ class HttpCardRepository implements CardRepository {
   }
 
   @override
+  Future<int?> setMaxActiveCardsPerCardholder(String clientId, int? max) async {
+    final json = await client.put('/v1/clients/$clientId/settings', {
+      'maxActiveCardsPerCardholder': max,
+    }) as Map<String, dynamic>;
+    return json['maxActiveCardsPerCardholder'] as int?;
+  }
+
+  @override
   Future<PaymentCard> assign({required String cardId, required String cardholderId}) async {
     final card = await getById(cardId);
     if (card == null) throw NotFoundException('Tarjeta $cardId no encontrada');

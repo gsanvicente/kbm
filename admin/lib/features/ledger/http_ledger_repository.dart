@@ -121,13 +121,10 @@ class HttpLedgerRepository implements LedgerRepository {
 
   @override
   Future<Map<String, MovementClaim>> getClaims(List<String> ledgerEntryIds) async {
-    // Sin endpoint por lote — se combinan varias llamadas, mismo criterio
-    // que HttpCardRepository.listByClients.
-    final results = await Future.wait(ledgerEntryIds.map((id) async => MapEntry(id, await getClaim(id))));
-    return {
-      for (final entry in results)
-        if (entry.value != null) entry.key: entry.value!,
-    };
+    if (ledgerEntryIds.isEmpty) return {};
+    final json = await client.get('/v1/claims?ledger_entry_ids=${ledgerEntryIds.join(',')}') as List<dynamic>;
+    final claims = json.map((e) => _claimFromJson(e as Map<String, dynamic>));
+    return {for (final claim in claims) claim.ledgerEntryId: claim};
   }
 
   @override

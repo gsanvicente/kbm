@@ -10,7 +10,8 @@
   implementarse.
 - ADR/TDR relacionados: `docs/adr/0002-flutter-web-mobile-two-apps.md`,
   `docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`,
-  `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`
+  `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`,
+  `docs/adr/0013-jwt-session-authentication.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 6, 11 y 12
 - Roles/actores involucrados: Tarjetahabiente únicamente (plano de
   identidad `cardholder_users`, separado de staff) — ver
@@ -47,6 +48,15 @@ de la gestión de saldos del staff (sin Concentradora/Colectora, sin
   si tiene más de una, la pantalla de inicio muestra un selector; si solo
   tiene una, entra directo a su detalle.
 - MFA no implementado — ver nota en el doc de negocio.
+- **(2026-09-21)** El login emite un JWT (ver
+  `docs/adr/0013-jwt-session-authentication.md`) que `cardholder/`
+  adjunta como `Authorization: Bearer <token>` en toda petición
+  posterior; expira a las 12h sin refresh. Todo endpoint que este
+  Tarjetahabiente usa (tarjetas propias, ledger, self-freeze,
+  transferencias) verifica que el `cardholderId` del token coincida con
+  el del recurso pedido — pedir el de otro Tarjetahabiente se rechaza
+  con el mismo 404 genérico que ya usaba el resto del sistema para
+  "nunca revelar que el recurso existe pero es de alguien más".
 
 ## Pantallas / flujo principal
 1. **Login** — email + contraseña. **Implementado.**

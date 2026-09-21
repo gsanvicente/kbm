@@ -27,6 +27,9 @@ class FakeBalanceOperationRepository implements BalanceOperationRepository {
     required this.clientRepository,
   });
 
+  @override
+  bool get producesSyntheticWeeklyTrend => true;
+
   final LedgerRepository ledgerRepository;
 
   /// Backs every Dispersión (debits it) and Deducción (credits it) — see
@@ -40,25 +43,28 @@ class FakeBalanceOperationRepository implements BalanceOperationRepository {
   /// hasta reactivar.
   final ClientRepository clientRepository;
 
-  static const _rules = [
-    ApprovalRule(
+  // Mutable (no `static const`) desde
+  // docs/feature/configuracion-de-cliente/README.md: Super Admin/Admin
+  // Cliente pueden editar estas reglas en vivo.
+  final List<ApprovalRule> _rules = [
+    const ApprovalRule(
       clientId: '00000000-0000-0000-0000-000000000002',
       operationType: OperationType.transfer,
       requiresApproval: true,
       minAmount: 500.00,
     ),
-    ApprovalRule(
+    const ApprovalRule(
       clientId: '00000000-0000-0000-0000-000000000002',
       operationType: OperationType.load,
       requiresApproval: false,
     ),
-    ApprovalRule(
+    const ApprovalRule(
       clientId: '00000000-0000-0000-0000-000000000003',
       operationType: OperationType.transfer,
       requiresApproval: true,
       minAmount: 500.00,
     ),
-    ApprovalRule(
+    const ApprovalRule(
       clientId: '00000000-0000-0000-0000-000000000003',
       operationType: OperationType.load,
       requiresApproval: false,
@@ -316,5 +322,36 @@ class FakeBalanceOperationRepository implements BalanceOperationRepository {
     );
     _operations[index] = rejected;
     return rejected;
+  }
+
+  @override
+  Future<List<ApprovalRule>> listApprovalRules(String clientId) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    return _rules.where((r) => r.clientId == clientId).toList();
+  }
+
+  @override
+  Future<ApprovalRule> setApprovalRule({
+    required String clientId,
+    required OperationType type,
+    required bool requiresApproval,
+    double? minAmount,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    _rules.removeWhere((r) => r.clientId == clientId && r.operationType == type);
+    final rule = ApprovalRule(
+      clientId: clientId,
+      operationType: type,
+      requiresApproval: requiresApproval,
+      minAmount: minAmount,
+    );
+    _rules.add(rule);
+    return rule;
+  }
+
+  @override
+  Future<void> deleteApprovalRule({required String clientId, required OperationType type}) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    _rules.removeWhere((r) => r.clientId == clientId && r.operationType == type);
   }
 }

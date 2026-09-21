@@ -24,6 +24,21 @@ func (s *Store) GetClaim(ctx context.Context, ledgerEntryID string) (*ledger.Mov
 	return &c, nil
 }
 
+func (s *Store) GetClaimsByLedgerEntries(ctx context.Context, ledgerEntryIDs []string) ([]ledger.MovementClaim, error) {
+	if len(ledgerEntryIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := s.q.ListClaimsByLedgerEntries(ctx, ledgerEntryIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ledger.MovementClaim, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, mapper.ToMovementClaim(mapper.MovementClaimRow(r)))
+	}
+	return out, nil
+}
+
 // FileClaim — lanza shared.ErrInvalidState si [ledgerEntryID] ya tiene
 // reclamo (relación 1:1, ver docs/business/reclamos-de-movimientos.md).
 func (s *Store) FileClaim(ctx context.Context, ledgerEntryID, reason, requestedByEmail string) (ledger.MovementClaim, error) {

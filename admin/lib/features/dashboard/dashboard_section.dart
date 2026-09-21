@@ -474,10 +474,15 @@ class _TrendChartCard extends StatelessWidget {
           children: [
             const Text('Volumen de operaciones — últimas 12 semanas', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
             const SizedBox(height: 4),
-            Text(
-              'Dato ilustrativo mientras no haya integración bancaria real. No representa transacciones reales.',
-              style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
-            ),
+            // Solo en modo demo — contra el backend real esto es un
+            // agregado real de operaciones ejecutadas, no dato sintético.
+            // Ver docs/feature/panel-directivo/README.md, "Volumen de
+            // movimientos".
+            if (summary.isWeeklyTrendSynthetic)
+              Text(
+                'Dato ilustrativo mientras no haya integración bancaria real. No representa transacciones reales.',
+                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
+              ),
             const SizedBox(height: 12),
             _Legend(items: [
               (_dispersionColor, 'Dispersión'),

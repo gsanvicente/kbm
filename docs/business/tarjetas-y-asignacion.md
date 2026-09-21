@@ -62,9 +62,10 @@ Es el tipo de cuenta actual de KBM el que exige esto; un Cliente puede
 tener un override explícito distinto (ej. Koons Subsidiaria B permite 2
 en el seed de esta iteración, para probar que el mecanismo sí varía por
 Cliente), pero cualquier Cliente sin override cae en el default de 1, no
-en "sin límite". Esta iteración no expone una pantalla para editar el
-valor por Cliente (mismo criterio que `approval_rules`, tampoco editable
-todavía) — vive como dato sembrado en cada repositorio/adaptador.
+en "sin límite". **Editable desde 2026-09-21** — pestaña "Configuración"
+en el detalle de un Cliente, solo Super Admin/Admin Cliente, ver
+`docs/feature/configuracion-de-cliente/README.md`. Antes de eso vivía
+solo como dato sembrado, sin ninguna pantalla para cambiarlo.
 
 ## Quién puede asignar
 

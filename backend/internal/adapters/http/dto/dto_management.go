@@ -27,6 +27,9 @@ type StaffLoginResponse struct {
 	Email    string  `json:"email"`
 	Role     string  `json:"role"`
 	ClientID *string `json:"clientId"`
+	// AccessToken — ver LoginResponse.AccessToken en dto.go, mismo
+	// criterio (JWT, ver docs/adr/0013-jwt-session-authentication.md).
+	AccessToken string `json:"accessToken"`
 }
 
 func FromStaffUser(u staff.User) StaffLoginResponse {
@@ -297,6 +300,33 @@ type IsOperableResponse struct {
 
 type ClientSettingsResponse struct {
 	MaxActiveCardsPerCardholder *int `json:"maxActiveCardsPerCardholder"`
+}
+
+type SetClientSettingsRequest struct {
+	// nil borra el override (vuelve al default de la aplicación) — ver
+	// docs/feature/configuracion-de-cliente/README.md.
+	MaxActiveCardsPerCardholder *int `json:"maxActiveCardsPerCardholder"`
+}
+
+type ApprovalRule struct {
+	ClientID         string   `json:"clientId"`
+	OperationType    string   `json:"operationType"`
+	RequiresApproval bool     `json:"requiresApproval"`
+	MinAmount        *float64 `json:"minAmount"`
+}
+
+func FromApprovalRule(r approval.Rule) ApprovalRule {
+	return ApprovalRule{
+		ClientID:         r.ClientID,
+		OperationType:    string(r.OperationType),
+		RequiresApproval: r.RequiresApproval,
+		MinAmount:        r.MinAmount,
+	}
+}
+
+type SetApprovalRuleRequest struct {
+	RequiresApproval bool     `json:"requiresApproval"`
+	MinAmount        *float64 `json:"minAmount"`
 }
 
 // --- Tesorería ------------------------------------------------------

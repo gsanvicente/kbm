@@ -16,15 +16,27 @@ class KbmBackendClient {
   final String baseUrl;
   final http.Client _client;
 
+  /// Token de sesión del Tarjetahabiente emitido por
+  /// `POST /v1/cardholder-sessions` — ver
+  /// docs/adr/0013-jwt-session-authentication.md. Vive solo en memoria,
+  /// nunca se persiste a disco; se pierde (y exige re-login) en cada
+  /// recarga de la app, igual que hoy exige re-login `CardholderAuthController`.
+  String? accessToken;
+
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      };
+
   Future<dynamic> get(String path) async {
-    final response = await _client.get(Uri.parse('$baseUrl$path'));
+    final response = await _client.get(Uri.parse('$baseUrl$path'), headers: _headers);
     return _decode(response);
   }
 
   Future<dynamic> post(String path, [Map<String, dynamic>? body]) async {
     final response = await _client.post(
       Uri.parse('$baseUrl$path'),
-      headers: const {'Content-Type': 'application/json'},
+      headers: _headers,
       body: body != null ? jsonEncode(body) : null,
     );
     return _decode(response);

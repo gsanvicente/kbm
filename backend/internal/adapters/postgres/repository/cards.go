@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/koons/kbm/backend/internal/adapters/postgres/mapper"
 	sqlcgen "github.com/koons/kbm/backend/internal/adapters/postgres/sqlc/gen"
@@ -196,4 +197,23 @@ func (s *Store) MaxActiveCardsPerCardholder(ctx context.Context, clientID string
 	}
 	max := int(row.Int32)
 	return &max, nil
+}
+
+func (s *Store) SetMaxActiveCardsPerCardholder(ctx context.Context, clientID string, max *int) (*int, error) {
+	arg := pgtype.Int4{Valid: false}
+	if max != nil {
+		arg = pgtype.Int4{Int32: int32(*max), Valid: true}
+	}
+	row, err := s.q.UpsertClientMaxActiveCards(ctx, sqlcgen.UpsertClientMaxActiveCardsParams{
+		ClientID:                    clientID,
+		MaxActiveCardsPerCardholder: arg,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !row.MaxActiveCardsPerCardholder.Valid {
+		return nil, nil
+	}
+	result := int(row.MaxActiveCardsPerCardholder.Int32)
+	return &result, nil
 }

@@ -84,6 +84,11 @@ type LoginResponse struct {
 	CardholderID string `json:"cardholderId"`
 	Email        string `json:"email"`
 	FullName     string `json:"fullName"`
+	// AccessToken — JWT que cardholder/ debe mandar como
+	// `Authorization: Bearer <token>` en cada petición posterior, ver
+	// docs/adr/0013-jwt-session-authentication.md. Se llena en el
+	// handler (dto.FromCardholder no conoce el emisor de tokens).
+	AccessToken string `json:"accessToken"`
 }
 
 func FromCardholder(c cardholder.Cardholder) LoginResponse {

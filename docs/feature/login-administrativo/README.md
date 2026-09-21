@@ -1,7 +1,7 @@
 # Login administrativo
 
-- Estado: En desarrollo (esta iteración: solo `admin/`, con repositorio fake — ver nota de alcance)
-- ADR/TDR relacionados: `docs/adr/0001-go-hexagonal-modular-monolith.md`, `docs/adr/0006-openapi-contract.md`
+- Estado: Implementado contra Postgres (`HttpAuthRepository` por default; `FakeAuthRepository` solo para `flutter test`, ver nota de alcance)
+- ADR/TDR relacionados: `docs/adr/0001-go-hexagonal-modular-monolith.md`, `docs/adr/0006-openapi-contract.md`, `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`, `docs/adr/0013-jwt-session-authentication.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 (control de acceso), 7 (secretos/credenciales) y 13 (enforcement de Cliente inactivo)
 - Roles/actores involucrados: Super Admin, Admin Cliente, Operador, Auditor (todos los roles de staff — ver `docs/business/roles-and-permissions.md`)
 
@@ -15,27 +15,34 @@ Primer "walking skeleton" del sistema: la meta es probar de punta a punta
 que un flujo completo (UI → contrato → autorización) funciona antes de
 construir el resto de features sobre el mismo patrón.
 
-## Nota de alcance de esta iteración
-Por decisión explícita (ver conversación 2026-09-15), esta iteración
-implementa la pantalla de login en `admin/` contra un
-`AuthRepository` **fake en memoria** (mismos usuarios que
-`backend/scripts/init-db/001_seed.sql`), mientras se resuelve la
-instalación de Postgres/Docker local. El backend real (`POST /auth/login`
-en Go) se documenta aquí igual, y se implementa en una iteración
-siguiente sin cambiar el contrato ni la UI — solo se reemplaza la
-implementación del repositorio.
+## Nota de alcance
+La primera iteración (2026-09-15) implementó esto contra un
+`AuthRepository` fake en memoria mientras se resolvía la instalación de
+Postgres local. `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`
+lo migró a `POST /v1/staff-sessions` contra Postgres de verdad (`HttpAuthRepository`),
+sin cambiar el contrato ni la UI. `FakeAuthRepository` sigue viviendo en
+el árbol únicamente porque `flutter test` no puede ejercer un backend
+real (ver `KbmAdminApp.backendClient`), no como alternativa de
+producción.
 
 ## Flujo principal
 1. El usuario ingresa email y contraseña en la pantalla de login.
 2. El sistema valida las credenciales.
 3. Si son válidas, el usuario está activo, **y su Cliente (y toda la
    cadena de ancestros de ese Cliente) están activos** → se crea una
-   sesión con su rol y `client_id` (nulo para Super Admin).
+   sesión con su rol y `client_id` (nulo para Super Admin), y el backend
+   emite un JWT (`accessToken`, ver
+   `docs/adr/0013-jwt-session-authentication.md`) que `admin/` adjunta
+   como `Authorization: Bearer <token>` en toda petición posterior.
 4. Si son inválidas, el usuario está inactivo, o su Cliente (o algún
    ancestro) está inactivo → se rechaza con un mensaje genérico (no se
    revela cuál de los motivos fue).
 5. Todo intento (éxito o fallo) queda registrado en `audit_log` (backend
    real — no aplica al repositorio fake de esta iteración).
+6. El token expira a las 12 horas (sin refresh) — pasado ese tiempo,
+   cualquier petición falla y exige volver a iniciar sesión. El token
+   vive solo en memoria del proceso de `admin/`; recargar la página
+   siempre exige volver a iniciar sesión.
 
 ## Reglas de negocio
 - Un usuario inactivo (`is_active = false`) no puede iniciar sesión,

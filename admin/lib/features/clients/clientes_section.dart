@@ -221,6 +221,8 @@ class _ClientesSectionState extends State<ClientesSection> {
         cardholderRepository: widget.cardholderRepository,
         treasuryRepository: widget.treasuryRepository,
         clientRepository: widget.clientRepository,
+        cardRepository: widget.cardRepository,
+        balanceOperationRepository: widget.balanceOperationRepository,
         onSelectCardholder: (selected) => setState(() => _selectedCardholder = selected),
         onEdit: () => setState(() => _editingClient = true),
         onClientUpdated: (updated) => setState(() => _selectedClient = updated),

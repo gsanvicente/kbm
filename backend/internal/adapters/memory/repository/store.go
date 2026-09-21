@@ -44,8 +44,10 @@ type Store struct {
 	cardholdersMu sync.RWMutex
 	cardholders   map[string]cardholder.Cardholder
 
-	// Config sembrada, no mutable en esta iteración — ver
+	// Config sembrada, editable vía SetMaxActiveCardsPerCardholder desde
+	// docs/feature/configuracion-de-cliente/README.md — ver
 	// docs/business/tarjetas-y-asignacion.md.
+	settingsMu             sync.RWMutex
 	maxActiveCardsByClient map[string]int
 
 	// Solo para resolver una transferencia C2C — nunca se expone fuera de
@@ -136,7 +138,9 @@ func (s *Store) Assign(_ context.Context, cardID, cardholderID string) (card.Car
 	// docs/business/tarjetas-y-asignacion.md, "Límite de tarjetas activas
 	// por Tarjetahabiente". Nunca "sin límite": ese default cambió de
 	// "sin restricción" a 1 explícitamente.
+	s.settingsMu.RLock()
 	max, hasOverride := s.maxActiveCardsByClient[c.ClientID]
+	s.settingsMu.RUnlock()
 	if !hasOverride {
 		max = defaultMaxActiveCardsPerCardholder
 	}
@@ -255,10 +259,26 @@ func sortCardsByID(cards []card.Card) {
 // client_settings real — esto solo expone el mismo mapa sembrado que
 // Assign() ya usaba.
 func (s *Store) MaxActiveCardsPerCardholder(_ context.Context, clientID string) (*int, error) {
+	s.settingsMu.RLock()
+	defer s.settingsMu.RUnlock()
 	if max, ok := s.maxActiveCardsByClient[clientID]; ok {
 		return &max, nil
 	}
 	return nil, nil
+}
+
+// SetMaxActiveCardsPerCardholder — max=nil borra el override (el mapa
+// vuelve a no tener entrada para clientID, mismo efecto que nunca haber
+// tenido una). Ver docs/feature/configuracion-de-cliente/README.md.
+func (s *Store) SetMaxActiveCardsPerCardholder(_ context.Context, clientID string, max *int) (*int, error) {
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
+	if max == nil {
+		delete(s.maxActiveCardsByClient, clientID)
+		return nil, nil
+	}
+	s.maxActiveCardsByClient[clientID] = *max
+	return max, nil
 }
 
 // --- LedgerRepository ------------------------------------------------------
@@ -319,6 +339,22 @@ func (s *Store) GetClaim(_ context.Context, ledgerEntryID string) (*ledger.Movem
 		}
 	}
 	return nil, nil
+}
+
+func (s *Store) GetClaimsByLedgerEntries(_ context.Context, ledgerEntryIDs []string) ([]ledger.MovementClaim, error) {
+	wanted := make(map[string]bool, len(ledgerEntryIDs))
+	for _, id := range ledgerEntryIDs {
+		wanted[id] = true
+	}
+	s.claimsMu.RLock()
+	defer s.claimsMu.RUnlock()
+	var out []ledger.MovementClaim
+	for _, c := range s.claims {
+		if wanted[c.LedgerEntryID] {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 func (s *Store) FileClaim(_ context.Context, ledgerEntryID, reason, requestedByEmail string) (ledger.MovementClaim, error) {

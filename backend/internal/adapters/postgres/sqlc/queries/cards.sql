@@ -21,6 +21,17 @@ SELECT count(*) FROM cards WHERE cardholder_id = $1 AND status = 'active';
 -- name: GetClientMaxActiveCards :one
 SELECT max_active_cards_per_cardholder FROM client_settings WHERE client_id = $1;
 
+-- name: UpsertClientMaxActiveCards :one
+-- $2 en NULL borra el override (vuelve a usar el default de la
+-- aplicación) sin eliminar la fila — ver
+-- docs/feature/configuracion-de-cliente/README.md.
+INSERT INTO client_settings (client_id, max_active_cards_per_cardholder)
+VALUES ($1, $2)
+ON CONFLICT (client_id) DO UPDATE SET
+    max_active_cards_per_cardholder = EXCLUDED.max_active_cards_per_cardholder,
+    updated_at = now()
+RETURNING client_id, max_active_cards_per_cardholder;
+
 -- name: AssignCardIfAvailable :one
 UPDATE cards
 SET cardholder_id = $2, status = 'active', assigned_at = now(), blocked_reason = NULL, updated_at = now()

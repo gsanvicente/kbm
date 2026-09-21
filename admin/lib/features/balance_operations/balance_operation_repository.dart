@@ -1,8 +1,20 @@
+import '../../core/models/approval_rule.dart';
 import '../../core/models/balance_operation.dart';
 import '../../core/models/movement_trend_point.dart';
 import '../../core/models/operation_type.dart';
 
 abstract class BalanceOperationRepository {
+  /// true solo para el repositorio fake (modo demo, sin backend real) —
+  /// ahí [getWeeklyTrend] es un dato sintético determinista. La versión
+  /// HTTP es false: contra Postgres es un agregado real de
+  /// `balance_operations` ejecutadas. Ver
+  /// docs/feature/panel-directivo/README.md, "Volumen de movimientos" —
+  /// el Panel directivo usa esto para decidir si mostrar el aviso de
+  /// "dato ilustrativo". Cada implementación lo declara explícitamente
+  /// (sin default aquí: `implements` en Dart no hereda cuerpos, solo la
+  /// forma).
+  bool get producesSyntheticWeeklyTrend;
+
   /// Every operation (any status) across [clientIds], most recent first
   /// — the "Operaciones de saldo" history. See
   /// docs/feature/operacion-saldo-con-aprobacion/README.md.
@@ -47,4 +59,23 @@ abstract class BalanceOperationRepository {
     required String rejectedByEmail,
     required String reason,
   });
+
+  /// Las reglas configuradas para [clientId], una por [OperationType]
+  /// como máximo. Un [OperationType] ausente de la lista usa el default
+  /// fail-safe (requiere aprobación) — ver
+  /// docs/business/approval-policy.md.
+  Future<List<ApprovalRule>> listApprovalRules(String clientId);
+
+  /// Crea o actualiza (upsert) la regla de [clientId] + [type]. Ver
+  /// docs/feature/configuracion-de-cliente/README.md.
+  Future<ApprovalRule> setApprovalRule({
+    required String clientId,
+    required OperationType type,
+    required bool requiresApproval,
+    double? minAmount,
+  });
+
+  /// Quita el override — [clientId] vuelve al default fail-safe para
+  /// [type].
+  Future<void> deleteApprovalRule({required String clientId, required OperationType type});
 }

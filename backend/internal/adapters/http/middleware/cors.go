@@ -20,8 +20,16 @@ func CORS(next http.Handler) http.Handler {
 		origin := r.Header.Get("Origin")
 		if allowedOrigins[origin] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			// PUT/DELETE — desde Configuración de cliente (límites y reglas
+			// de aprobación), ver
+			// docs/feature/configuracion-de-cliente/README.md.
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			// Authorization añadido con la sesión JWT — ver
+			// docs/adr/0013-jwt-session-authentication.md. Sin esto el
+			// navegador bloquea el header en la petición real tras el
+			// preflight (admin/ y cardholder/ corren en un origen
+			// distinto al backend).
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

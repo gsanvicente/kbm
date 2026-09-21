@@ -23,6 +23,14 @@ primera pieza de disputa de negocio. Ver
   diálogo — no es un nivel nuevo de breadcrumb, ver nota de negocio.
 - `LedgerRepository` (fake) gana `listEntries`, `getClaim`, `fileClaim`,
   `resolveClaim` — mutable, mismo patrón que `CardRepository`.
+- **Actualizado 2026-09-21**: `getClaims` (la forma en lote que usa el
+  Panel directivo para saber si cada movimiento de cada tarjeta tiene
+  reclamo) hacía una llamada HTTP por movimiento
+  (`Future.wait` de N `getClaim`) contra el backend Postgres — un
+  patrón N+1 real, aunque funcionalmente correcto. Se agregó
+  `GET /v1/claims?ledger_entry_ids=a,b,c` (`ports.LedgerRepository.GetClaimsByLedgerEntries`
+  en el backend) y `HttpLedgerRepository.getClaims` ahora hace una sola
+  llamada. Ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`.
 
 ## Flujo principal
 1. En el detalle de una tarjeta con cuenta de saldo, la pestaña

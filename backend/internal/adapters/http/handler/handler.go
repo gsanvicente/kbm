@@ -16,7 +16,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/koons/kbm/backend/internal/adapters/auth/local"
 	"github.com/koons/kbm/backend/internal/adapters/http/dto"
+	authmw "github.com/koons/kbm/backend/internal/adapters/http/middleware"
 	"github.com/koons/kbm/backend/internal/application/ports"
 	"github.com/koons/kbm/backend/internal/domain/ledger"
 	"github.com/koons/kbm/backend/internal/domain/shared"
@@ -27,6 +29,7 @@ type Handler struct {
 	Ledger    ports.LedgerRepository
 	Auth      ports.CardholderAuthRepository
 	Transfers ports.TransferService
+	Tokens    *local.TokenIssuer
 
 	// Nil en modo memoria (STORAGE_BACKEND=memory) — esos ports nunca
 	// formaron parte del alcance del adaptador en memoria (ver
@@ -40,77 +43,98 @@ type Handler struct {
 	Cardholders ports.CardholderManagementRepository
 }
 
-func New(cards ports.CardRepository, ledgerRepo ports.LedgerRepository, auth ports.CardholderAuthRepository, transfers ports.TransferService) *Handler {
-	return &Handler{Cards: cards, Ledger: ledgerRepo, Auth: auth, Transfers: transfers}
+func New(cards ports.CardRepository, ledgerRepo ports.LedgerRepository, auth ports.CardholderAuthRepository, transfers ports.TransferService, tokens *local.TokenIssuer) *Handler {
+	return &Handler{Cards: cards, Ledger: ledgerRepo, Auth: auth, Transfers: transfers, Tokens: tokens}
 }
 
+// Routes — ver docs/adr/0013-jwt-session-authentication.md. Solo los dos
+// endpoints de login (y /healthz) quedan fuera de RequireAuth; todo lo
+// demás exige un token verificado, y las rutas que solo administra
+// staff (todo lo de handler_management.go salvo el propio login) además
+// exigen RequireStaff.
 func (h *Handler) Routes() chi.Router {
 	r := chi.NewRouter()
 
 	r.Get("/healthz", h.healthz)
 
 	r.Post("/v1/cardholder-sessions", h.login)
-
-	r.Get("/v1/cards", h.listCards)
-	r.Get("/v1/cards/{cardID}", h.getCard)
-	r.Post("/v1/cards/{cardID}/assign", h.assignCard)
-	r.Post("/v1/cards/{cardID}/block-status", h.setBlockStatus)
-	r.Post("/v1/cards/{cardID}/self-freeze", h.setSelfFrozen)
-	r.Get("/v1/cards/{cardID}/ledger", h.getLedger)
-	r.Post("/v1/cards/{cardID}/ledger/entries", h.postLedgerEntry)
-
-	r.Post("/v1/cardholders/{cardholderID}/freeze-cards", h.freezeCards)
-
-	r.Post("/v1/transfers/resolve", h.resolveTransfer)
-	r.Post("/v1/transfers/execute", h.executeTransfer)
-
 	if h.StaffAuth != nil {
 		r.Post("/v1/staff-sessions", h.staffLogin)
 	}
 
-	if h.Clients != nil {
-		r.Get("/v1/clients", h.listClients)
-		r.Post("/v1/clients", h.createClient)
-		r.Put("/v1/clients/{clientID}", h.updateClient)
-		r.Post("/v1/clients/{clientID}/active-status", h.setClientActive)
-		r.Get("/v1/clients/{clientID}/operable", h.isClientOperable)
-	}
-	if h.Cards != nil {
-		r.Get("/v1/clients/{clientID}/settings", h.getClientSettings)
-	}
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequireAuth(h.Tokens))
 
-	if h.Treasury != nil {
-		r.Get("/v1/clients/{clientID}/treasury/concentrator", h.getConcentratorAccount)
-		r.Post("/v1/clients/{clientID}/treasury/concentrator", h.createConcentratorAccount)
-		r.Get("/v1/concentrator-accounts/{accountID}/entries", h.listConcentratorEntries)
-		r.Post("/v1/concentrator-accounts/{accountID}/entries", h.postConcentratorEntry)
-		r.Get("/v1/clients/{clientID}/treasury/collector-deposits", h.listCollectorDeposits)
-		r.Post("/v1/clients/{clientID}/treasury/collector-deposits", h.registerDeposit)
-		r.Post("/v1/collector-deposits/{depositID}/reconcile", h.reconcileDeposit)
-	}
+		// Cards/Ledger/Transferencias — alcance mixto (staff y
+		// Tarjetahabiente, cada handler decide qué le corresponde a
+		// quién; ver los comentarios de cada uno).
+		r.Get("/v1/cards", h.listCards)
+		r.Get("/v1/cards/{cardID}", h.getCard)
+		r.Get("/v1/cards/{cardID}/ledger", h.getLedger)
 
-	if h.Cardholders != nil {
-		r.Get("/v1/cardholders", h.listCardholders)
-		r.Get("/v1/cardholders/{cardholderID}", h.getCardholder)
-		r.Post("/v1/cardholders", h.createCardholder)
-		r.Put("/v1/cardholders/{cardholderID}", h.updateCardholder)
-		r.Post("/v1/cardholders/{cardholderID}/active-status", h.setCardholderActive)
-	}
+		r.Post("/v1/cards/{cardID}/self-freeze", h.setSelfFrozen)
+		r.Post("/v1/transfers/resolve", h.resolveTransfer)
+		r.Post("/v1/transfers/execute", h.executeTransfer)
 
-	if h.BalanceOps != nil {
-		r.Get("/v1/balance-operations", h.listBalanceOperations)
-		r.Get("/v1/balance-operations/pending", h.listPendingBalanceOperations)
-		r.Get("/v1/balance-operations/weekly-trend", h.weeklyTrend)
-		r.Post("/v1/balance-operations", h.requestBalanceOperation)
-		r.Post("/v1/balance-operations/{operationID}/approve", h.approveBalanceOperation)
-		r.Post("/v1/balance-operations/{operationID}/reject", h.rejectBalanceOperation)
-	}
+		r.Group(func(r chi.Router) {
+			r.Use(authmw.RequireStaff)
+			r.Post("/v1/cards/{cardID}/assign", h.assignCard)
+			r.Post("/v1/cards/{cardID}/block-status", h.setBlockStatus)
+			r.Post("/v1/cards/{cardID}/ledger/entries", h.postLedgerEntry)
+			r.Post("/v1/cardholders/{cardholderID}/freeze-cards", h.freezeCards)
 
-	if h.Ledger != nil {
-		r.Get("/v1/ledger-entries/{entryID}/claim", h.getClaim)
-		r.Post("/v1/ledger-entries/{entryID}/claim", h.fileClaim)
-		r.Post("/v1/claims/{claimID}/resolve", h.resolveClaim)
-	}
+			if h.Clients != nil {
+				r.Get("/v1/clients", h.listClients)
+				r.Post("/v1/clients", h.createClient)
+				r.Put("/v1/clients/{clientID}", h.updateClient)
+				r.Post("/v1/clients/{clientID}/active-status", h.setClientActive)
+				r.Get("/v1/clients/{clientID}/operable", h.isClientOperable)
+			}
+			if h.Cards != nil {
+				r.Get("/v1/clients/{clientID}/settings", h.getClientSettings)
+				r.Put("/v1/clients/{clientID}/settings", h.setClientSettings)
+			}
+			if h.BalanceOps != nil {
+				r.Get("/v1/clients/{clientID}/approval-rules", h.listApprovalRules)
+				r.Put("/v1/clients/{clientID}/approval-rules/{operationType}", h.setApprovalRule)
+				r.Delete("/v1/clients/{clientID}/approval-rules/{operationType}", h.deleteApprovalRule)
+			}
+
+			if h.Treasury != nil {
+				r.Get("/v1/clients/{clientID}/treasury/concentrator", h.getConcentratorAccount)
+				r.Post("/v1/clients/{clientID}/treasury/concentrator", h.createConcentratorAccount)
+				r.Get("/v1/concentrator-accounts/{accountID}/entries", h.listConcentratorEntries)
+				r.Post("/v1/concentrator-accounts/{accountID}/entries", h.postConcentratorEntry)
+				r.Get("/v1/clients/{clientID}/treasury/collector-deposits", h.listCollectorDeposits)
+				r.Post("/v1/clients/{clientID}/treasury/collector-deposits", h.registerDeposit)
+				r.Post("/v1/collector-deposits/{depositID}/reconcile", h.reconcileDeposit)
+			}
+
+			if h.Cardholders != nil {
+				r.Get("/v1/cardholders", h.listCardholders)
+				r.Get("/v1/cardholders/{cardholderID}", h.getCardholder)
+				r.Post("/v1/cardholders", h.createCardholder)
+				r.Put("/v1/cardholders/{cardholderID}", h.updateCardholder)
+				r.Post("/v1/cardholders/{cardholderID}/active-status", h.setCardholderActive)
+			}
+
+			if h.BalanceOps != nil {
+				r.Get("/v1/balance-operations", h.listBalanceOperations)
+				r.Get("/v1/balance-operations/pending", h.listPendingBalanceOperations)
+				r.Get("/v1/balance-operations/weekly-trend", h.weeklyTrend)
+				r.Post("/v1/balance-operations", h.requestBalanceOperation)
+				r.Post("/v1/balance-operations/{operationID}/approve", h.approveBalanceOperation)
+				r.Post("/v1/balance-operations/{operationID}/reject", h.rejectBalanceOperation)
+			}
+
+			if h.Ledger != nil {
+				r.Get("/v1/ledger-entries/{entryID}/claim", h.getClaim)
+				r.Post("/v1/ledger-entries/{entryID}/claim", h.fileClaim)
+				r.Post("/v1/claims/{claimID}/resolve", h.resolveClaim)
+				r.Get("/v1/claims", h.listClaims)
+			}
+		})
+	})
 
 	return r
 }
@@ -130,12 +154,33 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, dto.FromCardholder(ch))
+	token, err := h.Tokens.IssueCardholder(ch.ID, ch.ClientID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	resp := dto.FromCardholder(ch)
+	resp.AccessToken = token
+	writeJSON(w, http.StatusOK, resp)
 }
 
+// listCards — GET /v1/cards?cardholder_id=X viene tanto de admin/ (staff,
+// cualquier cardholder_id) como de cardholder/ (el propio, ver
+// docs/adr/0013-jwt-session-authentication.md); client_id solo lo usa
+// admin/. Un token de Tarjetahabiente pidiendo el cardholder_id de otro
+// se rechaza como si no existiera (mismo criterio "nunca revelar" que ya
+// usa SetFrozen).
 func (h *Handler) listCards(w http.ResponseWriter, r *http.Request) {
 	cardholderID := r.URL.Query().Get("cardholder_id")
 	clientID := r.URL.Query().Get("client_id")
+
+	claims, _ := authmw.ClaimsFromContext(r.Context())
+	if claims.Type == local.SubjectCardholder && (cardholderID != "" || clientID != "") {
+		if clientID != "" || cardholderID != claims.CardholderID {
+			writeError(w, shared.ErrNotFound)
+			return
+		}
+	}
 
 	var (
 		cards []dto.Card
@@ -174,6 +219,15 @@ func (h *Handler) getCard(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	// Un Tarjetahabiente solo puede ver sus propias tarjetas por id
+	// directo — igual criterio que listCards. admin/ (staff) puede ver
+	// cualquiera.
+	if claims, _ := authmw.ClaimsFromContext(r.Context()); claims.Type == local.SubjectCardholder {
+		if c.CardholderID == nil || *c.CardholderID != claims.CardholderID {
+			writeError(w, shared.ErrNotFound)
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, dto.FromCard(c))
 }
 
@@ -203,9 +257,17 @@ func (h *Handler) setBlockStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dto.FromCard(c))
 }
 
+// setSelfFrozen — solo el propio Tarjetahabiente, nunca admin/ (bloqueo
+// de staff usa setBlockStatus). req.CardholderID debe coincidir con el
+// token — ver docs/adr/0013-jwt-session-authentication.md.
 func (h *Handler) setSelfFrozen(w http.ResponseWriter, r *http.Request) {
 	var req dto.SelfFreezeRequest
 	if !decodeJSON(w, r, &req) {
+		return
+	}
+	claims, _ := authmw.ClaimsFromContext(r.Context())
+	if claims.Type != local.SubjectCardholder || claims.CardholderID != req.CardholderID {
+		writeError(w, shared.ErrNotFound)
 		return
 	}
 	c, err := h.Cards.SetFrozen(r.Context(), chi.URLParam(r, "cardID"), req.CardholderID, req.Frozen)
@@ -224,8 +286,22 @@ func (h *Handler) freezeCards(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// getLedger — mismo criterio que getCard: un Tarjetahabiente solo ve el
+// ledger de sus propias tarjetas.
 func (h *Handler) getLedger(w http.ResponseWriter, r *http.Request) {
-	account, entries, err := h.Ledger.GetByCard(r.Context(), chi.URLParam(r, "cardID"))
+	cardID := chi.URLParam(r, "cardID")
+	if claims, _ := authmw.ClaimsFromContext(r.Context()); claims.Type == local.SubjectCardholder {
+		c, err := h.Cards.GetByID(r.Context(), cardID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if c.CardholderID == nil || *c.CardholderID != claims.CardholderID {
+			writeError(w, shared.ErrNotFound)
+			return
+		}
+	}
+	account, entries, err := h.Ledger.GetByCard(r.Context(), cardID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -250,9 +326,18 @@ func (h *Handler) postLedgerEntry(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dto.FromLedgerEntry(entry))
 }
 
+// resolveTransfer/executeTransfer — solo el propio Tarjetahabiente.
+// req.CardholderID (resolve) debe coincidir con el token; execute no
+// lleva cardholderId en el cuerpo (ver dto.ExecuteTransferRequest), así
+// que se verifica que la tarjeta de origen sea suya.
 func (h *Handler) resolveTransfer(w http.ResponseWriter, r *http.Request) {
 	var req dto.ResolveTransferRequest
 	if !decodeJSON(w, r, &req) {
+		return
+	}
+	claims, _ := authmw.ClaimsFromContext(r.Context())
+	if claims.Type != local.SubjectCardholder || claims.CardholderID != req.CardholderID {
+		writeError(w, shared.ErrNotFound)
 		return
 	}
 	resolved, err := h.Transfers.ResolveDestination(r.Context(), req.CardholderID, req.OriginCardID, req.PAN)
@@ -276,6 +361,20 @@ func (h *Handler) resolveTransfer(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) executeTransfer(w http.ResponseWriter, r *http.Request) {
 	var req dto.ExecuteTransferRequest
 	if !decodeJSON(w, r, &req) {
+		return
+	}
+	claims, _ := authmw.ClaimsFromContext(r.Context())
+	if claims.Type != local.SubjectCardholder {
+		writeError(w, shared.ErrNotFound)
+		return
+	}
+	origin, err := h.Cards.GetByID(r.Context(), req.OriginCardID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if origin.CardholderID == nil || *origin.CardholderID != claims.CardholderID {
+		writeError(w, shared.ErrNotFound)
 		return
 	}
 	if err := h.Transfers.Execute(r.Context(), req.OriginCardID, req.DestinationCardID, req.Amount); err != nil {

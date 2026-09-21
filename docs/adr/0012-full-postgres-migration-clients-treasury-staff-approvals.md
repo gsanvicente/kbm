@@ -109,8 +109,45 @@ reales.
   client-side ya existente sigue siendo funcionalmente equivalente a lo
   que había antes.
 
+## Actualización 2026-09-21: auditoría de integración completa y cuatro huecos cerrados
+Después de este incremento se hizo una auditoría explícita de "¿falta
+algo para que todo transaccione de verdad contra Postgres?" — resultado:
+la integración estaba completa (todo `Fake*Repository` con su
+`Http*Repository` gemelo, ambos `main.dart` conectan un backend real por
+default), pero se identificaron cuatro huecos, los cuatro resueltos en
+esta misma fecha:
+
+1. **El aviso de "dato ilustrativo"** en el volumen semanal del Panel
+   directivo se mostraba siempre, aunque contra Postgres ya fuera un
+   agregado real. Resuelto con `BalanceOperationRepository.producesSyntheticWeeklyTrend`
+   (cada implementación lo declara: `true` en la fake, `false` en la
+   HTTP) — ver `docs/feature/panel-directivo/README.md`.
+2. **N+1 en reclamos** del Panel directivo (una llamada HTTP por
+   movimiento). Resuelto con `GET /v1/claims?ledger_entry_ids=...` — ver
+   `docs/feature/reclamos-de-movimientos/README.md`.
+3. **`approval_rules` y `client_settings` de solo lectura** — nunca
+   tuvieron pantalla para editarlos, solo el seed los escribía. Resuelto
+   con una pestaña nueva "Configuración" en el detalle de un Cliente —
+   ver `docs/feature/configuracion-de-cliente/README.md`. Requirió una
+   restricción `UNIQUE (client_id, operation_type)` nueva en
+   `approval_rules` (`migrations/0004_approval_rules_unique_constraint.sql`)
+   para que el upsert fuera válido.
+4. **RLS sin políticas** — analizado en profundidad: escribir políticas
+   atadas a `current_setting('app.accessible_client_ids')` alimentado
+   por parámetros que el propio llamador manda en cada request (sin
+   ninguna sesión/token verificable, en ese momento
+   `internal/adapters/auth/{local,cognito}` seguían siendo solo
+   `doc.go`) no sería una política real — cualquiera podría declarar el
+   `client_id` que quisiera. Se preguntó explícitamente cómo proceder y
+   se eligió construir primero la sesión real — ver
+   `docs/adr/0013-jwt-session-authentication.md` (Fase 1, ya resuelta:
+   JWT emitido en login, verificado en cada request). Las políticas de
+   RLS en sí (Fase 2) siguen pendientes — ver "Consecuencias" de
+   ADR-0013.
+
 ## Ver también
 - `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`
 - `docs/adr/0011-processor-integration-architecture-and-postgres-default.md`
 - `backend/docs/tdr/0004-postgres-repository-adapter.md`
 - `backend/migrations/0003_client_kyb.sql`
+- `docs/feature/configuracion-de-cliente/README.md`

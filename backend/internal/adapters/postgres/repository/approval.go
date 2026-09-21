@@ -25,6 +25,48 @@ func (s *Store) ListByClients(ctx context.Context, clientIDs []string) ([]approv
 	return out, nil
 }
 
+func (s *Store) ListApprovalRules(ctx context.Context, clientID string) ([]approval.Rule, error) {
+	rows, err := s.q.ListApprovalRulesByClient(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]approval.Rule, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, approval.Rule{
+			ClientID:         r.ClientID,
+			OperationType:    approval.OperationType(r.OperationType),
+			RequiresApproval: r.RequiresApproval,
+			MinAmount:        r.MinAmount,
+		})
+	}
+	return out, nil
+}
+
+func (s *Store) SetApprovalRule(ctx context.Context, clientID string, opType approval.OperationType, requiresApproval bool, minAmount *float64) (approval.Rule, error) {
+	row, err := s.q.UpsertApprovalRule(ctx, sqlcgen.UpsertApprovalRuleParams{
+		ClientID:         clientID,
+		OperationType:    sqlcgen.OperationType(opType),
+		RequiresApproval: requiresApproval,
+		MinAmount:        minAmount,
+	})
+	if err != nil {
+		return approval.Rule{}, err
+	}
+	return approval.Rule{
+		ClientID:         row.ClientID,
+		OperationType:    approval.OperationType(row.OperationType),
+		RequiresApproval: row.RequiresApproval,
+		MinAmount:        row.MinAmount,
+	}, nil
+}
+
+func (s *Store) DeleteApprovalRule(ctx context.Context, clientID string, opType approval.OperationType) error {
+	return s.q.DeleteApprovalRule(ctx, sqlcgen.DeleteApprovalRuleParams{
+		ClientID:      clientID,
+		OperationType: sqlcgen.OperationType(opType),
+	})
+}
+
 func (s *Store) ListPendingByClients(ctx context.Context, clientIDs []string) ([]approval.Operation, error) {
 	rows, err := s.q.ListPendingBalanceOperationsByClients(ctx, clientIDs)
 	if err != nil {

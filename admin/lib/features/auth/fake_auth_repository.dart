@@ -112,4 +112,7 @@ class FakeAuthRepository implements AuthRepository {
       clientId: user.clientId,
     );
   }
+
+  @override
+  void logout() {}
 }

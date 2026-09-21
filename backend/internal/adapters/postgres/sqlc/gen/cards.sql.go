@@ -432,3 +432,32 @@ func (q *Queries) SetCardUnfrozenByOwner(ctx context.Context, arg SetCardUnfroze
 	)
 	return i, err
 }
+
+const upsertClientMaxActiveCards = `-- name: UpsertClientMaxActiveCards :one
+INSERT INTO client_settings (client_id, max_active_cards_per_cardholder)
+VALUES ($1, $2)
+ON CONFLICT (client_id) DO UPDATE SET
+    max_active_cards_per_cardholder = EXCLUDED.max_active_cards_per_cardholder,
+    updated_at = now()
+RETURNING client_id, max_active_cards_per_cardholder
+`
+
+type UpsertClientMaxActiveCardsParams struct {
+	ClientID                    string
+	MaxActiveCardsPerCardholder pgtype.Int4
+}
+
+type UpsertClientMaxActiveCardsRow struct {
+	ClientID                    string
+	MaxActiveCardsPerCardholder pgtype.Int4
+}
+
+// $2 en NULL borra el override (vuelve a usar el default de la
+// aplicación) sin eliminar la fila — ver
+// docs/feature/configuracion-de-cliente/README.md.
+func (q *Queries) UpsertClientMaxActiveCards(ctx context.Context, arg UpsertClientMaxActiveCardsParams) (UpsertClientMaxActiveCardsRow, error) {
+	row := q.db.QueryRow(ctx, upsertClientMaxActiveCards, arg.ClientID, arg.MaxActiveCardsPerCardholder)
+	var i UpsertClientMaxActiveCardsRow
+	err := row.Scan(&i.ClientID, &i.MaxActiveCardsPerCardholder)
+	return i, err
+}

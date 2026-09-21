@@ -19,6 +19,9 @@ class HttpAuthRepository implements AuthRepository {
         'email': email,
         'password': password,
       }) as Map<String, dynamic>;
+      // Ver docs/adr/0013-jwt-session-authentication.md — todo request
+      // subsiguiente al backend exige este token.
+      client.accessToken = json['accessToken'] as String;
       return Session(
         userId: json['userId'] as String,
         email: json['email'] as String,
@@ -31,6 +34,11 @@ class HttpAuthRepository implements AuthRepository {
       // docs/feature/login-administrativo/README.md.
       throw AuthException(e.message);
     }
+  }
+
+  @override
+  void logout() {
+    client.accessToken = null;
   }
 
   Role _roleFromJson(String value) {

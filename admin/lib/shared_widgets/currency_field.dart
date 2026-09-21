@@ -11,18 +11,29 @@ import '../core/utils/currency_format.dart';
 /// docs/feature/operacion-saldo-con-aprobacion/README.md, "Captura del
 /// monto".
 class CurrencyField extends StatefulWidget {
-  const CurrencyField({super.key, required this.onChanged, this.label = 'Monto', this.autofocus = false});
+  const CurrencyField({
+    super.key,
+    required this.onChanged,
+    this.label = 'Monto',
+    this.autofocus = false,
+    this.initialValue = 0,
+  });
 
   final ValueChanged<double> onChanged;
   final String label;
   final bool autofocus;
+
+  /// Para editar un monto ya existente (p.ej. el mínimo de una regla de
+  /// aprobación) en vez de siempre arrancar en $0.00 — ver
+  /// docs/feature/configuracion-de-cliente/README.md.
+  final double initialValue;
 
   @override
   State<CurrencyField> createState() => _CurrencyFieldState();
 }
 
 class _CurrencyFieldState extends State<CurrencyField> {
-  final _controller = TextEditingController(text: '0.00');
+  late final _controller = TextEditingController(text: formatAmount(widget.initialValue));
 
   @override
   void dispose() {

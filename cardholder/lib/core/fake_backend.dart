@@ -280,6 +280,9 @@ class FakeCardholderBackend implements CardholderAuthRepository, CardRepository,
   }
 
   @override
+  void logout() {}
+
+  @override
   Future<List<PaymentCard>> listMine(String cardholderId) async {
     await Future.delayed(const Duration(milliseconds: 300));
     return _cards.where((c) => c.cardholderId == cardholderId).toList();

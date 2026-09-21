@@ -41,7 +41,10 @@ sin regla en ambas subsidiarias a propósito, para ejercitar este default.
 Un Cliente que sí quiere que un tipo de operación se ejecute siempre sin
 aprobación debe configurarlo explícitamente
 (`approval_rules.requires_approval = false`), como ya hace el seed con
-`load`.
+`load`. **Editable desde 2026-09-21** vía la pestaña "Configuración" del
+detalle de un Cliente (Super Admin/Admin Cliente) — ver
+`docs/feature/configuracion-de-cliente/README.md`; antes solo se podía
+cambiar editando `001_seed.sql` a mano.
 
 ## Umbral de monto (`min_amount`)
 

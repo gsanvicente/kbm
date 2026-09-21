@@ -49,6 +49,9 @@ class HttpCardholderBackend implements CardholderAuthRepository, CardRepository,
     try {
       final json = await client.post('/v1/cardholder-sessions', {'email': email, 'password': password})
           as Map<String, dynamic>;
+      // Ver docs/adr/0013-jwt-session-authentication.md — todo request
+      // subsiguiente al backend exige este token.
+      client.accessToken = json['accessToken'] as String;
       return CardholderSession(
         cardholderId: json['cardholderId'] as String,
         email: json['email'] as String,
@@ -58,6 +61,11 @@ class HttpCardholderBackend implements CardholderAuthRepository, CardRepository,
       if (e.statusCode == 401) throw const AuthException();
       rethrow;
     }
+  }
+
+  @override
+  void logout() {
+    client.accessToken = null;
   }
 
   @override

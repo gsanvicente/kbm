@@ -7,4 +7,9 @@ abstract class CardholderAuthRepository {
   /// docs/business/desactivacion-de-tarjetahabientes.md ya documentó para
   /// cuando se construyera este portal.
   Future<CardholderSession> login({required String email, required String password});
+
+  /// Limpia cualquier credencial de sesión guardada localmente (el JWT en
+  /// `HttpCardholderBackend`; no-op en `FakeCardholderBackend`) — ver
+  /// docs/adr/0013-jwt-session-authentication.md.
+  void logout();
 }

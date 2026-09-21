@@ -157,6 +157,7 @@ class FakeDashboardRepository implements DashboardRepository {
       attentionPendingOperations: pendingOps.take(_attentionLimit).toList(),
       attentionPendingDeposits: allPendingDeposits.take(_attentionLimit).toList(),
       weeklyTrend: weeklyTrend,
+      isWeeklyTrendSynthetic: balanceOperationRepository.producesSyntheticWeeklyTrend,
     );
   }
 }

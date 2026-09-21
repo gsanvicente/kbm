@@ -1539,6 +1539,66 @@ void main() {
     expect(find.text('\$10,000.00 MXN'), findsOneWidget);
   });
 
+  testWidgets('Configuración lets Super Admin edit the max-active-cards limit and an approval rule', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToSection(tester, 'Configuración');
+
+    // Límite de tarjetas activas — Subsidiaria A arranca en 1 (seed).
+    final maxCardsRow = find.ancestor(of: find.text('1 tarjeta activa'), matching: find.byType(ListTile));
+    expect(maxCardsRow, findsOneWidget);
+    await tester.tap(find.descendant(of: maxCardsRow, matching: find.widgetWithText(TextButton, 'Editar')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Límite por Tarjetahabiente'), '3');
+    await tester.tap(find.widgetWithText(FilledButton, 'Guardar'));
+    await tester.pumpAndSettle();
+    expect(find.text('3 tarjetas activas'), findsOneWidget);
+
+    // Reglas de aprobación — Dispersión arranca sin aprobación (seed).
+    final dispersionRow = find.ancestor(of: find.text('Dispersión'), matching: find.byType(ListTile));
+    expect(find.descendant(of: dispersionRow, matching: find.text('No requiere aprobación — se ejecuta de inmediato')), findsOneWidget);
+    await tester.tap(find.descendant(of: dispersionRow, matching: find.widgetWithText(TextButton, 'Editar')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Requiere aprobación'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Guardar'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: dispersionRow, matching: find.text('Requiere aprobación para cualquier monto')), findsOneWidget);
+
+    // Deducción arranca sin regla (fail-safe) — configurarla y luego
+    // quitarla debe devolverla a "sin regla".
+    expect(find.text('Sin regla — requiere aprobación (default de seguridad)'), findsOneWidget);
+    final deduccionRow = find.ancestor(of: find.text('Deducción'), matching: find.byType(ListTile));
+    await tester.tap(find.descendant(of: deduccionRow, matching: find.widgetWithText(TextButton, 'Editar')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextButton, 'Quitar regla'), findsNothing); // no existing rule yet
+    await tester.tap(find.widgetWithText(FilledButton, 'Guardar')); // acepta el default (requiere aprobación)
+    await tester.pumpAndSettle();
+    expect(find.text('Requiere aprobación para cualquier monto'), findsNWidgets(2)); // Transferencia (seed) + Deducción
+
+    await tester.tap(find.descendant(of: deduccionRow, matching: find.widgetWithText(TextButton, 'Editar')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Quitar regla'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sin regla — requiere aprobación (default de seguridad)'), findsOneWidget);
+  });
+
+  testWidgets('Operador never sees the Configuración tab', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'operador.subA@koons.test');
+
+    // Operador aterriza directo en "Clientes" (no tiene "Inicio").
+    await _goToSection(tester, 'Koons Subsidiaria A');
+
+    expect(find.widgetWithText(Tab, 'Configuración'), findsNothing);
+  });
+
   testWidgets('searching the Clientes tree filters by name and keeps ancestors visible', (tester) async {
     await tester.pumpWidget(const KbmAdminApp());
     await tester.pumpAndSettle();

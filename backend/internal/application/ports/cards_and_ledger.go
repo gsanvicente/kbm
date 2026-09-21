@@ -48,6 +48,11 @@ type CardRepository interface {
 	// docs/business/tarjetas-y-asignacion.md; el llamador decide el
 	// default cuando es nil, ver defaultMaxActiveCardsPerCardholder).
 	MaxActiveCardsPerCardholder(ctx context.Context, clientID string) (*int, error)
+
+	// SetMaxActiveCardsPerCardholder — max=nil borra el override (vuelve
+	// a usar el default de la aplicación). Ver
+	// docs/feature/configuracion-de-cliente/README.md.
+	SetMaxActiveCardsPerCardholder(ctx context.Context, clientID string, max *int) (*int, error)
 }
 
 // LedgerRepository — el subconjunto de
@@ -63,6 +68,13 @@ type LedgerRepository interface {
 	// GetClaim devuelve nil sin error si [ledgerEntryID] no tiene reclamo
 	// — relación 1:1, ver docs/business/reclamos-de-movimientos.md.
 	GetClaim(ctx context.Context, ledgerEntryID string) (*ledger.MovementClaim, error)
+
+	// GetClaimsByLedgerEntries — forma en lote de GetClaim, para
+	// pantallas que necesitan el reclamo (si existe) de muchos
+	// movimientos a la vez (p.ej. el Panel directivo) sin una llamada
+	// por movimiento. Solo devuelve los que sí tienen reclamo — el
+	// llamador ya sabe distinguir "sin reclamo" de "no pedido".
+	GetClaimsByLedgerEntries(ctx context.Context, ledgerEntryIDs []string) ([]ledger.MovementClaim, error)
 
 	// FileClaim lanza shared.ErrInvalidState si [ledgerEntryID] ya tiene
 	// un reclamo.

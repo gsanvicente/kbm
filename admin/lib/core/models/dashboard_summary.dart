@@ -41,9 +41,17 @@ class DashboardSummary {
   final List<BalanceOperation> attentionPendingOperations;
   final List<CollectorDeposit> attentionPendingDeposits;
 
-  /// Últimas 12 semanas — dato sintético determinista en esta iteración
-  /// fake, ver nota de alcance en `FakeBalanceOperationRepository`.
+  /// Últimas 12 semanas.
   final List<MovementTrendPoint> weeklyTrend;
+
+  /// true solo en modo demo (`FakeBalanceOperationRepository`, sin
+  /// backend real) — ahí [weeklyTrend] sigue siendo un dato sintético
+  /// determinista, ver esa clase. Contra el backend Postgres
+  /// (`HttpBalanceOperationRepository`) es un agregado real de
+  /// `balance_operations` ejecutadas — ver
+  /// docs/feature/panel-directivo/README.md, "Volumen de movimientos".
+  /// La UI usa esto para mostrar (o no) el aviso de "dato ilustrativo".
+  final bool isWeeklyTrendSynthetic;
 
   const DashboardSummary({
     required this.currency,
@@ -64,5 +72,6 @@ class DashboardSummary {
     required this.attentionPendingOperations,
     required this.attentionPendingDeposits,
     required this.weeklyTrend,
+    required this.isWeeklyTrendSynthetic,
   });
 }

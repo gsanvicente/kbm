@@ -1,6 +1,6 @@
 # Modelo de amenazas — KBM
 
-> Referencia viva. Última revisión: 2026-09-15. Este documento es punto de
+> Referencia viva. Última revisión: 2026-09-21. Este documento es punto de
 > entrada para la auditoría de seguridad — ver también
 > `docs/security/data-classification.md` y `docs/security/compliance-notes.md`,
 > y el `SECURITY.md` operativo de cada componente.
@@ -16,6 +16,16 @@ o acciones cruzando tenants.
 casos de uso (no solo por el handler HTTP) — ver
 `backend/internal/application/ports/doc.go` — más Row-Level Security en
 Postgres como segunda barrera (defensa en profundidad, ver ADR-0003).
+**Estado (2026-09-21):** la precondición que faltaba para que cualquiera
+de las dos barreras fuera real — una identidad verificada por request —
+ya existe (JWT firmado, verificado por `RequireAuth`/`RequireStaff` en
+cada endpoint salvo login/healthz, ver
+`docs/adr/0013-jwt-session-authentication.md`). `AuthorizationPort` y las
+políticas de RLS en sí siguen sin construirse; hoy el filtrado por
+rol/jerarquía sigue viviendo client-side en `admin/` (ver ADR-0012,
+punto 7) y los ownership-checks de "alcance mixto" (Cards/Ledger/
+transferencias, ADR-0013 punto 4) se resuelven a mano en el handler, no
+vía un port de autorización genérico.
 
 ## 2. Fuga de datos entre tenants
 **Riesgo:** un query mal filtrado devuelve datos de otro Cliente,
@@ -24,6 +34,10 @@ hermanas o hacia el padre).
 **Mitigación de diseño:** `client_hierarchy` + GUC de sesión
 `app.accessible_client_ids` fuerza el filtro a nivel de base de datos
 incluso si la capa de aplicación tiene un bug.
+**Estado (2026-09-21):** el GUC en sí sigue sin escribirse (ver ADR-0013,
+"Consecuencias", Fase 2 pendiente) — hoy nada en Postgres impide un query
+mal filtrado; la única barrera activa es el filtrado client-side ya
+mencionado en el punto 1.
 
 ## 3. Integridad del ledger
 **Riesgo:** un movimiento se edita o borra (por error de aplicación o

@@ -20,6 +20,12 @@ abstract class CardRepository {
   /// docs/business/tarjetas-y-asignacion.md.
   Future<int?> maxActiveCardsPerCardholder(String clientId);
 
+  /// Configura (o quita, con [max] null) el límite de tarjetas activas
+  /// por tarjetahabiente de [clientId] — ver
+  /// docs/feature/configuracion-de-cliente/README.md. Devuelve el valor
+  /// ya guardado (mismo shape que [maxActiveCardsPerCardholder]).
+  Future<int?> setMaxActiveCardsPerCardholder(String clientId, int? max);
+
   /// Asigna una tarjeta disponible ([cardId]) a [cardholderId]. Lanza
   /// [CardLimitExceededException] (ver core/models/shared) si el
   /// tarjetahabiente ya alcanzó el límite de tarjetas activas de su
