@@ -1,15 +1,19 @@
-// audit_log — ver docs/adr/0015-audit-log-for-login-attempts.md. La
-// tabla existe desde migrations/0001_init.sql pero, hasta este
-// incremento, ningún código escribía en ella a pesar de que
-// docs/feature/login-administrativo/README.md ya prometía "todo intento
-// (éxito o fallo) queda registrado en audit_log".
+// audit_log — ver
+// docs/adr/0015-server-side-role-authorization-and-login-audit-log.md
+// (intentos de login) y
+// docs/adr/0016-business-action-audit-log-and-approval-race-fix.md
+// (acciones de negocio). La tabla existe desde migrations/0001_init.sql
+// pero, hasta el primero de esos dos incrementos, ningún código escribía
+// en ella.
 package repository
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	sqlcgen "github.com/koons/kbm/backend/internal/adapters/postgres/sqlc/gen"
+	"github.com/koons/kbm/backend/internal/application/ports"
 )
 
 type auditActorType string
@@ -43,4 +47,23 @@ func logAudit(ctx context.Context, q *sqlcgen.Queries, actorType auditActorType,
 		EntityID:    entityID,
 		Metadata:    metaBytes,
 	})
+}
+
+// logCallerAudit es logAudit para las acciones de negocio normales
+// (todo lo que no sea login, que corre antes de que exista ninguna
+// identidad de llamador que resolver): toma el actor de
+// ports.CallerFromContext en vez de recibirlo explícito. Cada método
+// exportado de Store/ManagementStore que escribe algo la llama justo
+// antes de retornar éxito, dentro de la misma transacción de la
+// escritura que audita — mismo criterio "nunca en silencio" que
+// logAudit ya documenta: si esto falla, la escritura de negocio entera
+// hace rollback junto con ella.
+func logCallerAudit(ctx context.Context, q *sqlcgen.Queries, action, entityType, entityID string, metadata map[string]any) error {
+	identity, ok := ports.CallerFromContext(ctx)
+	if !ok {
+		// No debería pasar en un endpoint autenticado — fail loud en vez
+		// de escribir una fila sin actor real al que atribuirla.
+		return fmt.Errorf("logCallerAudit: no hay identidad de llamador en el contexto para la acción %q", action)
+	}
+	return logAudit(ctx, q, auditActorType(identity.Type), identity.UserID, action, entityType, entityID, metadata)
 }

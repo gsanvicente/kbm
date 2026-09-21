@@ -31,24 +31,24 @@ const rlsGUCAll = "*"
 
 // resolveAccessibleClientIDs computes the value for the
 // app.accessible_client_ids GUC from the caller identity already
-// resolved by the HTTP layer (see ports.WithCallerClientID): the
-// caller's own client_id plus every descendant in client_hierarchy
-// (staff inherit scope over their subsidiaries — see
+// resolved by the HTTP layer (see ports.WithCaller): the caller's own
+// client_id plus every descendant in client_hierarchy (staff inherit
+// scope over their subsidiaries — see
 // docs/business/roles-and-permissions.md, "Herencia sobre la jerarquía
 // padre/hija"). client_hierarchy itself carries no RLS, so this query
 // runs unscoped, on the shared pool, before any transaction opens.
 func (s *Store) resolveAccessibleClientIDs(ctx context.Context) (string, error) {
-	clientID, ok := ports.CallerClientIDFromContext(ctx)
+	identity, ok := ports.CallerFromContext(ctx)
 	if !ok {
 		// Fail closed: a code path that forgot to establish caller scope
 		// (or a context that legitimately never goes through auth, like
 		// login) gets zero visibility, never unrestricted.
 		return "", nil
 	}
-	if clientID == nil {
+	if identity.ClientID == nil {
 		return rlsGUCAll, nil
 	}
-	rows, err := s.pool.Query(ctx, `SELECT descendant_id FROM client_hierarchy WHERE ancestor_id = $1`, *clientID)
+	rows, err := s.pool.Query(ctx, `SELECT descendant_id FROM client_hierarchy WHERE ancestor_id = $1`, *identity.ClientID)
 	if err != nil {
 		return "", err
 	}

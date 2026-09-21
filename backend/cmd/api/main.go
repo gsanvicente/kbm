@@ -68,6 +68,7 @@ func main() {
 		h.StaffAuth = pgrepo.NewStaffAuthStore(store)
 		h.BalanceOps = store
 		h.Cardholders = pgrepo.NewManagementStore(store)
+		h.StaffManagement = pgrepo.NewStaffManagementStore(store)
 		backend = "postgres"
 		closeFn = store.Close
 	default:

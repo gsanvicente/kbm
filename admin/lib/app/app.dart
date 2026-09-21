@@ -22,6 +22,9 @@ import '../features/dashboard/fake_dashboard_repository.dart';
 import '../features/ledger/fake_ledger_repository.dart';
 import '../features/ledger/http_ledger_repository.dart';
 import '../features/ledger/ledger_repository.dart';
+import '../features/staff_users/fake_staff_user_repository.dart';
+import '../features/staff_users/http_staff_user_repository.dart';
+import '../features/staff_users/staff_user_repository.dart';
 import '../features/treasury/fake_treasury_repository.dart';
 import '../features/treasury/http_treasury_repository.dart';
 import '../features/treasury/treasury_repository.dart';
@@ -113,6 +116,8 @@ class _KbmAdminAppState extends State<KbmAdminApp> {
     treasuryRepository: _treasuryRepository,
     balanceOperationRepository: _balanceOperationRepository,
   );
+  late final StaffUserRepository _staffUserRepository =
+      widget.backendClient != null ? HttpStaffUserRepository(client: widget.backendClient!) : FakeStaffUserRepository();
 
   @override
   Widget build(BuildContext context) {
@@ -136,6 +141,7 @@ class _KbmAdminAppState extends State<KbmAdminApp> {
             balanceOperationRepository: _balanceOperationRepository,
             treasuryRepository: _treasuryRepository,
             dashboardRepository: _dashboardRepository,
+            staffUserRepository: _staffUserRepository,
             authController: _authController,
           );
         },

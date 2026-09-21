@@ -730,4 +730,5 @@ type User struct {
 	MfaEnabled   bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	FullName     string
 }

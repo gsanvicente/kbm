@@ -96,7 +96,7 @@ func (s *Store) FileClaim(ctx context.Context, ledgerEntryID, reason, requestedB
 			RequestedByEmail: requestedByEmail,
 			CreatedAt:        row.CreatedAt,
 		}
-		return nil
+		return logCallerAudit(ctx, q, "claim_filed", "movement_claim", row.ID, map[string]any{"ledger_entry_id": ledgerEntryID, "reason": reason})
 	})
 	if err != nil {
 		return ledger.MovementClaim{}, err
@@ -132,7 +132,7 @@ func (s *Store) ResolveClaim(ctx context.Context, claimID string, inFavor bool, 
 			return err
 		}
 		result = mapper.ToMovementClaim(mapper.MovementClaimRow(row))
-		return nil
+		return logCallerAudit(ctx, q, "claim_resolved", "movement_claim", claimID, map[string]any{"in_favor": inFavor, "resolved_by_email": resolvedByEmail})
 	})
 	if err != nil {
 		return ledger.MovementClaim{}, err

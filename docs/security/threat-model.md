@@ -1,6 +1,6 @@
 # Modelo de amenazas — KBM
 
-> Referencia viva. Última revisión: 2026-09-21. Este documento es punto de
+> Referencia viva. Última revisión: 2026-09-21 (ADR-0017). Este documento es punto de
 > entrada para la auditoría de seguridad — ver también
 > `docs/security/data-classification.md` y `docs/security/compliance-notes.md`,
 > y el `SECURITY.md` operativo de cada componente.
@@ -46,7 +46,13 @@ con una política `tenant_isolation` en las 14 tablas por Cliente. Un
 Operador de una Subsidiaria confirmadamente no puede leer datos de una
 Subsidiaria hermana (Concentradora, Cardholders, movimientos) ni por la
 API ni con una query directa a la base de datos — la aplicación ya no es
-la única barrera.
+la única barrera. **Actualización (2026-09-21):** `users` (identidad de
+staff) se sumó a esta lista al construir
+`docs/adr/0017-staff-user-management-and-rls-on-users.md` — se había
+quedado fuera desde ADR-0014 porque el login necesitaba leerla sin
+ninguna identidad de llamador todavía; sin este cierre, un Admin Cliente
+hubiera podido listar o crear usuarios de staff de cualquier empresa con
+solo cambiar el `client_id` en el request.
 
 ## 3. Integridad del ledger
 **Riesgo:** un movimiento se edita o borra (por error de aplicación o
@@ -64,11 +70,19 @@ operación de saldo, dificultando la auditoría después de un incidente.
 (`outbox_events`) hacia `audit_log`.
 **Estado (2026-09-21):** `requested_by`/`resolved_by` en
 `balance_operations` ya existen y se pueblan (ver ADR-0012). `audit_log`
-en sí ya recibe escrituras reales, pero acotadas a intentos de login
-(ver `docs/adr/0015-server-side-role-authorization-and-login-audit-log.md`)
-— el patrón Outbox hacia `audit_log` para las transiciones de
-`balance_operations` (solicitar/aprobar/rechazar) sigue sin construirse;
-`outbox_events` sigue sin ningún escritor.
+ya registra cada solicitud/aprobación/rechazo con el actor real, además
+de crear/editar/desactivar Cliente y Tarjetahabiente, asignar/bloquear
+tarjetas, reglas de aprobación, reclamos y depósitos — ver
+`docs/adr/0016-business-action-audit-log-and-approval-race-fix.md`. La
+implementación es síncrona y directa (mismo criterio que el login de
+ADR-0015), no vía el patrón Outbox que este párrafo insinuaba
+originalmente — `outbox_events` sigue sin ningún escritor, reservado
+para si el proyecto construye esa infraestructura async por otra razón
+(p. ej. integración real con un procesador de tarjetas). De paso se
+corrigió una condición de carrera real en `Approve`/`Reject`
+(`approval.go`): dos llamadas concurrentes sobre la misma operación
+pendiente podían ejecutar el movimiento de saldo dos veces —
+reproducida y verificada cerrada en vivo con 10 `Approve()` concurrentes.
 
 ## 5. Integración con el procesador de tarjetas externo
 **Riesgo:** un webhook falso o repetido del procesador (spoofing, replay)

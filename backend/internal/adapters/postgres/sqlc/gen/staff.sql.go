@@ -9,14 +9,85 @@ import (
 	"context"
 )
 
+const createStaffUser = `-- name: CreateStaffUser :one
+INSERT INTO users (client_id, email, full_name, password_hash, role)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, client_id, email, full_name, role, is_active
+`
+
+type CreateStaffUserParams struct {
+	ClientID     *string
+	Email        string
+	FullName     string
+	PasswordHash string
+	Role         UserRole
+}
+
+type CreateStaffUserRow struct {
+	ID       string
+	ClientID *string
+	Email    string
+	FullName string
+	Role     UserRole
+	IsActive bool
+}
+
+func (q *Queries) CreateStaffUser(ctx context.Context, arg CreateStaffUserParams) (CreateStaffUserRow, error) {
+	row := q.db.QueryRow(ctx, createStaffUser,
+		arg.ClientID,
+		arg.Email,
+		arg.FullName,
+		arg.PasswordHash,
+		arg.Role,
+	)
+	var i CreateStaffUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.Email,
+		&i.FullName,
+		&i.Role,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const getStaffUserByID = `-- name: GetStaffUserByID :one
+SELECT id, client_id, email, full_name, role, is_active FROM users WHERE id = $1
+`
+
+type GetStaffUserByIDRow struct {
+	ID       string
+	ClientID *string
+	Email    string
+	FullName string
+	Role     UserRole
+	IsActive bool
+}
+
+func (q *Queries) GetStaffUserByID(ctx context.Context, id string) (GetStaffUserByIDRow, error) {
+	row := q.db.QueryRow(ctx, getStaffUserByID, id)
+	var i GetStaffUserByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.Email,
+		&i.FullName,
+		&i.Role,
+		&i.IsActive,
+	)
+	return i, err
+}
+
 const getStaffUserForLogin = `-- name: GetStaffUserForLogin :one
-SELECT id, client_id, email, password_hash, role, is_active FROM users WHERE email = $1
+SELECT id, client_id, email, full_name, password_hash, role, is_active FROM users WHERE email = $1
 `
 
 type GetStaffUserForLoginRow struct {
 	ID           string
 	ClientID     *string
 	Email        string
+	FullName     string
 	PasswordHash string
 	Role         UserRole
 	IsActive     bool
@@ -29,6 +100,7 @@ func (q *Queries) GetStaffUserForLogin(ctx context.Context, email string) (GetSt
 		&i.ID,
 		&i.ClientID,
 		&i.Email,
+		&i.FullName,
 		&i.PasswordHash,
 		&i.Role,
 		&i.IsActive,
@@ -49,4 +121,134 @@ func (q *Queries) GetStaffUserIDByEmail(ctx context.Context, email string) (stri
 	var id string
 	err := row.Scan(&id)
 	return id, err
+}
+
+const listStaffUsersByClient = `-- name: ListStaffUsersByClient :many
+SELECT id, client_id, email, full_name, role, is_active FROM users
+WHERE client_id = $1
+ORDER BY full_name
+`
+
+type ListStaffUsersByClientRow struct {
+	ID       string
+	ClientID *string
+	Email    string
+	FullName string
+	Role     UserRole
+	IsActive bool
+}
+
+// Ver docs/adr/0017-staff-user-management-and-rls-on-users.md. Nunca
+// incluye Super Admin (client_id IS NULL) — no tiene sentido listarlo
+// "dentro" de ningún Cliente.
+func (q *Queries) ListStaffUsersByClient(ctx context.Context, clientID *string) ([]ListStaffUsersByClientRow, error) {
+	rows, err := q.db.Query(ctx, listStaffUsersByClient, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStaffUsersByClientRow
+	for rows.Next() {
+		var i ListStaffUsersByClientRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClientID,
+			&i.Email,
+			&i.FullName,
+			&i.Role,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const resetStaffUserPassword = `-- name: ResetStaffUserPassword :exec
+UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1
+`
+
+type ResetStaffUserPasswordParams struct {
+	ID           string
+	PasswordHash string
+}
+
+func (q *Queries) ResetStaffUserPassword(ctx context.Context, arg ResetStaffUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, resetStaffUserPassword, arg.ID, arg.PasswordHash)
+	return err
+}
+
+const setStaffUserActive = `-- name: SetStaffUserActive :one
+UPDATE users SET is_active = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, client_id, email, full_name, role, is_active
+`
+
+type SetStaffUserActiveParams struct {
+	ID       string
+	IsActive bool
+}
+
+type SetStaffUserActiveRow struct {
+	ID       string
+	ClientID *string
+	Email    string
+	FullName string
+	Role     UserRole
+	IsActive bool
+}
+
+func (q *Queries) SetStaffUserActive(ctx context.Context, arg SetStaffUserActiveParams) (SetStaffUserActiveRow, error) {
+	row := q.db.QueryRow(ctx, setStaffUserActive, arg.ID, arg.IsActive)
+	var i SetStaffUserActiveRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.Email,
+		&i.FullName,
+		&i.Role,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const updateStaffUser = `-- name: UpdateStaffUser :one
+UPDATE users SET full_name = $2, role = $3, updated_at = now()
+WHERE id = $1
+RETURNING id, client_id, email, full_name, role, is_active
+`
+
+type UpdateStaffUserParams struct {
+	ID       string
+	FullName string
+	Role     UserRole
+}
+
+type UpdateStaffUserRow struct {
+	ID       string
+	ClientID *string
+	Email    string
+	FullName string
+	Role     UserRole
+	IsActive bool
+}
+
+// email y client_id nunca cambian aquí — ver
+// docs/business/gestion-de-usuarios-staff.md, "Qué se puede editar".
+func (q *Queries) UpdateStaffUser(ctx context.Context, arg UpdateStaffUserParams) (UpdateStaffUserRow, error) {
+	row := q.db.QueryRow(ctx, updateStaffUser, arg.ID, arg.FullName, arg.Role)
+	var i UpdateStaffUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.Email,
+		&i.FullName,
+		&i.Role,
+		&i.IsActive,
+	)
+	return i, err
 }

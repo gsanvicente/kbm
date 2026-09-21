@@ -36,11 +36,12 @@ type Handler struct {
 	// docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md);
 	// solo el adaptador Postgres los implementa. Routes() solo registra
 	// las rutas correspondientes cuando el campo no es nil.
-	Clients     ports.ClientRepository
-	Treasury    ports.TreasuryRepository
-	StaffAuth   ports.StaffAuthRepository
-	BalanceOps  ports.BalanceOperationRepository
-	Cardholders ports.CardholderManagementRepository
+	Clients         ports.ClientRepository
+	Treasury        ports.TreasuryRepository
+	StaffAuth       ports.StaffAuthRepository
+	BalanceOps      ports.BalanceOperationRepository
+	Cardholders     ports.CardholderManagementRepository
+	StaffManagement ports.StaffManagementRepository
 }
 
 func New(cards ports.CardRepository, ledgerRepo ports.LedgerRepository, auth ports.CardholderAuthRepository, transfers ports.TransferService, tokens *local.TokenIssuer) *Handler {
@@ -65,18 +66,25 @@ func (h *Handler) Routes() chi.Router {
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.RequireAuth(h.Tokens))
 		// Traduce las claims JWT ya verificadas a lo que el adaptador
-		// Postgres necesita para fijar app.accessible_client_ids (Row-Level
-		// Security, ver docs/adr/0014-row-level-security-policies.md) — un
-		// nil aquí significa alcance global (Super Admin), nunca "no
-		// establecido" (eso lo distingue ports.WithCallerClientID).
+		// Postgres necesita: ClientID para fijar app.accessible_client_ids
+		// (Row-Level Security, ver
+		// docs/adr/0014-row-level-security-policies.md — nil ahí significa
+		// alcance global, nunca "no establecido", ver ports.CallerIdentity),
+		// y UserID/Type para atribuir cada escritura de negocio a un actor
+		// real en audit_log (ver
+		// docs/adr/0015-server-side-role-authorization-and-login-audit-log.md).
 		r.Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				claims, _ := authmw.ClaimsFromContext(r.Context())
-				var clientID *string
+				var identity ports.CallerIdentity
 				if claims != nil {
-					clientID = claims.ClientID
+					identity = ports.CallerIdentity{
+						ClientID: claims.ClientID,
+						UserID:   claims.Subject,
+						Type:     string(claims.Type),
+					}
 				}
-				next.ServeHTTP(w, r.WithContext(ports.WithCallerClientID(r.Context(), clientID)))
+				next.ServeHTTP(w, r.WithContext(ports.WithCaller(r.Context(), identity)))
 			})
 		})
 
@@ -124,6 +132,9 @@ func (h *Handler) Routes() chi.Router {
 				r.Get("/v1/ledger-entries/{entryID}/claim", h.getClaim)
 				r.Get("/v1/claims", h.listClaims)
 			}
+			if h.StaffManagement != nil {
+				r.Get("/v1/clients/{clientID}/staff-users", h.listStaffUsers)
+			}
 
 			// manageRoles — Super Admin/Admin Cliente, ver authz.go.
 			r.Group(func(r chi.Router) {
@@ -156,6 +167,12 @@ func (h *Handler) Routes() chi.Router {
 				}
 				if h.Ledger != nil {
 					r.Post("/v1/claims/{claimID}/resolve", h.resolveClaim)
+				}
+				if h.StaffManagement != nil {
+					r.Post("/v1/clients/{clientID}/staff-users", h.createStaffUser)
+					r.Put("/v1/staff-users/{userID}", h.updateStaffUser)
+					r.Post("/v1/staff-users/{userID}/active-status", h.setStaffUserActive)
+					r.Post("/v1/staff-users/{userID}/reset-password", h.resetStaffUserPassword)
 				}
 			})
 
@@ -477,6 +494,8 @@ func writeError(w http.ResponseWriter, err error) {
 		writeErrorMessage(w, http.StatusConflict, err.Error())
 	case errors.Is(err, shared.ErrValidation):
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, shared.ErrEmailAlreadyExists):
+		writeErrorMessage(w, http.StatusConflict, "ese email ya está en uso")
 	default:
 		writeErrorMessage(w, http.StatusInternalServerError, "error interno")
 	}

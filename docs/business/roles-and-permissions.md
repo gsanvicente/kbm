@@ -1,6 +1,6 @@
 # Roles y permisos — KBM
 
-> Referencia viva. Última revisión: 2026-09-19.
+> Referencia viva. Última revisión: 2026-09-21.
 
 ## Roles administrativos/staff
 
@@ -95,6 +95,16 @@ Cliente, un tarjetahabiente **inactivo no puede editarse** — el objetivo
 es no modificar un registro que podría ser evidencia de auditoría. Ver
 `docs/business/desactivacion-de-tarjetahabientes.md` y
 `docs/feature/alta-y-gestion-de-tarjetahabientes/`.
+
+## Gestión de usuarios de staff (alta, edición, desactivación)
+
+Ver `docs/business/gestion-de-usuarios-staff.md` para el detalle
+completo. Resumen: **Super Admin** y **Admin Cliente** pueden dar de
+alta, editar y desactivar/reactivar usuarios de staff dentro de su
+alcance (mismo grupo y misma herencia jerárquica que Clientes y
+Tarjetahabientes) — **Operador y Auditor no pueden**. El rol asignable
+nunca incluye Super Admin (esa cuenta sigue siendo solo de seed), y
+nadie puede desactivar su propia cuenta.
 
 ## Tesorería del Cliente (Cuenta Concentradora / Cuenta Colectora)
 

@@ -7,8 +7,10 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/koons/kbm/backend/internal/adapters/http/dto"
+	authmw "github.com/koons/kbm/backend/internal/adapters/http/middleware"
 	"github.com/koons/kbm/backend/internal/domain/approval"
 	"github.com/koons/kbm/backend/internal/domain/ledger"
+	"github.com/koons/kbm/backend/internal/domain/staff"
 )
 
 // splitCSV — varios endpoints reciben una lista de ids como
@@ -503,4 +505,130 @@ func (h *Handler) resolveClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, dto.FromMovementClaim(claim))
+}
+
+// --- Gestión de usuarios de staff ---------------------------------------
+// Ver docs/feature/gestion-de-usuarios-staff/README.md.
+
+// isAssignableStaffRole — Super Admin nunca es un rol asignable desde
+// esta pantalla, sin importar quién lo pida (Super Admin o Admin
+// Cliente) — ver docs/business/gestion-de-usuarios-staff.md, "Quién
+// puede crear a quién".
+func isAssignableStaffRole(role string) bool {
+	switch staff.Role(role) {
+	case staff.RoleClientAdmin, staff.RoleOperator, staff.RoleAuditor:
+		return true
+	default:
+		return false
+	}
+}
+
+const minStaffPasswordLength = 8
+
+func (h *Handler) listStaffUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := h.StaffManagement.ListByClient(r.Context(), chi.URLParam(r, "clientID"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out := make([]dto.StaffUser, 0, len(users))
+	for _, u := range users {
+		out = append(out, dto.FromStaffUserResource(u))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) createStaffUser(w http.ResponseWriter, r *http.Request) {
+	var req dto.CreateStaffUserRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if !isAssignableStaffRole(req.Role) {
+		writeErrorMessage(w, http.StatusBadRequest, "rol inválido")
+		return
+	}
+	if req.Password != req.ConfirmPassword {
+		writeErrorMessage(w, http.StatusBadRequest, "las contraseñas no coinciden")
+		return
+	}
+	if len(req.Password) < minStaffPasswordLength {
+		writeErrorMessage(w, http.StatusBadRequest, "la contraseña debe tener al menos 8 caracteres")
+		return
+	}
+	clientID := chi.URLParam(r, "clientID")
+	created, err := h.StaffManagement.Create(r.Context(), staff.User{
+		ClientID: &clientID,
+		Email:    req.Email,
+		FullName: req.FullName,
+		Role:     staff.Role(req.Role),
+	}, req.Password)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dto.FromStaffUserResource(created))
+}
+
+func (h *Handler) updateStaffUser(w http.ResponseWriter, r *http.Request) {
+	var req dto.UpdateStaffUserRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if !isAssignableStaffRole(req.Role) {
+		writeErrorMessage(w, http.StatusBadRequest, "rol inválido")
+		return
+	}
+	updated, err := h.StaffManagement.Update(r.Context(), staff.User{
+		ID:       chi.URLParam(r, "userID"),
+		FullName: req.FullName,
+		Role:     staff.Role(req.Role),
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dto.FromStaffUserResource(updated))
+}
+
+// setStaffUserActive — nunca permite que alguien se desactive a sí
+// mismo (perdería acceso sin forma de revertirlo, mismo criterio que
+// "un Admin Cliente no puede desactivar su propia empresa").
+func (h *Handler) setStaffUserActive(w http.ResponseWriter, r *http.Request) {
+	var req dto.SetActiveRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	userID := chi.URLParam(r, "userID")
+	if !req.Active {
+		if claims, ok := authmw.ClaimsFromContext(r.Context()); ok && claims.Subject == userID {
+			writeErrorMessage(w, http.StatusBadRequest, "no puedes desactivar tu propia cuenta")
+			return
+		}
+	}
+	updated, err := h.StaffManagement.SetActive(r.Context(), userID, req.Active)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dto.FromStaffUserResource(updated))
+}
+
+func (h *Handler) resetStaffUserPassword(w http.ResponseWriter, r *http.Request) {
+	var req dto.ResetStaffUserPasswordRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Password != req.ConfirmPassword {
+		writeErrorMessage(w, http.StatusBadRequest, "las contraseñas no coinciden")
+		return
+	}
+	if len(req.Password) < minStaffPasswordLength {
+		writeErrorMessage(w, http.StatusBadRequest, "la contraseña debe tener al menos 8 caracteres")
+		return
+	}
+	if err := h.StaffManagement.ResetPassword(r.Context(), chi.URLParam(r, "userID"), req.Password); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

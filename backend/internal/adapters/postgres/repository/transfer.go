@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"log"
 
 	"github.com/jackc/pgx/v5"
 
@@ -87,6 +88,15 @@ func (s *Store) Execute(ctx context.Context, originCardID, destinationCardID str
 	}
 	if _, err := s.PostEntry(ctx, destinationCardID, ledger.EntryCredit, amount, "Transferencia recibida"); err != nil {
 		return err
+	}
+	// El dinero ya se movió (ambos PostEntry ya hicieron commit por su
+	// cuenta) — a diferencia del login, un fallo de auditoría aquí nunca
+	// debe reportarle al Tarjetahabiente que su transferencia falló
+	// cuando en realidad sí se aplicó. Best-effort a propósito.
+	if err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		return logCallerAudit(ctx, q, "transfer_executed", "card", originCardID, map[string]any{"destination_card_id": destinationCardID, "amount": amount})
+	}); err != nil {
+		log.Printf("audit: no se pudo registrar transfer_executed (origen %s): %v", originCardID, err)
 	}
 	return nil
 }

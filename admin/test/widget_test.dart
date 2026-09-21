@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:kbm_admin/app/app.dart';
+import 'package:kbm_admin/core/models/role.dart';
 
 Future<void> _login(WidgetTester tester, String email) async {
   // Desktop-sized viewport: the admin shell is designed for real browser
@@ -1597,6 +1598,90 @@ void main() {
     await _goToSection(tester, 'Koons Subsidiaria A');
 
     expect(find.widgetWithText(Tab, 'Configuración'), findsNothing);
+  });
+
+  testWidgets('Operador and Auditor never see the Usuarios tab', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'auditor.subA@koons.test');
+
+    await _goToSection(tester, 'Koons Subsidiaria A');
+
+    expect(find.widgetWithText(Tab, 'Usuarios'), findsNothing);
+  });
+
+  testWidgets('Super Admin can create a staff user, never offered Super Admin as a role', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Usuarios');
+
+    expect(find.text('Operador Subsidiaria A'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Nuevo usuario'));
+    await tester.pumpAndSettle();
+
+    // Super Admin nunca es un rol asignable desde esta pantalla.
+    await tester.tap(find.byWidgetPredicate((w) => w is DropdownButtonFormField<Role>));
+    await tester.pumpAndSettle();
+    expect(find.text('Super Admin').hitTestable(), findsNothing);
+    await tester.tap(find.text('Operador').last); // cierra el dropdown, deja la selección sin cambios (default)
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'Nombre completo'), 'Nuevo Empleado');
+    await tester.enterText(find.widgetWithText(TextField, 'Email'), 'nuevo.empleado@koons.test');
+    await tester.enterText(find.widgetWithText(TextField, 'Contraseña'), 'Password123!');
+    await tester.enterText(find.widgetWithText(TextField, 'Confirmar contraseña'), 'Password123!');
+    await tester.tap(find.widgetWithText(FilledButton, 'Crear'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nuevo Empleado'), findsOneWidget);
+    expect(find.textContaining('nuevo.empleado@koons.test'), findsOneWidget);
+  });
+
+  testWidgets('creating a staff user with mismatched passwords shows a validation error', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'super.admin@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _expandClientTreeNode(tester, 'Grupo Koons Holding');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Usuarios');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Nuevo usuario'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Nombre completo'), 'Alguien');
+    await tester.enterText(find.widgetWithText(TextField, 'Email'), 'alguien@koons.test');
+    await tester.enterText(find.widgetWithText(TextField, 'Contraseña'), 'Password123!');
+    await tester.enterText(find.widgetWithText(TextField, 'Confirmar contraseña'), 'Distinta123!');
+    await tester.tap(find.widgetWithText(FilledButton, 'Crear'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Las contraseñas no coinciden.'), findsOneWidget);
+    // El diálogo sigue abierto — nunca se creó nada.
+    expect(find.widgetWithText(AlertDialog, 'Nuevo usuario'), findsOneWidget);
+  });
+
+  testWidgets('a staff user never sees the option to deactivate their own account', (tester) async {
+    await tester.pumpWidget(const KbmAdminApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'admin.subA@koons.test');
+
+    await _goToSection(tester, 'Clientes');
+    await _goToSection(tester, 'Koons Subsidiaria A');
+    await _goToClientTab(tester, 'Usuarios');
+
+    final ownRow = find.ancestor(of: find.text('Admin Subsidiaria A'), matching: find.byType(ListTile));
+    await tester.tap(find.descendant(of: ownRow, matching: find.byType(PopupMenuButton<String>)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Desactivar'), findsNothing);
+    expect(find.text('Restablecer contraseña'), findsOneWidget);
   });
 
   testWidgets('searching the Clientes tree filters by name and keeps ancestors visible', (tester) async {

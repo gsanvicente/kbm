@@ -161,7 +161,7 @@ func (s *Store) RegisterDeposit(ctx context.Context, clientID string, amount flo
 			RegisteredByEmail: registeredByEmail,
 			CreatedAt:         row.CreatedAt,
 		}
-		return nil
+		return logCallerAudit(ctx, q, "deposit_registered", "collector_deposit", row.ID, map[string]any{"client_id": clientID, "amount": amount, "reference": reference})
 	})
 	if err != nil {
 		return treasury.CollectorDeposit{}, err
@@ -221,7 +221,7 @@ func (s *Store) ReconcileDeposit(ctx context.Context, depositID, reconciledByEma
 			return err
 		}
 		result = mapper.ToCollectorDeposit(mapper.CollectorDepositRow(updatedRow))
-		return nil
+		return logCallerAudit(ctx, q, "deposit_reconciled", "collector_deposit", depositID, map[string]any{"reconciled_by_email": reconciledByEmail})
 	})
 	if err != nil {
 		return treasury.CollectorDeposit{}, err

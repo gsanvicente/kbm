@@ -143,7 +143,7 @@ func (s *Store) Assign(ctx context.Context, cardID, cardholderID string) (card.C
 		} else if err != nil {
 			return err
 		}
-		return nil
+		return logCallerAudit(ctx, q, "card_assigned", "card", cardID, map[string]any{"cardholder_id": cardholderID})
 	})
 	if err != nil {
 		return card.Card{}, err
@@ -161,7 +161,14 @@ func (s *Store) SetBlocked(ctx context.Context, cardID string, blocked bool) (ca
 		} else {
 			unblockedRow, err = q.SetCardUnblocked(ctx, cardID)
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		action := "card_blocked"
+		if !blocked {
+			action = "card_unblocked"
+		}
+		return logCallerAudit(ctx, q, action, "card", cardID, nil)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return card.Card{}, shared.ErrNotFound
@@ -201,7 +208,11 @@ func (s *Store) SetFrozen(ctx context.Context, cardID, cardholderID string, froz
 			} else {
 				result = mapper.ToCard(mapper.CardRow(unfrozenRow))
 			}
-			return nil
+			action := "card_self_frozen"
+			if !frozen {
+				action = "card_self_unfrozen"
+			}
+			return logCallerAudit(ctx, q, action, "card", cardID, nil)
 		}
 
 		existing, getErr := s.getByIDTx(ctx, q, cardID)
@@ -266,7 +277,7 @@ func (s *Store) SetMaxActiveCardsPerCardholder(ctx context.Context, clientID str
 			v := int(row.MaxActiveCardsPerCardholder.Int32)
 			result = &v
 		}
-		return nil
+		return logCallerAudit(ctx, q, "client_settings_updated", "client", clientID, map[string]any{"max_active_cards_per_cardholder": max})
 	})
 	if err != nil {
 		return nil, err

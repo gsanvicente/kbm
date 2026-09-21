@@ -116,7 +116,7 @@ func (s *ManagementStore) Create(ctx context.Context, draft cardholder.Cardholde
 			return err
 		}
 		result = mapper.ToCardholder(mapper.CardholderRow(row))
-		return nil
+		return logCallerAudit(ctx, q, "cardholder_created", "cardholder", row.ID, map[string]any{"client_id": row.ClientID, "full_name": row.FullName})
 	})
 	if err != nil {
 		return cardholder.Cardholder{}, err
@@ -168,7 +168,7 @@ func (s *ManagementStore) Update(ctx context.Context, updated cardholder.Cardhol
 			return err
 		}
 		result = mapper.ToCardholder(mapper.CardholderRow(row))
-		return nil
+		return logCallerAudit(ctx, q, "cardholder_updated", "cardholder", updated.ID, nil)
 	})
 	if err != nil {
 		return cardholder.Cardholder{}, err
@@ -187,7 +187,11 @@ func (s *ManagementStore) SetActive(ctx context.Context, cardholderID string, is
 			return err
 		}
 		result = mapper.ToCardholder(mapper.CardholderRow(row))
-		return nil
+		action := "cardholder_deactivated"
+		if isActive {
+			action = "cardholder_reactivated"
+		}
+		return logCallerAudit(ctx, q, action, "cardholder", cardholderID, nil)
 	})
 	if err != nil {
 		return cardholder.Cardholder{}, err

@@ -74,7 +74,11 @@ func (s *Store) SetApprovalRule(ctx context.Context, clientID string, opType app
 			RequiresApproval: row.RequiresApproval,
 			MinAmount:        row.MinAmount,
 		}
-		return nil
+		return logCallerAudit(ctx, q, "approval_rule_updated", "client", clientID, map[string]any{
+			"operation_type":   opType,
+			"requiresApproval": requiresApproval,
+			"minAmount":        minAmount,
+		})
 	})
 	if err != nil {
 		return approval.Rule{}, err
@@ -84,10 +88,13 @@ func (s *Store) SetApprovalRule(ctx context.Context, clientID string, opType app
 
 func (s *Store) DeleteApprovalRule(ctx context.Context, clientID string, opType approval.OperationType) error {
 	return s.withRLS(ctx, func(q *sqlcgen.Queries) error {
-		return q.DeleteApprovalRule(ctx, sqlcgen.DeleteApprovalRuleParams{
+		if err := q.DeleteApprovalRule(ctx, sqlcgen.DeleteApprovalRuleParams{
 			ClientID:      clientID,
 			OperationType: sqlcgen.OperationType(opType),
-		})
+		}); err != nil {
+			return err
+		}
+		return logCallerAudit(ctx, q, "approval_rule_deleted", "client", clientID, map[string]any{"operation_type": opType})
 	})
 }
 
@@ -275,7 +282,9 @@ func (s *Store) Request(ctx context.Context, clientID, cardID string, opType app
 			CreatedAt:         row.CreatedAt,
 			UpdatedAt:         row.UpdatedAt,
 		}
-		return nil
+		return logCallerAudit(ctx, q, "balance_operation_requested", "balance_operation", row.ID, map[string]any{
+			"client_id": clientID, "card_id": cardID, "type": opType, "amount": amount,
+		})
 	})
 	if err != nil {
 		return approval.Operation{}, err
@@ -287,11 +296,14 @@ func (s *Store) Request(ctx context.Context, clientID, cardID string, opType app
 			return approval.Operation{}, err
 		}
 		err = s.withRLS(ctx, func(q *sqlcgen.Queries) error {
-			return q.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
+			if err := q.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
 				ID:              op.ID,
 				Status:          sqlcgen.OperationStatus(op.Status),
 				ResolutionNotes: op.ResolutionNotes,
-			})
+			}); err != nil {
+				return err
+			}
+			return logCallerAudit(ctx, q, "balance_operation_"+string(op.Status), "balance_operation", op.ID, nil)
 		})
 		if err != nil {
 			return approval.Operation{}, err
@@ -313,91 +325,122 @@ func (s *Store) getOperationForUpdate(ctx context.Context, q *sqlcgen.Queries, o
 
 // Approve — intenta ejecutar ahora, termina en executed o failed. Lanza
 // shared.ErrInvalidState si la operación no estaba pending_approval.
+// Envuelta en withAdvisoryLock: sin esto, dos llamadas concurrentes a
+// Approve (o una a Approve y otra a Reject) sobre la MISMA operación
+// pendiente podían ambas pasar el chequeo "status == pending_approval"
+// antes de que cualquiera actualizara el estado final — el SELECT ... FOR
+// UPDATE de getOperationForUpdate no alcanza a cerrar esa ventana porque
+// su transacción hace commit antes de tryExecute, no después. Ver
+// docs/adr/0016-business-action-audit-log-and-approval-race-fix.md.
 func (s *Store) Approve(ctx context.Context, operationID, approvedByEmail string) (approval.Operation, error) {
-	var op approval.Operation
-	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
-		var err error
-		op, err = s.getOperationForUpdate(ctx, q, operationID)
-		return err
-	})
-	if err != nil {
-		return approval.Operation{}, err
-	}
-	if op.Status != approval.OperationStatusPendingApproval {
-		return approval.Operation{}, shared.ErrInvalidState
-	}
-	operable, err := s.IsOperable(ctx, op.ClientID)
-	if err != nil {
-		return approval.Operation{}, err
-	}
-	if !operable {
-		return approval.Operation{}, shared.ErrForbidden
-	}
-
-	executed, err := s.tryExecute(ctx, op)
-	if err != nil {
-		return approval.Operation{}, err
-	}
-	executed.ResolvedByEmail = &approvedByEmail
-	err = s.withRLS(ctx, func(q *sqlcgen.Queries) error {
-		approvedByID, err := q.GetStaffUserIDByEmail(ctx, approvedByEmail)
+	var result approval.Operation
+	err := s.withAdvisoryLock(ctx, "balance_operation:"+operationID, func() error {
+		var op approval.Operation
+		err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+			var err error
+			op, err = s.getOperationForUpdate(ctx, q, operationID)
+			return err
+		})
 		if err != nil {
 			return err
 		}
-		return q.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
-			ID:              executed.ID,
-			Status:          sqlcgen.OperationStatus(executed.Status),
-			ResolvedBy:      &approvedByID,
-			ResolutionNotes: executed.ResolutionNotes,
+		if op.Status != approval.OperationStatusPendingApproval {
+			return shared.ErrInvalidState
+		}
+		operable, err := s.IsOperable(ctx, op.ClientID)
+		if err != nil {
+			return err
+		}
+		if !operable {
+			return shared.ErrForbidden
+		}
+
+		executed, err := s.tryExecute(ctx, op)
+		if err != nil {
+			return err
+		}
+		executed.ResolvedByEmail = &approvedByEmail
+		err = s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+			approvedByID, err := q.GetStaffUserIDByEmail(ctx, approvedByEmail)
+			if err != nil {
+				return err
+			}
+			if err := q.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
+				ID:              executed.ID,
+				Status:          sqlcgen.OperationStatus(executed.Status),
+				ResolvedBy:      &approvedByID,
+				ResolutionNotes: executed.ResolutionNotes,
+			}); err != nil {
+				return err
+			}
+			return logCallerAudit(ctx, q, "balance_operation_"+string(executed.Status), "balance_operation", executed.ID, map[string]any{"resolved_by_email": approvedByEmail})
 		})
+		if err != nil {
+			return err
+		}
+		result = executed
+		return nil
 	})
 	if err != nil {
 		return approval.Operation{}, err
 	}
-	return executed, nil
+	return result, nil
 }
 
 // Reject — nunca toca el ledger. Lanza shared.ErrInvalidState si la
-// operación no estaba pending_approval.
+// operación no estaba pending_approval. Ver withAdvisoryLock en Approve
+// — misma protección, misma llave (Approve y Reject sobre la misma
+// operación se serializan entre sí, no solo cada uno consigo mismo).
 func (s *Store) Reject(ctx context.Context, operationID, rejectedByEmail, reason string) (approval.Operation, error) {
-	var op approval.Operation
-	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
-		var err error
-		op, err = s.getOperationForUpdate(ctx, q, operationID)
-		return err
-	})
-	if err != nil {
-		return approval.Operation{}, err
-	}
-	if op.Status != approval.OperationStatusPendingApproval {
-		return approval.Operation{}, shared.ErrInvalidState
-	}
-	operable, err := s.IsOperable(ctx, op.ClientID)
-	if err != nil {
-		return approval.Operation{}, err
-	}
-	if !operable {
-		return approval.Operation{}, shared.ErrForbidden
-	}
-
-	err = s.withRLS(ctx, func(q *sqlcgen.Queries) error {
-		rejectedByID, err := q.GetStaffUserIDByEmail(ctx, rejectedByEmail)
+	var result approval.Operation
+	err := s.withAdvisoryLock(ctx, "balance_operation:"+operationID, func() error {
+		var op approval.Operation
+		err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+			var err error
+			op, err = s.getOperationForUpdate(ctx, q, operationID)
+			return err
+		})
 		if err != nil {
 			return err
 		}
-		return q.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
-			ID:              operationID,
-			Status:          sqlcgen.OperationStatusRejected,
-			ResolvedBy:      &rejectedByID,
-			ResolutionNotes: &reason,
+		if op.Status != approval.OperationStatusPendingApproval {
+			return shared.ErrInvalidState
+		}
+		operable, err := s.IsOperable(ctx, op.ClientID)
+		if err != nil {
+			return err
+		}
+		if !operable {
+			return shared.ErrForbidden
+		}
+
+		err = s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+			rejectedByID, err := q.GetStaffUserIDByEmail(ctx, rejectedByEmail)
+			if err != nil {
+				return err
+			}
+			if err := q.UpdateBalanceOperationStatus(ctx, sqlcgen.UpdateBalanceOperationStatusParams{
+				ID:              operationID,
+				Status:          sqlcgen.OperationStatusRejected,
+				ResolvedBy:      &rejectedByID,
+				ResolutionNotes: &reason,
+			}); err != nil {
+				return err
+			}
+			return logCallerAudit(ctx, q, "balance_operation_rejected", "balance_operation", operationID, map[string]any{"resolved_by_email": rejectedByEmail, "reason": reason})
 		})
+		if err != nil {
+			return err
+		}
+
+		op.Status = approval.OperationStatusRejected
+		op.ResolvedByEmail = &rejectedByEmail
+		op.ResolutionNotes = &reason
+		result = op
+		return nil
 	})
 	if err != nil {
 		return approval.Operation{}, err
 	}
-
-	op.Status = approval.OperationStatusRejected
-	op.ResolvedByEmail = &rejectedByEmail
-	op.ResolutionNotes = &reason
-	return op, nil
+	return result, nil
 }

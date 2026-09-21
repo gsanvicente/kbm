@@ -512,3 +512,40 @@ type ResolveClaimRequest struct {
 	ResolutionNotes string `json:"resolutionNotes"`
 	ResolvedByEmail string `json:"resolvedByEmail"`
 }
+
+// --- Gestión de usuarios de staff ---------------------------------------
+// Ver docs/feature/gestion-de-usuarios-staff/README.md. Distinto de
+// StaffLoginResponse (arriba, solo para el propio login) — este es el
+// recurso completo que admin/ lista/crea/edita.
+
+type StaffUser struct {
+	ID       string  `json:"id"`
+	ClientID *string `json:"clientId"`
+	Email    string  `json:"email"`
+	FullName string  `json:"fullName"`
+	Role     string  `json:"role"`
+	IsActive bool    `json:"isActive"`
+}
+
+func FromStaffUserResource(u staff.User) StaffUser {
+	return StaffUser{ID: u.ID, ClientID: u.ClientID, Email: u.Email, FullName: u.FullName, Role: string(u.Role), IsActive: u.IsActive}
+}
+
+type CreateStaffUserRequest struct {
+	ClientID        string `json:"clientId"`
+	Email           string `json:"email"`
+	FullName        string `json:"fullName"`
+	Role            string `json:"role"`
+	Password        string `json:"password"`
+	ConfirmPassword string `json:"confirmPassword"`
+}
+
+type UpdateStaffUserRequest struct {
+	FullName string `json:"fullName"`
+	Role     string `json:"role"`
+}
+
+type ResetStaffUserPasswordRequest struct {
+	Password        string `json:"password"`
+	ConfirmPassword string `json:"confirmPassword"`
+}

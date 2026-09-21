@@ -14,6 +14,7 @@ import '../features/dashboard/dashboard_repository.dart';
 import '../features/dashboard/dashboard_section.dart';
 import '../features/ledger/ledger_repository.dart';
 import '../features/clients/clientes_section.dart';
+import '../features/staff_users/staff_user_repository.dart';
 import '../features/treasury/treasury_repository.dart';
 import 'auth_controller.dart';
 import 'theme.dart';
@@ -68,6 +69,7 @@ class AdminShell extends StatefulWidget {
     required this.balanceOperationRepository,
     required this.treasuryRepository,
     required this.dashboardRepository,
+    required this.staffUserRepository,
     required this.authController,
   });
 
@@ -79,6 +81,7 @@ class AdminShell extends StatefulWidget {
   final BalanceOperationRepository balanceOperationRepository;
   final TreasuryRepository treasuryRepository;
   final DashboardRepository dashboardRepository;
+  final StaffUserRepository staffUserRepository;
   final AuthController authController;
 
   @override
@@ -167,6 +170,7 @@ class _AdminShellState extends State<AdminShell> {
           ledgerRepository: widget.ledgerRepository,
           balanceOperationRepository: widget.balanceOperationRepository,
           treasuryRepository: widget.treasuryRepository,
+          staffUserRepository: widget.staffUserRepository,
         );
       case _Section.tarjetahabientes:
         return TarjetahabientesSection(

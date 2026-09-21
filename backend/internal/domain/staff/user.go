@@ -20,6 +20,7 @@ type User struct {
 	ID       string
 	ClientID *string
 	Email    string
+	FullName string
 	Role     Role
 	IsActive bool
 }

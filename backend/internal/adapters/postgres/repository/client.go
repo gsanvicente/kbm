@@ -137,6 +137,10 @@ func (s *Store) Create(ctx context.Context, draft kbmclient.Client) (kbmclient.C
 		return kbmclient.Client{}, err
 	}
 
+	if err := logCallerAudit(ctx, qtx, "client_created", "client", row.ID, map[string]any{"name": row.Name, "parent_client_id": row.ParentClientID}); err != nil {
+		return kbmclient.Client{}, err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return kbmclient.Client{}, err
 	}
@@ -261,6 +265,10 @@ func (s *Store) Update(ctx context.Context, updated kbmclient.Client) (kbmclient
 		return kbmclient.Client{}, err
 	}
 
+	if err := logCallerAudit(ctx, qtx, "client_updated", "client", updated.ID, nil); err != nil {
+		return kbmclient.Client{}, err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return kbmclient.Client{}, err
 	}
@@ -283,6 +291,13 @@ func (s *Store) SetActive(ctx context.Context, clientID string, active bool) (kb
 			ClientIds: targets,
 		})
 		if err != nil {
+			return err
+		}
+		action := "client_deactivated"
+		if active {
+			action = "client_reactivated"
+		}
+		if err := logCallerAudit(ctx, q, action, "client", clientID, map[string]any{"cascaded_to_descendants": len(descendantIDs)}); err != nil {
 			return err
 		}
 		for _, r := range rows {

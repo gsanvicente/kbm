@@ -19,6 +19,8 @@ import '../balance_operations/balance_operation_repository.dart';
 import '../cardholders/cardholder_list_view.dart';
 import '../cardholders/cardholder_repository.dart';
 import '../cards/card_repository.dart';
+import '../staff_users/staff_user_list_view.dart';
+import '../staff_users/staff_user_repository.dart';
 import '../treasury/deposit_tile.dart';
 import '../treasury/treasury_repository.dart';
 import 'client_repository.dart';
@@ -38,6 +40,7 @@ class ClientDetailView extends StatefulWidget {
     required this.clientRepository,
     required this.cardRepository,
     required this.balanceOperationRepository,
+    required this.staffUserRepository,
     required this.onSelectCardholder,
     required this.onEdit,
     required this.onClientUpdated,
@@ -54,6 +57,10 @@ class ClientDetailView extends StatefulWidget {
   /// de aprobación) — ver docs/feature/configuracion-de-cliente/README.md.
   final CardRepository cardRepository;
   final BalanceOperationRepository balanceOperationRepository;
+
+  /// Para la pestaña "Usuarios" — ver
+  /// docs/feature/gestion-de-usuarios-staff/README.md.
+  final StaffUserRepository staffUserRepository;
   final ValueChanged<Cardholder> onSelectCardholder;
   final VoidCallback onEdit;
   final ValueChanged<Client> onClientUpdated;
@@ -73,10 +80,10 @@ class _ClientDetailViewState extends State<ClientDetailView> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    // "Configuración" solo para quien puede gestionar Clientes — es
-    // config operativa/de seguridad (límite de tarjetas, umbrales de
-    // aprobación), no algo que Operador/Auditor necesiten ver.
-    _tabController = TabController(length: widget.session.role.canManageClients ? 3 : 2, vsync: this);
+    // "Configuración" y "Usuarios" solo para quien puede gestionar
+    // Clientes — configuración operativa/de seguridad y alta de cuentas
+    // de staff, no algo que Operador/Auditor necesiten ver.
+    _tabController = TabController(length: widget.session.role.canManageClients ? 4 : 2, vsync: this);
   }
 
   @override
@@ -213,6 +220,7 @@ class _ClientDetailViewState extends State<ClientDetailView> with SingleTickerPr
             const Tab(text: 'Tesorería'),
             const Tab(text: 'Tarjetahabientes'),
             if (canManage) const Tab(text: 'Configuración'),
+            if (canManage) const Tab(text: 'Usuarios'),
           ],
         ),
         const Divider(height: 1),
@@ -236,6 +244,12 @@ class _ClientDetailViewState extends State<ClientDetailView> with SingleTickerPr
                   client: widget.client,
                   cardRepository: widget.cardRepository,
                   balanceOperationRepository: widget.balanceOperationRepository,
+                ),
+              if (canManage)
+                StaffUserListView(
+                  repository: widget.staffUserRepository,
+                  clientId: widget.client.id,
+                  session: widget.session,
                 ),
             ],
           ),

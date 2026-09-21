@@ -26,6 +26,10 @@ var (
 	// el destino de una transferencia C2C, ver
 	// docs/feature/transferencia-c2c-tarjetahabiente/README.md, "Seguridad".
 	ErrTooManyFailedAttempts = errors.New("too many failed attempts")
+	// ErrEmailAlreadyExists — alta de un usuario de staff con un email ya
+	// registrado (users.email es citext UNIQUE), ver
+	// docs/adr/0017-staff-user-management-and-rls-on-users.md.
+	ErrEmailAlreadyExists = errors.New("email already exists")
 )
 
 // CardLimitExceededError lleva el límite configurado además de

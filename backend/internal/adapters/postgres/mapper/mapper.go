@@ -313,8 +313,20 @@ func ToCollectorDeposit(r CollectorDepositRow) treasury.CollectorDeposit {
 	}
 }
 
-func ToStaffUser(id string, clientID *string, email string, role sqlcgen.UserRole, isActive bool) staff.User {
-	return staff.User{ID: id, ClientID: clientID, Email: email, Role: staff.Role(role), IsActive: isActive}
+// StaffUserRow mirrors ListStaffUsersByClientRow / GetStaffUserByIDRow /
+// CreateStaffUserRow / UpdateStaffUserRow / SetStaffUserActiveRow — all
+// five share the exact same five columns.
+type StaffUserRow struct {
+	ID       string
+	ClientID *string
+	Email    string
+	FullName string
+	Role     sqlcgen.UserRole
+	IsActive bool
+}
+
+func ToStaffUser(r StaffUserRow) staff.User {
+	return staff.User{ID: r.ID, ClientID: r.ClientID, Email: r.Email, FullName: r.FullName, Role: staff.Role(r.Role), IsActive: r.IsActive}
 }
 
 // BalanceOperationRow mirrors ListBalanceOperationsByClientsRow / GetBalanceOperationForUpdateRow.

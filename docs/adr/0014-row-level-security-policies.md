@@ -139,8 +139,8 @@ obvios de antemano:
   operación pendiente podrían, en teoría, ejecutarla dos veces antes de
   que cualquiera marque el estado como resuelto. Esto ya existía antes
   de este cambio (no lo introduce ni lo empeora la migración a
-  `withRLS`); se deja anotado para una revisión futura, no se atacó aquí
-  porque no formaba parte del alcance pedido (RLS).
+  `withRLS`). **Corregido en
+  `docs/adr/0016-business-action-audit-log-and-approval-race-fix.md`.**
 
 ## Alternativas consideradas
 - **`FORCE ROW LEVEL SECURITY` en vez de un rol nuevo**: descartado —

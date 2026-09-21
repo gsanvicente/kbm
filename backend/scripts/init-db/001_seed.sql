@@ -20,12 +20,12 @@ INSERT INTO client_hierarchy (ancestor_id, descendant_id, depth) VALUES
     ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 1),
     ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000003', 1);
 
-INSERT INTO users (id, client_id, email, password_hash, role) VALUES
-    ('10000000-0000-0000-0000-000000000001', NULL, 'super.admin@koons.test', crypt('LocalDevOnly123!', gen_salt('bf')), 'super_admin'),
-    ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'admin.holding@koons.test', crypt('LocalDevOnly123!', gen_salt('bf')), 'client_admin'),
-    ('10000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', 'admin.subA@koons.test', crypt('LocalDevOnly123!', gen_salt('bf')), 'client_admin'),
-    ('10000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000002', 'operador.subA@koons.test', crypt('LocalDevOnly123!', gen_salt('bf')), 'operator'),
-    ('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000002', 'auditor.subA@koons.test', crypt('LocalDevOnly123!', gen_salt('bf')), 'auditor');
+INSERT INTO users (id, client_id, email, full_name, password_hash, role) VALUES
+    ('10000000-0000-0000-0000-000000000001', NULL, 'super.admin@koons.test', 'Super Admin', crypt('LocalDevOnly123!', gen_salt('bf')), 'super_admin'),
+    ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'admin.holding@koons.test', 'Admin Holding', crypt('LocalDevOnly123!', gen_salt('bf')), 'client_admin'),
+    ('10000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', 'admin.subA@koons.test', 'Admin Subsidiaria A', crypt('LocalDevOnly123!', gen_salt('bf')), 'client_admin'),
+    ('10000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000002', 'operador.subA@koons.test', 'Operador Subsidiaria A', crypt('LocalDevOnly123!', gen_salt('bf')), 'operator'),
+    ('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000002', 'auditor.subA@koons.test', 'Auditor Subsidiaria A', crypt('LocalDevOnly123!', gen_salt('bf')), 'auditor');
 
 -- Grupo Koons Holding intentionally has no cardholders of its own — a
 -- holding typically doesn't issue cards directly, only its subsidiaries
