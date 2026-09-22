@@ -327,3 +327,64 @@ func TestManageRoles_AssignCard(t *testing.T) {
 		t.Fatalf("expected client_admin to pass the role check (business-rule status is fine), got 403: %s", allowed.Body.String())
 	}
 }
+
+// TestFileClaim_Cardholder — un Tarjetahabiente puede presentar un
+// reclamo sobre su propio movimiento (docs/business/reclamos-de-movimientos.md),
+// pero nunca sobre el de alguien más — mismo criterio "nunca revelar"
+// que el resto de los endpoints de alcance mixto.
+func TestFileClaim_Cardholder(t *testing.T) {
+	srv := newTestServer()
+	const juanEntryID = "60000000-0000-0000-0000-000000000001" // Carga inicial, tarjeta de Juan
+	const mariaEntryID = "60000000-0000-0000-0000-000000000004" // Carga inicial, tarjeta de Maria
+
+	juanTok := cardholderToken(t, srv)
+
+	ownClaim := postJSON(t, srv, juanTok, "/v1/ledger-entries/"+juanEntryID+"/claim", dto.FileClaimRequest{Reason: "no reconozco este cargo"})
+	if ownClaim.Code != http.StatusOK {
+		t.Fatalf("expected 200 filing a claim on your own movement, got %d: %s", ownClaim.Code, ownClaim.Body.String())
+	}
+	var claim dto.MovementClaim
+	if err := json.Unmarshal(ownClaim.Body.Bytes(), &claim); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if claim.RequestedByEmail != "Juan Perez" {
+		t.Fatalf("expected the claim to be attributed to Juan Perez by name, got %q", claim.RequestedByEmail)
+	}
+
+	// Puede leer el estado de su propio reclamo.
+	getOwn := getJSON(t, srv, juanTok, "/v1/ledger-entries/"+juanEntryID+"/claim")
+	if getOwn.Code != http.StatusOK {
+		t.Fatalf("expected 200 reading your own claim, got %d: %s", getOwn.Code, getOwn.Body.String())
+	}
+
+	// Nunca sobre el movimiento de otro Tarjetahabiente.
+	otherClaim := postJSON(t, srv, juanTok, "/v1/ledger-entries/"+mariaEntryID+"/claim", dto.FileClaimRequest{Reason: "intento"})
+	if otherClaim.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 (generic, never reveals mismatch) filing on someone else's movement, got %d: %s", otherClaim.Code, otherClaim.Body.String())
+	}
+	otherGet := getJSON(t, srv, juanTok, "/v1/ledger-entries/"+mariaEntryID+"/claim")
+	if otherGet.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 reading someone else's claim status, got %d: %s", otherGet.Code, otherGet.Body.String())
+	}
+}
+
+// TestFileClaim_AuditorForbidden — mover fileClaim al grupo de alcance
+// mixto (para permitir también un token de Tarjetahabiente) no debe
+// relajar la restricción de rol para el lado staff: Auditor sigue sin
+// poder presentar reclamos.
+func TestFileClaim_AuditorForbidden(t *testing.T) {
+	srv := newTestServer()
+	const entryID = "60000000-0000-0000-0000-000000000001"
+
+	auditorTok := staffToken(t, srv, "auditor.subA@koons.test")
+	rec := postJSON(t, srv, auditorTok, "/v1/ledger-entries/"+entryID+"/claim", dto.FileClaimRequest{Reason: "x", RequestedByEmail: "auditor.subA@koons.test"})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for auditor, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	operatorTok := staffToken(t, srv, "operador.subA@koons.test")
+	allowed := postJSON(t, srv, operatorTok, "/v1/ledger-entries/"+entryID+"/claim", dto.FileClaimRequest{Reason: "x", RequestedByEmail: "operador.subA@koons.test"})
+	if allowed.Code != http.StatusOK {
+		t.Fatalf("expected 200 for operator (staff role restriction preserved after the mixed-audience move), got %d: %s", allowed.Code, allowed.Body.String())
+	}
+}

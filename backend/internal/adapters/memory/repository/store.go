@@ -377,6 +377,57 @@ func (s *Store) FileClaim(_ context.Context, ledgerEntryID, reason, requestedByE
 	return claim, nil
 }
 
+// FileClaimAsCardholder — mismo contrato que FileClaim, pero presentado
+// por el propio Tarjetahabiente sobre su propio movimiento. El chequeo
+// de pertenencia ya lo hizo el handler, vía GetEntryCardholderID.
+func (s *Store) FileClaimAsCardholder(_ context.Context, ledgerEntryID, reason, cardholderID string) (ledger.MovementClaim, error) {
+	s.claimsMu.Lock()
+	defer s.claimsMu.Unlock()
+	for _, c := range s.claims {
+		if c.LedgerEntryID == ledgerEntryID {
+			return ledger.MovementClaim{}, shared.ErrInvalidState
+		}
+	}
+	s.cardholdersMu.RLock()
+	cardholderName := cardholderID
+	if ch, ok := s.cardholders[cardholderID]; ok {
+		cardholderName = ch.FullName
+	}
+	s.cardholdersMu.RUnlock()
+	claim := ledger.MovementClaim{
+		ID:               fmt.Sprintf("claim-%d", time.Now().UnixNano()),
+		LedgerEntryID:    ledgerEntryID,
+		Reason:           reason,
+		Status:           ledger.ClaimStatusOpen,
+		RequestedByEmail: cardholderName,
+		CreatedAt:        time.Now(),
+	}
+	s.claims[claim.ID] = claim
+	return claim, nil
+}
+
+// GetEntryCardholderID — a qué Tarjetahabiente pertenece la tarjeta
+// detrás de [ledgerEntryID] (nil si no está asignada) — mismo patrón que
+// ya usa getLedger en handler.go para el chequeo de pertenencia.
+func (s *Store) GetEntryCardholderID(_ context.Context, ledgerEntryID string) (*string, error) {
+	s.ledgerMu.RLock()
+	defer s.ledgerMu.RUnlock()
+	for cardID, entries := range s.entries {
+		for _, e := range entries {
+			if e.ID == ledgerEntryID {
+				s.cardsMu.RLock()
+				defer s.cardsMu.RUnlock()
+				c, ok := s.cards[cardID]
+				if !ok {
+					return nil, shared.ErrNotFound
+				}
+				return c.CardholderID, nil
+			}
+		}
+	}
+	return nil, shared.ErrNotFound
+}
+
 func (s *Store) ResolveClaim(_ context.Context, claimID string, inFavor bool, resolutionNotes, resolvedByEmail string) (ledger.MovementClaim, error) {
 	s.claimsMu.Lock()
 	defer s.claimsMu.Unlock()

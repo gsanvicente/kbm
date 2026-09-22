@@ -1,9 +1,9 @@
 # Movimientos y Reclamos
 
-- Estado: Implementado contra Postgres (`HttpLedgerRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `FakeLedgerRepository` solo para `flutter test`). Solo desde `admin/` — el Tarjetahabiente todavía no puede presentar un reclamo desde `cardholder/`, ver `docs/feature/portal-autoservicio-tarjetahabiente/README.md`, "pendiente".
-- ADR/TDR relacionados: `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`
+- Estado: Implementado contra Postgres (`HttpLedgerRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `FakeLedgerRepository` solo para `flutter test`). El propio Tarjetahabiente también puede presentar un reclamo sobre su propio movimiento desde `cardholder/` (2026-09-21) — ver `docs/adr/0018-cardholder-filed-claims.md`.
+- ADR/TDR relacionados: `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`, `docs/adr/0018-cardholder-filed-claims.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 (control de acceso — resolver sin verificar rol) y 4 (trazabilidad)
-- Roles/actores involucrados: Super Admin, Admin Cliente (solicitan y resuelven); Operador (solo solicita); Auditor (solo ve)
+- Roles/actores involucrados: Super Admin, Admin Cliente (solicitan y resuelven); Operador (solo solicita); Auditor (solo ve); Tarjetahabiente (solicita sobre su propio movimiento, nunca resuelve)
 
 ## Objetivo
 Mostrar el historial de movimientos de una tarjeta y permitir disputar
@@ -31,6 +31,12 @@ primera pieza de disputa de negocio. Ver
   `GET /v1/claims?ledger_entry_ids=a,b,c` (`ports.LedgerRepository.GetClaimsByLedgerEntries`
   en el backend) y `HttpLedgerRepository.getClaims` ahora hace una sola
   llamada. Ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`.
+- **Actualizado 2026-09-21**: `movement_claims.requested_by` (FK a
+  `users`, staff) pasó a ser opcional, con una columna paralela
+  `requested_by_cardholder_id` (FK a `cardholders`) — un Tarjetahabiente
+  no tiene fila en `users`. Exactamente una de las dos siempre está
+  llena (CHECK), nunca ambas. Ver
+  `docs/adr/0018-cardholder-filed-claims.md`.
 
 ## Flujo principal
 1. En el detalle de una tarjeta con cuenta de saldo, la pestaña
@@ -48,6 +54,13 @@ primera pieza de disputa de negocio. Ver
 5. Una tarjeta sin cuenta de saldo (disponible) muestra la pestaña
    "Movimientos" con el mismo mensaje de "sin cuenta" que ya usa la
    pestaña Resumen.
+6. **`cardholder/`** tiene su propio flujo equivalente y más simple (sin
+   código compartido con `admin/`, ver ADR-0002): tocar un movimiento
+   propio en la pestaña "Movimientos" abre un diálogo con su detalle; si
+   no tiene reclamo, un campo de motivo + "Presentar reclamo"; si ya
+   tiene uno, su estado/motivo/notas de resolución (nunca puede
+   resolverlo, solo verlo). Ver
+   `docs/feature/portal-autoservicio-tarjetahabiente/README.md`.
 
 ## Reglas de negocio
 Ver `docs/business/reclamos-de-movimientos.md` — no se repite aquí.

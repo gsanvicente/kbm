@@ -25,3 +25,17 @@ var (
 	// depósitos, presentar reclamos.
 	operateRoles = []staff.Role{staff.RoleSuperAdmin, staff.RoleClientAdmin, staff.RoleOperator}
 )
+
+// staffRoleAllowed — para el puñado de endpoints de alcance mixto
+// (staff y Tarjetahabiente) que además necesitan restringir el rol de
+// staff exacto, ver fileClaim en handler_management.go: al salir del
+// grupo de rutas con RequireRole (que exige exclusivamente staff), el
+// chequeo de rol para el lado staff se repite aquí a mano.
+func staffRoleAllowed(role string, allowed []staff.Role) bool {
+	for _, r := range allowed {
+		if role == string(r) {
+			return true
+		}
+	}
+	return false
+}

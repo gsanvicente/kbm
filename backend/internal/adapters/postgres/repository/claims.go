@@ -83,7 +83,7 @@ func (s *Store) FileClaim(ctx context.Context, ledgerEntryID, reason, requestedB
 			ClientID:      clientID,
 			LedgerEntryID: ledgerEntryID,
 			Reason:        reason,
-			RequestedBy:   requestedByID,
+			RequestedBy:   &requestedByID,
 		})
 		if err != nil {
 			return err
@@ -100,6 +100,75 @@ func (s *Store) FileClaim(ctx context.Context, ledgerEntryID, reason, requestedB
 	})
 	if err != nil {
 		return ledger.MovementClaim{}, err
+	}
+	return result, nil
+}
+
+// FileClaimAsCardholder — el propio Tarjetahabiente presenta un reclamo
+// sobre su propio movimiento (ver
+// docs/business/reclamos-de-movimientos.md, "Quién puede presentar un
+// reclamo"). El chequeo de pertenencia (¿es realmente su movimiento?) ya
+// lo hizo el handler antes de llegar aquí, vía GetEntryCardholderID —
+// este método asume que ya se verificó.
+func (s *Store) FileClaimAsCardholder(ctx context.Context, ledgerEntryID, reason, cardholderID string) (ledger.MovementClaim, error) {
+	var result ledger.MovementClaim
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		if existing, err := s.getClaimTx(ctx, q, ledgerEntryID); err != nil {
+			return err
+		} else if existing != nil {
+			return shared.ErrInvalidState
+		}
+
+		clientID, err := q.GetLedgerEntryClientID(ctx, ledgerEntryID)
+		if err != nil {
+			return err
+		}
+		cardholderName, err := q.GetCardholderNameByID(ctx, cardholderID)
+		if err != nil {
+			return err
+		}
+
+		row, err := q.InsertClaimAsCardholder(ctx, sqlcgen.InsertClaimAsCardholderParams{
+			ClientID:                clientID,
+			LedgerEntryID:           ledgerEntryID,
+			Reason:                  reason,
+			RequestedByCardholderID: &cardholderID,
+		})
+		if err != nil {
+			return err
+		}
+		result = ledger.MovementClaim{
+			ID:               row.ID,
+			LedgerEntryID:    row.LedgerEntryID,
+			Reason:           row.Reason,
+			Status:           ledger.ClaimStatus(row.Status),
+			RequestedByEmail: cardholderName,
+			CreatedAt:        row.CreatedAt,
+		}
+		return logCallerAudit(ctx, q, "claim_filed", "movement_claim", row.ID, map[string]any{"ledger_entry_id": ledgerEntryID, "reason": reason})
+	})
+	if err != nil {
+		return ledger.MovementClaim{}, err
+	}
+	return result, nil
+}
+
+// GetEntryCardholderID — a quién pertenece la tarjeta detrás de
+// [ledgerEntryID], para el chequeo de pertenencia de los endpoints de
+// alcance mixto (getClaim/fileClaim) — mismo patrón que ya usa getLedger
+// en handler.go. nil si la tarjeta no tiene Tarjetahabiente asignado.
+func (s *Store) GetEntryCardholderID(ctx context.Context, ledgerEntryID string) (*string, error) {
+	var result *string
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		var err error
+		result, err = q.GetLedgerEntryCardholderID(ctx, ledgerEntryID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return shared.ErrNotFound
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
 	}
 	return result, nil
 }

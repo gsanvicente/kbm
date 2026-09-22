@@ -1,6 +1,6 @@
 # Autoservicio del Tarjetahabiente
 
-> Referencia viva. Última revisión: 2026-09-19.
+> Referencia viva. Última revisión: 2026-09-21.
 
 ## Qué es
 El plano de identidad y funcionalidad que le permite a un Tarjetahabiente
@@ -21,9 +21,10 @@ opera su propio saldo, no está pidiéndole a nadie más que autorice mover
 dinero de la empresa.
 
 ## Alcance MVP
-1. **Ver saldo y estado de cuenta** — más "bancario" que el historial que
-   ve el staff: filtros por rango de fechas y resumen del periodo, no
-   solo una lista plana. Ver `docs/feature/portal-autoservicio-tarjetahabiente/README.md`.
+1. **Ver saldo y estado de cuenta** — **implementado**, más "bancario"
+   que el historial que ve el staff: filtros por rango de fechas y
+   resumen del periodo, no solo una lista plana. Ver
+   `docs/feature/portal-autoservicio-tarjetahabiente/README.md`.
 2. **Transferencias C2C** — a la tarjeta de otro Tarjetahabiente del
    **mismo Cliente**, identificando el destino por su número de tarjeta
    completo. Ver `docs/feature/transferencia-c2c-tarjetahabiente/README.md`
@@ -31,9 +32,8 @@ dinero de la empresa.
    tiene su propio documento).
 3. **Congelar/descongelar su propia tarjeta** — **implementado**
    (2026-09-19), ver "Congelar vs. bloquear" más abajo.
-4. **Presentar un reclamo** sobre uno de sus propios movimientos — mismo
-   mecanismo (`MovementClaim`) que ya usa un Operador en su nombre, ver
-   "Reclamos" más abajo.
+4. **Presentar un reclamo** sobre uno de sus propios movimientos —
+   **implementado** (2026-09-21), ver "Reclamos" más abajo.
 
 ## Onboarding (fuera de alcance de la versión web)
 El flujo de alta es: (1) el staff (Admin Cliente+) captura al
@@ -82,14 +82,18 @@ bug real en `admin/`: `CardDetailView._canToggleBlock` solo consideraba
 en absoluto** sobre una tarjeta `frozen` — corregido para incluir
 `frozen`, ya que el bloqueo de staff debe poder aplicarse ahí también.
 
-## Reclamos
-El Tarjetahabiente puede presentar un reclamo sobre un movimiento propio
-usando el mismo `LedgerRepository.fileClaim` que ya usa un Operador en su
-nombre (ver `docs/business/reclamos-de-movimientos.md`) — el
-`requestedByEmail` es simplemente el correo del propio Tarjetahabiente
-(`Cardholder.email` ya existe en el modelo). No se identificó
-complejidad adicional que justifique dejarlo fuera de esta primera
-versión.
+## Reclamos (implementado 2026-09-21)
+El Tarjetahabiente puede presentar un reclamo sobre un movimiento propio,
+únicamente el suyo — ver `docs/business/reclamos-de-movimientos.md`. A
+diferencia de lo que se asumía originalmente en esta nota, esto **no**
+pudo reutilizar el mismo `FileClaim` que usa un Operador tal cual:
+`movement_claims.requested_by` era una FK obligatoria hacia `users`
+(staff) — un Tarjetahabiente no tiene fila ahí. Requirió un cambio de
+schema real (`requested_by` opcional + columna paralela
+`requested_by_cardholder_id` hacia `cardholders`, exactamente una de las
+dos siempre llena) — ver `docs/adr/0018-cardholder-filed-claims.md`.
+Nunca puede resolver su propio reclamo, solo presentarlo y ver su
+estado.
 
 ## Segundo factor de autenticación (MFA)
 Se necesita para **ambos** planos de identidad (staff y Tarjetahabiente),
@@ -108,11 +112,10 @@ Antes de implementar código de este portal, se construyeron:
    `docs/feature/alta-y-gestion-de-tarjetahabientes/`.
 
 Con ambas dependencias resueltas, se implementó el mínimo de este portal
-necesario para la Transferencia C2C, y luego (2026-09-19) congelar/
-descongelar la propia tarjeta — ver "Estado" en
-`docs/feature/portal-autoservicio-tarjetahabiente/README.md` para el
-detalle exacto de qué sigue pendiente (estado de cuenta con filtro de
-fechas, reclamos).
+necesario para la Transferencia C2C, luego (2026-09-19) congelar/
+descongelar la propia tarjeta, y luego (2026-09-21) el filtro de
+fechas/resumen de periodo en Movimientos y presentar un reclamo — ver
+"Estado" en `docs/feature/portal-autoservicio-tarjetahabiente/README.md`.
 
 ## Login y Tarjetahabiente inactivo (implementado)
 El login de este portal aplica la misma regla de Capa 1 que ya se

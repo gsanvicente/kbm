@@ -2,10 +2,13 @@ import 'http/kbm_backend_client.dart';
 import 'models/card_network.dart';
 import 'models/card_status.dart';
 import 'models/cardholder_session.dart';
+import 'models/claim_status.dart';
 import 'models/ledger_entry_type.dart';
 import 'models/ledger_movement.dart';
+import 'models/movement_claim.dart';
 import 'models/payment_card.dart';
 import 'models/shared/auth_exception.dart';
+import 'models/shared/claim_already_filed_exception.dart';
 import 'models/shared/insufficient_funds_exception.dart';
 import 'models/shared/too_many_failed_attempts_exception.dart';
 import '../features/auth/cardholder_auth_repository.dart';
@@ -125,6 +128,53 @@ class HttpCardholderBackend implements CardholderAuthRepository, CardRepository,
     }).toList();
     movements.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return movements;
+  }
+
+  ClaimStatus _claimStatusFromJson(String value) {
+    switch (value) {
+      case 'open':
+        return ClaimStatus.open;
+      case 'in_review':
+        return ClaimStatus.inReview;
+      case 'resolved_favor':
+        return ClaimStatus.resolvedFavor;
+      case 'rejected':
+        return ClaimStatus.rejected;
+      default:
+        return ClaimStatus.open;
+    }
+  }
+
+  MovementClaim _claimFromJson(Map<String, dynamic> json) => MovementClaim(
+        id: json['id'] as String,
+        ledgerEntryId: json['ledgerEntryId'] as String,
+        reason: json['reason'] as String,
+        status: _claimStatusFromJson(json['status'] as String),
+        resolutionNotes: json['resolutionNotes'] as String?,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        resolvedAt: json['resolvedAt'] != null ? DateTime.parse(json['resolvedAt'] as String) : null,
+      );
+
+  @override
+  Future<MovementClaim?> getClaim(String ledgerEntryId) async {
+    try {
+      final json = await client.get('/v1/ledger-entries/$ledgerEntryId/claim') as Map<String, dynamic>;
+      return _claimFromJson(json);
+    } on KbmBackendException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  @override
+  Future<MovementClaim> fileClaim(String ledgerEntryId, String reason) async {
+    try {
+      final json = await client.post('/v1/ledger-entries/$ledgerEntryId/claim', {'reason': reason}) as Map<String, dynamic>;
+      return _claimFromJson(json);
+    } on KbmBackendException catch (e) {
+      if (e.statusCode == 409) throw const ClaimAlreadyFiledException();
+      rethrow;
+    }
   }
 
   @override

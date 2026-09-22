@@ -4,8 +4,8 @@
   repositorio fake, junto con el mínimo de
   `docs/feature/portal-autoservicio-tarjetahabiente/README.md` necesario
   para llegar aquí (login y detalle de tarjeta) — el resto de ese portal
-  (reclamos, estado de cuenta con filtro de fechas) sigue pendiente;
-  congelar/descongelar ya se implementó, ver
+  (reclamos, estado de cuenta con filtro de fechas) también se
+  implementó desde entonces (2026-09-21), ver
   `docs/business/autoservicio-tarjetahabiente.md`. Migración a backend
   compartido ya implementada, ver
   `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md` — la
@@ -29,8 +29,9 @@ tarjeta", no un directorio de contactos.
   corrigió, ver ese archivo.
 - Alcance mínimo de portal necesario para esto: login y detalle de una
   tarjeta (saldo + botón Transferir) — ver
-  `docs/feature/portal-autoservicio-tarjetahabiente/README.md` para lo
-  que sigue pendiente (reclamos, estado de cuenta con filtro de fechas).
+  `docs/feature/portal-autoservicio-tarjetahabiente/README.md` para el
+  resto del portal (reclamos, estado de cuenta con filtro de fechas),
+  implementado después.
 - Puerto de desarrollo: `8766` (junto al `8765` de `admin/`), para poder
   correr ambas apps a la vez.
 

@@ -6,10 +6,13 @@ import 'models/card_network.dart';
 import 'models/card_status.dart';
 import 'models/cardholder.dart';
 import 'models/cardholder_session.dart';
+import 'models/claim_status.dart';
 import 'models/ledger_entry_type.dart';
 import 'models/ledger_movement.dart';
+import 'models/movement_claim.dart';
 import 'models/payment_card.dart';
 import 'models/shared/auth_exception.dart';
+import 'models/shared/claim_already_filed_exception.dart';
 import 'models/shared/insufficient_funds_exception.dart';
 import 'models/shared/too_many_failed_attempts_exception.dart';
 import '../features/auth/cardholder_auth_repository.dart';
@@ -294,6 +297,31 @@ class FakeCardholderBackend implements CardholderAuthRepository, CardRepository,
     final movements = List<LedgerMovement>.from(_movementsByCard[cardId] ?? const []);
     movements.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return movements;
+  }
+
+  final Map<String, MovementClaim> _claimsByEntryId = {};
+
+  @override
+  Future<MovementClaim?> getClaim(String ledgerEntryId) async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    return _claimsByEntryId[ledgerEntryId];
+  }
+
+  @override
+  Future<MovementClaim> fileClaim(String ledgerEntryId, String reason) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (_claimsByEntryId.containsKey(ledgerEntryId)) {
+      throw const ClaimAlreadyFiledException();
+    }
+    final claim = MovementClaim(
+      id: 'claim-${DateTime.now().microsecondsSinceEpoch}',
+      ledgerEntryId: ledgerEntryId,
+      reason: reason,
+      status: ClaimStatus.open,
+      createdAt: DateTime.now(),
+    );
+    _claimsByEntryId[ledgerEntryId] = claim;
+    return claim;
   }
 
   @override

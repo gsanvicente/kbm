@@ -21,7 +21,8 @@ services:
       - ./migrations/0004_approval_rules_unique_constraint.sql:/docker-entrypoint-initdb.d/0004_migration.sql:ro
       - ./migrations/0005_row_level_security_policies.sql:/docker-entrypoint-initdb.d/0005_migration.sql:ro
       - ./migrations/0006_staff_user_management.sql:/docker-entrypoint-initdb.d/0006_migration.sql:ro
-      - ./scripts/init-db/001_seed.sql:/docker-entrypoint-initdb.d/0007_seed.sql:ro
+      - ./migrations/0007_cardholder_filed_claims.sql:/docker-entrypoint-initdb.d/0007_migration.sql:ro
+      - ./scripts/init-db/001_seed.sql:/docker-entrypoint-initdb.d/0008_seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kbm -d kbm"]
       interval: 5s

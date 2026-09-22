@@ -1,6 +1,6 @@
 # Reclamos sobre Movimientos
 
-> Referencia viva. Última revisión: 2026-09-18.
+> Referencia viva. Última revisión: 2026-09-21.
 
 ## Qué es un reclamo y por qué es una entidad separada
 
@@ -38,20 +38,30 @@ corresponde), no parte de esta feature.
 
 Separación deliberada de responsabilidades:
 
-- **Solicitar un reclamo**: Super Admin, Admin Cliente, **Operador** —
-  mismo grupo que puede bloquear/desbloquear tarjetas (ver
+- **Solicitar un reclamo** (desde `admin/`, en nombre de un
+  Tarjetahabiente): Super Admin, Admin Cliente, **Operador** — mismo
+  grupo que puede bloquear/desbloquear tarjetas (ver
   `docs/business/tarjetas-y-asignacion.md`), es una acción operativa del
   día a día.
+- **El propio Tarjetahabiente también puede solicitar un reclamo**,
+  desde `cardholder/`, únicamente sobre sus propios movimientos —
+  mismo mecanismo (`movement_claims`), nunca sobre el movimiento de
+  otro. Ver `docs/adr/0018-cardholder-filed-claims.md` para el cambio de
+  schema que esto requirió (`requested_by` — staff — pasó a ser
+  opcional, con una columna paralela hacia `cardholders`).
 - **Resolver un reclamo** (a favor o rechazado): solo **Super Admin y
-  Admin Cliente** — quien opera el día a día no decide el resultado de
-  una disputa.
+  Admin Cliente** — quien opera el día a día (o el propio
+  Tarjetahabiente que lo presentó) no decide el resultado de una
+  disputa.
 - **Auditor**: ve reclamos y su estado, no puede solicitar ni resolver.
 
 ## Dónde vive en la UI
 
 No es una entidad navegable independiente en esta iteración — se
 solicita y se ve desde el detalle del movimiento al que pertenece
-(panel/diálogo, no una pantalla ni breadcrumb propios). Ver
+(panel/diálogo, no una pantalla ni breadcrumb propios), tanto en
+`admin/` como en `cardholder/` (cada app con su propio diálogo, sin
+código compartido — ADR-0002). Ver
 `docs/feature/reclamos-de-movimientos/README.md`.
 
 ## Fuera de alcance de esta iteración

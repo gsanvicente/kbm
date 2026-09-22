@@ -80,6 +80,19 @@ type LedgerRepository interface {
 	// un reclamo.
 	FileClaim(ctx context.Context, ledgerEntryID, reason, requestedByEmail string) (ledger.MovementClaim, error)
 
+	// FileClaimAsCardholder — mismo contrato que FileClaim, pero
+	// presentado por el propio Tarjetahabiente sobre su propio
+	// movimiento (ver docs/business/reclamos-de-movimientos.md). El
+	// llamador ya debe haber verificado la pertenencia vía
+	// GetEntryCardholderID.
+	FileClaimAsCardholder(ctx context.Context, ledgerEntryID, reason, cardholderID string) (ledger.MovementClaim, error)
+
+	// GetEntryCardholderID — a qué Tarjetahabiente pertenece la tarjeta
+	// detrás de [ledgerEntryID] (nil si no está asignada) — usado por el
+	// handler para el chequeo de pertenencia de getClaim/fileClaim,
+	// mismo patrón que ya usa getLedger.
+	GetEntryCardholderID(ctx context.Context, ledgerEntryID string) (*string, error)
+
 	// ResolveClaim — inFavor elige resolved_favor vs rejected. Nunca
 	// toca el Entry subyacente.
 	ResolveClaim(ctx context.Context, claimID string, inFavor bool, resolutionNotes, resolvedByEmail string) (ledger.MovementClaim, error)

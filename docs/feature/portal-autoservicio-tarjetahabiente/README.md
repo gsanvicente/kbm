@@ -1,17 +1,16 @@
 # Portal de autoservicio del Tarjetahabiente
 
-- Estado: **Parcialmente implementado** (2026-09-19) — login, detalle de
-  tarjeta (saldo + Transferir + Bloqueo temporal), y Movimientos (lista
-  de la cuenta, sin filtro de fechas) existen en `cardholder/`, con una
-  navegación persistente (sidebar en pantallas anchas, barra inferior en
-  angostas, homologada visualmente con `admin/`) en vez de una sola
-  pantalla suelta — ver "Diseño" más abajo. Filtro de fechas/resumen de
-  periodo y Reclamos (puntos en "Pantallas" más abajo) siguen sin
-  implementarse.
+- Estado: **Implementado** (2026-09-21) — login, detalle de tarjeta
+  (saldo + Transferir + Bloqueo temporal), Movimientos (con filtro de
+  periodo y resumen) y presentar un reclamo existen en `cardholder/`,
+  con una navegación persistente (sidebar en pantallas anchas, barra
+  inferior en angostas, homologada visualmente con `admin/`) en vez de
+  una sola pantalla suelta — ver "Diseño" más abajo.
 - ADR/TDR relacionados: `docs/adr/0002-flutter-web-mobile-two-apps.md`,
   `docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`,
   `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`,
-  `docs/adr/0013-jwt-session-authentication.md`
+  `docs/adr/0013-jwt-session-authentication.md`,
+  `docs/adr/0018-cardholder-filed-claims.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 6, 11 y 12
 - Roles/actores involucrados: Tarjetahabiente únicamente (plano de
   identidad `cardholder_users`, separado de staff) — ver
@@ -69,9 +68,11 @@ de la gestión de saldos del staff (sin Concentradora/Colectora, sin
    mismo marco de navegación, ver "Diseño"):
    - **Inicio**: tarjeta (visual, nunca el PAN completo) + saldo actual,
      destacado. **Implementado.**
-   - **Movimientos** (lista de la cuenta, más reciente primero):
-     **implementado**, sin filtro por rango de fechas ni resumen del
-     periodo — eso sigue **pendiente**.
+   - **Movimientos** (lista de la cuenta, más reciente primero) —
+     **implementado**, con filtro por periodo (Todo/Este mes/Mes
+     pasado/rango personalizado) y un resumen de Depósitos/Cargos/Neto
+     del periodo seleccionado, puramente client-side sobre la misma
+     lista ya cargada (sin parámetros de fecha en el backend).
    - Botón **Bloqueo temporal** (congelar/descongelar la propia
      tarjeta) — **implementado** (2026-09-19), ver
      `docs/business/autoservicio-tarjetahabiente.md`, "Congelar vs.
@@ -82,9 +83,11 @@ de la gestión de saldos del staff (sin Concentradora/Colectora, sin
      siquiera esta.
    - Botón **Transferir** — **implementado**, ver
      `docs/feature/transferencia-c2c-tarjetahabiente/README.md`.
-   - Presentar un reclamo por movimiento: **pendiente** — ya hay
-     movimientos individuales que reclamar (punto anterior), pero la
-     acción en sí no está construida.
+   - Presentar un reclamo por movimiento — **implementado** (2026-09-21):
+     tocar un movimiento abre su detalle; si no tiene reclamo, un campo
+     de motivo + "Presentar reclamo"; si ya tiene uno, su
+     estado/motivo/notas de resolución (nunca puede resolverlo, solo
+     verlo). Ver `docs/adr/0018-cardholder-filed-claims.md`.
 
 ## Diseño
 El portal usa un marco de navegación persistente una vez dentro de una

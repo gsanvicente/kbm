@@ -11,10 +11,12 @@ import (
 )
 
 const getClaimByID = `-- name: GetClaimByID :one
-SELECT mc.id, mc.ledger_entry_id, mc.reason, mc.status, rq.email AS requested_by_email,
+SELECT mc.id, mc.ledger_entry_id, mc.reason, mc.status,
+       COALESCE(rq.email::text, ch.full_name) AS requested_by_email,
        rs.email AS resolved_by_email, mc.resolution_notes, mc.created_at, mc.resolved_at
 FROM movement_claims mc
-JOIN users rq ON rq.id = mc.requested_by
+LEFT JOIN users rq ON rq.id = mc.requested_by
+LEFT JOIN cardholders ch ON ch.id = mc.requested_by_cardholder_id
 LEFT JOIN users rs ON rs.id = mc.resolved_by
 WHERE mc.id = $1
 `
@@ -49,10 +51,13 @@ func (q *Queries) GetClaimByID(ctx context.Context, id string) (GetClaimByIDRow,
 }
 
 const getClaimByLedgerEntry = `-- name: GetClaimByLedgerEntry :one
-SELECT mc.id, mc.ledger_entry_id, mc.reason, mc.status, rq.email AS requested_by_email,
+
+SELECT mc.id, mc.ledger_entry_id, mc.reason, mc.status,
+       COALESCE(rq.email::text, ch.full_name) AS requested_by_email,
        rs.email AS resolved_by_email, mc.resolution_notes, mc.created_at, mc.resolved_at
 FROM movement_claims mc
-JOIN users rq ON rq.id = mc.requested_by
+LEFT JOIN users rq ON rq.id = mc.requested_by
+LEFT JOIN cardholders ch ON ch.id = mc.requested_by_cardholder_id
 LEFT JOIN users rs ON rs.id = mc.resolved_by
 WHERE mc.ledger_entry_id = $1
 `
@@ -69,6 +74,13 @@ type GetClaimByLedgerEntryRow struct {
 	ResolvedAt       *time.Time
 }
 
+// requested_by_email en los tres SELECT de abajo es en realidad "quién
+// lo presentó, para mostrar en pantalla" — un email de staff o el
+// nombre completo de un Tarjetahabiente (COALESCE), nunca ambos a la
+// vez (ver movement_claims_requester_check en
+// migrations/0007_cardholder_filed_claims.sql). El nombre de la columna
+// se mantuvo para no tocar el resto del código Go — "Solicitado por" ya
+// era una etiqueta genérica en admin/, nunca decía literalmente "email".
 func (q *Queries) GetClaimByLedgerEntry(ctx context.Context, ledgerEntryID string) (GetClaimByLedgerEntryRow, error) {
 	row := q.db.QueryRow(ctx, getClaimByLedgerEntry, ledgerEntryID)
 	var i GetClaimByLedgerEntryRow
@@ -84,6 +96,24 @@ func (q *Queries) GetClaimByLedgerEntry(ctx context.Context, ledgerEntryID strin
 		&i.ResolvedAt,
 	)
 	return i, err
+}
+
+const getLedgerEntryCardholderID = `-- name: GetLedgerEntryCardholderID :one
+SELECT c.cardholder_id
+FROM ledger_entries le
+JOIN ledger_accounts la ON la.id = le.ledger_account_id
+JOIN cards c ON c.id = la.card_id
+WHERE le.id = $1
+`
+
+// Para el chequeo de pertenencia cuando quien pide/reclama es un
+// Tarjetahabiente (getClaim/fileClaim de alcance mixto) — mismo patrón
+// que ya usa getLedger en handler.go.
+func (q *Queries) GetLedgerEntryCardholderID(ctx context.Context, id string) (*string, error) {
+	row := q.db.QueryRow(ctx, getLedgerEntryCardholderID, id)
+	var cardholder_id *string
+	err := row.Scan(&cardholder_id)
+	return cardholder_id, err
 }
 
 const getLedgerEntryClientID = `-- name: GetLedgerEntryClientID :one
@@ -107,7 +137,7 @@ type InsertClaimParams struct {
 	ClientID      string
 	LedgerEntryID string
 	Reason        string
-	RequestedBy   string
+	RequestedBy   *string
 }
 
 type InsertClaimRow struct {
@@ -115,7 +145,7 @@ type InsertClaimRow struct {
 	LedgerEntryID   string
 	Reason          string
 	Status          ClaimStatus
-	RequestedBy     string
+	RequestedBy     *string
 	ResolvedBy      *string
 	ResolutionNotes *string
 	CreatedAt       time.Time
@@ -144,11 +174,60 @@ func (q *Queries) InsertClaim(ctx context.Context, arg InsertClaimParams) (Inser
 	return i, err
 }
 
+const insertClaimAsCardholder = `-- name: InsertClaimAsCardholder :one
+INSERT INTO movement_claims (client_id, ledger_entry_id, reason, requested_by_cardholder_id)
+VALUES ($1, $2, $3, $4)
+RETURNING id, ledger_entry_id, reason, status, requested_by_cardholder_id, resolved_by, resolution_notes, created_at, resolved_at
+`
+
+type InsertClaimAsCardholderParams struct {
+	ClientID                string
+	LedgerEntryID           string
+	Reason                  string
+	RequestedByCardholderID *string
+}
+
+type InsertClaimAsCardholderRow struct {
+	ID                      string
+	LedgerEntryID           string
+	Reason                  string
+	Status                  ClaimStatus
+	RequestedByCardholderID *string
+	ResolvedBy              *string
+	ResolutionNotes         *string
+	CreatedAt               time.Time
+	ResolvedAt              *time.Time
+}
+
+func (q *Queries) InsertClaimAsCardholder(ctx context.Context, arg InsertClaimAsCardholderParams) (InsertClaimAsCardholderRow, error) {
+	row := q.db.QueryRow(ctx, insertClaimAsCardholder,
+		arg.ClientID,
+		arg.LedgerEntryID,
+		arg.Reason,
+		arg.RequestedByCardholderID,
+	)
+	var i InsertClaimAsCardholderRow
+	err := row.Scan(
+		&i.ID,
+		&i.LedgerEntryID,
+		&i.Reason,
+		&i.Status,
+		&i.RequestedByCardholderID,
+		&i.ResolvedBy,
+		&i.ResolutionNotes,
+		&i.CreatedAt,
+		&i.ResolvedAt,
+	)
+	return i, err
+}
+
 const listClaimsByLedgerEntries = `-- name: ListClaimsByLedgerEntries :many
-SELECT mc.id, mc.ledger_entry_id, mc.reason, mc.status, rq.email AS requested_by_email,
+SELECT mc.id, mc.ledger_entry_id, mc.reason, mc.status,
+       COALESCE(rq.email::text, ch.full_name) AS requested_by_email,
        rs.email AS resolved_by_email, mc.resolution_notes, mc.created_at, mc.resolved_at
 FROM movement_claims mc
-JOIN users rq ON rq.id = mc.requested_by
+LEFT JOIN users rq ON rq.id = mc.requested_by
+LEFT JOIN cardholders ch ON ch.id = mc.requested_by_cardholder_id
 LEFT JOIN users rs ON rs.id = mc.resolved_by
 WHERE mc.ledger_entry_id = ANY($1::uuid[])
 `

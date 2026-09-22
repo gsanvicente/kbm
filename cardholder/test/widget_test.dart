@@ -243,6 +243,77 @@ void main() {
     expect(find.text('\$1,250.00 MXN'), findsOneWidget);
   });
 
+  testWidgets('Movimientos shows a period summary with totals for the current filter', (tester) async {
+    await tester.pumpWidget(const KbmCardholderApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'juan.perez@cardholder.test');
+
+    await tester.tap(find.text('Movimientos'));
+    await tester.pumpAndSettle();
+
+    // Seed de la tarjeta de Juan: +1000 (credit), -150 (debit), +400 (credit).
+    expect(find.text('\$1,400.00 MXN'), findsOneWidget); // Depósitos
+    expect(find.text('\$150.00 MXN'), findsOneWidget); // Cargos
+    expect(find.text('+\$1,250.00 MXN'), findsOneWidget); // Neto
+  });
+
+  testWidgets('selecting Este mes filters out the seeded (January) movements', (tester) async {
+    await tester.pumpWidget(const KbmCardholderApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'juan.perez@cardholder.test');
+
+    await tester.tap(find.text('Movimientos'));
+    await tester.pumpAndSettle();
+    expect(find.text('Carga inicial'), findsOneWidget);
+
+    await tester.tap(find.text('Este mes'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Carga inicial'), findsNothing);
+    expect(find.text('No hay movimientos en el periodo seleccionado.'), findsOneWidget);
+
+    await tester.tap(find.text('Todo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Carga inicial'), findsOneWidget);
+  });
+
+  testWidgets('tapping a movement lets you present a claim on it', (tester) async {
+    await tester.pumpWidget(const KbmCardholderApp());
+    await tester.pumpAndSettle();
+    await _login(tester, 'juan.perez@cardholder.test');
+
+    await tester.tap(find.text('Movimientos'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Compra en restaurante'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Detalle del movimiento'), findsOneWidget);
+    expect(find.text('¿No reconoces este movimiento?'), findsOneWidget);
+
+    // Sin motivo, no debe dejar presentar el reclamo.
+    await tester.tap(find.widgetWithText(FilledButton, 'Presentar reclamo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Escribe el motivo del reclamo.'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Motivo del reclamo'), 'No reconozco este cargo');
+    await tester.tap(find.widgetWithText(FilledButton, 'Presentar reclamo'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reclamo: Abierto'), findsOneWidget);
+    expect(find.text('Motivo: No reconozco este cargo'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Presentar reclamo'), findsNothing);
+
+    // Cerrar y volver a abrir el mismo movimiento ya muestra el reclamo
+    // existente, no el formulario de nuevo.
+    await tester.tap(find.widgetWithText(TextButton, 'Cerrar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Compra en restaurante'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reclamo: Abierto'), findsOneWidget);
+    expect(find.text('¿No reconoces este movimiento?'), findsNothing);
+  });
+
   testWidgets('a completed transfer shows up in Movimientos right away', (tester) async {
     await tester.pumpWidget(const KbmCardholderApp());
     await tester.pumpAndSettle();

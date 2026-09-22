@@ -698,16 +698,17 @@ type LedgerEntry struct {
 }
 
 type MovementClaim struct {
-	ID              string
-	ClientID        string
-	LedgerEntryID   string
-	Reason          string
-	Status          ClaimStatus
-	RequestedBy     string
-	ResolvedBy      *string
-	ResolutionNotes *string
-	CreatedAt       time.Time
-	ResolvedAt      *time.Time
+	ID                      string
+	ClientID                string
+	LedgerEntryID           string
+	Reason                  string
+	Status                  ClaimStatus
+	RequestedBy             *string
+	ResolvedBy              *string
+	ResolutionNotes         *string
+	CreatedAt               time.Time
+	ResolvedAt              *time.Time
+	RequestedByCardholderID *string
 }
 
 type OutboxEvent struct {

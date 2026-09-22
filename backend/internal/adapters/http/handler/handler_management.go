@@ -6,10 +6,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/koons/kbm/backend/internal/adapters/auth/local"
 	"github.com/koons/kbm/backend/internal/adapters/http/dto"
 	authmw "github.com/koons/kbm/backend/internal/adapters/http/middleware"
 	"github.com/koons/kbm/backend/internal/domain/approval"
 	"github.com/koons/kbm/backend/internal/domain/ledger"
+	"github.com/koons/kbm/backend/internal/domain/shared"
 	"github.com/koons/kbm/backend/internal/domain/staff"
 )
 
@@ -445,8 +447,35 @@ func (h *Handler) rejectBalanceOperation(w http.ResponseWriter, r *http.Request)
 
 // --- Reclamos ------------------------------------------------------
 
+// entryOwnedByCaller — para getClaim/fileClaim, de alcance mixto: un
+// token de staff siempre pasa (RLS ya acota lo que puede alcanzar); un
+// token de Tarjetahabiente solo pasa si el movimiento pertenece a una
+// tarjeta suya — mismo criterio "nunca revelar que existe pero es de
+// otro" que ya usa getLedger. Ver
+// docs/business/reclamos-de-movimientos.md, "Quién puede presentar un
+// reclamo".
+func (h *Handler) entryOwnedByCaller(r *http.Request, entryID string) error {
+	claims, _ := authmw.ClaimsFromContext(r.Context())
+	if claims == nil || claims.Type != local.SubjectCardholder {
+		return nil
+	}
+	ownerID, err := h.Ledger.GetEntryCardholderID(r.Context(), entryID)
+	if err != nil {
+		return err
+	}
+	if ownerID == nil || *ownerID != claims.CardholderID {
+		return shared.ErrNotFound
+	}
+	return nil
+}
+
 func (h *Handler) getClaim(w http.ResponseWriter, r *http.Request) {
-	claim, err := h.Ledger.GetClaim(r.Context(), chi.URLParam(r, "entryID"))
+	entryID := chi.URLParam(r, "entryID")
+	if err := h.entryOwnedByCaller(r, entryID); err != nil {
+		writeError(w, err)
+		return
+	}
+	claim, err := h.Ledger.GetClaim(r.Context(), entryID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -481,12 +510,43 @@ func (h *Handler) listClaims(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// fileClaim — alcance mixto: staff presenta en nombre de un
+// Tarjetahabiente (mismo flujo de siempre, requiere requestedByEmail en
+// el cuerpo); un Tarjetahabiente presenta sobre su propio movimiento (la
+// identidad viene del token, nunca del cuerpo — ver
+// docs/business/reclamos-de-movimientos.md).
 func (h *Handler) fileClaim(w http.ResponseWriter, r *http.Request) {
 	var req dto.FileClaimRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	claim, err := h.Ledger.FileClaim(r.Context(), chi.URLParam(r, "entryID"), req.Reason, req.RequestedByEmail)
+	entryID := chi.URLParam(r, "entryID")
+
+	claims, _ := authmw.ClaimsFromContext(r.Context())
+	if claims != nil && claims.Type == local.SubjectCardholder {
+		if err := h.entryOwnedByCaller(r, entryID); err != nil {
+			writeError(w, err)
+			return
+		}
+		claim, err := h.Ledger.FileClaimAsCardholder(r.Context(), entryID, req.Reason, claims.CardholderID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, dto.FromMovementClaim(claim))
+		return
+	}
+
+	// Staff: este endpoint dejó el grupo de rutas con RequireRole(operateRoles)
+	// al volverse de alcance mixto (necesita permitir también un token de
+	// Tarjetahabiente) — el chequeo de rol se repite aquí a mano, mismo
+	// conjunto de siempre (Auditor no puede presentar reclamos).
+	if claims == nil || !staffRoleAllowed(claims.Role, operateRoles) {
+		writeErrorMessage(w, http.StatusForbidden, "no autorizado")
+		return
+	}
+
+	claim, err := h.Ledger.FileClaim(r.Context(), entryID, req.Reason, req.RequestedByEmail)
 	if err != nil {
 		writeError(w, err)
 		return

@@ -99,6 +99,11 @@ func (h *Handler) Routes() chi.Router {
 		r.Post("/v1/transfers/resolve", h.resolveTransfer)
 		r.Post("/v1/transfers/execute", h.executeTransfer)
 
+		if h.Ledger != nil {
+			r.Get("/v1/ledger-entries/{entryID}/claim", h.getClaim)
+			r.Post("/v1/ledger-entries/{entryID}/claim", h.fileClaim)
+		}
+
 		r.Group(func(r chi.Router) {
 			r.Use(authmw.RequireStaff)
 
@@ -129,7 +134,6 @@ func (h *Handler) Routes() chi.Router {
 				r.Get("/v1/cardholders/{cardholderID}", h.getCardholder)
 			}
 			if h.Ledger != nil {
-				r.Get("/v1/ledger-entries/{entryID}/claim", h.getClaim)
 				r.Get("/v1/claims", h.listClaims)
 			}
 			if h.StaffManagement != nil {
@@ -188,9 +192,6 @@ func (h *Handler) Routes() chi.Router {
 				}
 				if h.BalanceOps != nil {
 					r.Post("/v1/balance-operations", h.requestBalanceOperation)
-				}
-				if h.Ledger != nil {
-					r.Post("/v1/ledger-entries/{entryID}/claim", h.fileClaim)
 				}
 			})
 		})
