@@ -269,6 +269,16 @@ func (h *Handler) setCardholderActive(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dto.FromCardholderManagement(updated))
 }
 
+// resetCardholderActivationAttempts — ver
+// docs/adr/0019-cardholder-self-activation.md, "Seguridad".
+func (h *Handler) resetCardholderActivationAttempts(w http.ResponseWriter, r *http.Request) {
+	if err := h.Cardholders.ResetActivationAttempts(r.Context(), chi.URLParam(r, "cardholderID")); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // --- Tesorería ------------------------------------------------------
 
 func (h *Handler) getConcentratorAccount(w http.ResponseWriter, r *http.Request) {

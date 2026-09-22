@@ -30,6 +30,12 @@ var (
 	// registrado (users.email es citext UNIQUE), ver
 	// docs/adr/0017-staff-user-management-and-rls-on-users.md.
 	ErrEmailAlreadyExists = errors.New("email already exists")
+	// ErrActivationFailed — mensaje genérico de activación de cuenta del
+	// Tarjetahabiente: cubre email inexistente, documento que no
+	// coincide, cuenta ya activada, Tarjetahabiente inactivo, y también
+	// el bloqueo por intentos fallidos — nunca se distingue cuál, ver
+	// docs/adr/0019-cardholder-self-activation.md.
+	ErrActivationFailed = errors.New("activation failed")
 )
 
 // CardLimitExceededError lleva el límite configurado además de

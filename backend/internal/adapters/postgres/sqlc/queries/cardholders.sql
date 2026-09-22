@@ -4,6 +4,31 @@ FROM cardholder_users cu
 JOIN cardholders ch ON ch.id = cu.cardholder_id
 WHERE cu.email = $1;
 
+-- name: GetCardholderForActivation :one
+SELECT id, client_id, full_name, id_document_number, is_active, activation_failed_attempts
+FROM cardholders
+WHERE email = $1;
+
+-- name: IncrementActivationFailedAttempts :exec
+UPDATE cardholders SET activation_failed_attempts = activation_failed_attempts + 1
+WHERE id = $1;
+
+-- name: ResetActivationAttempts :one
+UPDATE cardholders SET activation_failed_attempts = 0, updated_at = now()
+WHERE id = $1
+RETURNING id, client_id, full_name, id_document_type, id_document_number, curp, rfc,
+          date_of_birth, nationality, address_street, address_neighborhood, address_city,
+          address_state, address_postal_code, address_country, is_politically_exposed,
+          email, phone, is_active;
+
+-- name: HasCardholderUser :one
+SELECT EXISTS (SELECT 1 FROM cardholder_users WHERE cardholder_id = $1);
+
+-- name: CreateCardholderUser :one
+INSERT INTO cardholder_users (cardholder_id, email, password_hash)
+VALUES ($1, $2, $3)
+RETURNING id;
+
 -- name: GetCardholderNameByID :one
 SELECT full_name FROM cardholders WHERE id = $1;
 

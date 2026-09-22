@@ -14,6 +14,15 @@ class _ThrowingAuthRepository implements CardholderAuthRepository {
   }
 
   @override
+  Future<CardholderSession> activate({
+    required String email,
+    required String idDocumentNumber,
+    required String password,
+  }) {
+    throw Exception('Network is unreachable');
+  }
+
+  @override
   void logout() {}
 }
 

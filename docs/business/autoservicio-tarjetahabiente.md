@@ -1,6 +1,6 @@
 # Autoservicio del Tarjetahabiente
 
-> Referencia viva. Última revisión: 2026-09-21.
+> Referencia viva. Última revisión: 2026-09-21 (activación de cuenta).
 
 ## Qué es
 El plano de identidad y funcionalidad que le permite a un Tarjetahabiente
@@ -34,19 +34,31 @@ dinero de la empresa.
    (2026-09-19), ver "Congelar vs. bloquear" más abajo.
 4. **Presentar un reclamo** sobre uno de sus propios movimientos —
    **implementado** (2026-09-21), ver "Reclamos" más abajo.
+5. **Activar su cuenta** la primera vez, sin depender de que el staff le
+   comparta nada — **implementado** (2026-09-21), ver "Onboarding" más
+   abajo.
 
-## Onboarding (fuera de alcance de la versión web)
+## Onboarding — activación de cuenta (implementado 2026-09-21)
 El flujo de alta es: (1) el staff (Admin Cliente+) captura al
 Tarjetahabiente y le asigna una tarjeta —flujo de CRUD de
-Tarjetahabientes, ver "Dependencias" abajo—, (2) el Tarjetahabiente
-descarga la app (probablemente móvil, no documentado todavía) y se
-registra/activa, validando contra los datos que el staff ya capturó.
+Tarjetahabientes, ver "Dependencias" abajo—, (2) el Tarjetahabiente entra
+a `cardholder/` (web o mobile, es la misma app, ver ADR-0002) y activa su
+cuenta él mismo, sin ninguna acción nueva del staff — ver
+`docs/feature/activacion-de-tarjetahabiente/README.md` y
+`docs/adr/0019-cardholder-self-activation.md` para el diseño completo.
 
-**La versión web que se documenta aquí asume que ese registro ya
-ocurrió** — solo cubre login sobre una cuenta ya activada, no el flujo de
-registro/activación en sí. Si más adelante se decide que la web también
-debe soportar activación, es una extensión de alcance, no un cambio de lo
-ya diseñado.
+Sin infraestructura de correo/SMS en el proyecto (mismo hueco que ya
+existía para staff, ver `docs/business/gestion-de-usuarios-staff.md`), la
+activación no depende de ningún canal de entrega: el Tarjetahabiente
+prueba quién es con dos datos que el staff ya capturó al darlo de alta
+(email + número de identificación oficial) y elige ahí mismo su propia
+contraseña — a diferencia del staff, donde es el admin quien la escribe.
+
+**Corrección de alcance sobre lo que decía originalmente esta nota**: se
+asumía que la activación sería "probablemente móvil" y que la web se
+quedaría fuera de alcance. Se descartó esa restricción — es literalmente
+el mismo código Flutter (ADR-0002), y no había ninguna razón de negocio
+para impedir activar desde una computadora.
 
 ## Congelar vs. bloquear una tarjeta
 Dos acciones sobre el mismo campo `card_status`, con dueños y peso
@@ -136,11 +148,19 @@ incorrecta, nunca distingue el motivo. Ver
 - Transferencias entre Tarjetahabientes de **distintos** Clientes:
   decisión de negocio explícita, ver
   `docs/feature/transferencia-c2c-tarjetahabiente/README.md`.
-- Registro/activación de cuenta desde la web: ver "Onboarding" arriba.
 - MFA: ver arriba.
+- Reenvío/recuperación si el Tarjetahabiente olvida su contraseña ya
+  activada: "restablecer contraseña" sigue sin existir para ningún plano
+  de identidad (ver `docs/business/gestion-de-usuarios-staff.md`) — hoy
+  solo se resuelve el caso de "nunca la ha puesto".
+- Notificar automáticamente al Tarjetahabiente que ya puede activar su
+  cuenta (correo/SMS): no hay infraestructura de mensajería en el
+  proyecto — ver `docs/adr/0019-cardholder-self-activation.md`.
 
 ## Ver también
 - `docs/feature/portal-autoservicio-tarjetahabiente/README.md` — pantallas y flujo.
 - `docs/feature/transferencia-c2c-tarjetahabiente/README.md` — la transferencia C2C en detalle.
+- `docs/feature/activacion-de-tarjetahabiente/README.md` — la activación de cuenta en detalle.
 - `docs/adr/0009-pan-hash-transit-for-c2c-transfers.md` — decisión de manejo del PAN.
-- `docs/security/threat-model.md` puntos 6, 11 y 12.
+- `docs/adr/0019-cardholder-self-activation.md` — decisión de diseño de la activación de cuenta.
+- `docs/security/threat-model.md` puntos 6, 11, 12 y 16.

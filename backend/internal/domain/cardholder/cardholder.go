@@ -42,5 +42,13 @@ type Cardholder struct {
 	// texto plano, nunca en un backend real. El adaptador Postgres
 	// verifica contra cardholder_users.password_hash (bcrypt) y nunca
 	// llena este campo — ver internal/adapters/postgres/repository/auth.go.
+	// Vacío significa "todavía no activó su cuenta" (ver Activate).
 	Password string
+
+	// ActivationFailedAttempts — ver
+	// docs/adr/0019-cardholder-self-activation.md, "Seguridad". El
+	// adaptador Postgres lo persiste en
+	// cardholders.activation_failed_attempts; el adaptador en memoria lo
+	// guarda aquí directamente.
+	ActivationFailedAttempts int
 }

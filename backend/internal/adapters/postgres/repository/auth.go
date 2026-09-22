@@ -85,3 +85,90 @@ func (s *Store) Login(ctx context.Context, email, password string) (cardholder.C
 	}
 	return result, nil
 }
+
+// maxActivationFailedAttempts — ver
+// docs/adr/0019-cardholder-self-activation.md, "Seguridad": a diferencia
+// de maxFailedAttempts (transferencia C2C, por sesión, en memoria del
+// proceso), este contador es permanente y vive en
+// cardholders.activation_failed_attempts — se reinicia solo con una
+// acción manual del staff (ManagementStore.ResetActivationAttempts).
+const maxActivationFailedAttempts = 5
+
+// Activate — primera creación de credenciales de un Tarjetahabiente, ver
+// docs/adr/0019-cardholder-self-activation.md. Mismo criterio de mensaje
+// genérico que Login: shared.ErrActivationFailed cubre email
+// inexistente, documento que no coincide, cuenta ya activada,
+// Tarjetahabiente inactivo, y también el bloqueo por intentos —
+// corre bajo withRLSBypass por la misma razón que Login: a esta altura
+// todavía no hay ninguna identidad de llamador que resolver.
+func (s *Store) Activate(ctx context.Context, email, idDocumentNumber, password string) (cardholder.Cardholder, error) {
+	var result cardholder.Cardholder
+	var activationErr error
+	err := s.withRLSBypass(ctx, func(q *sqlcgen.Queries) error {
+		row, err := q.GetCardholderForActivation(ctx, email)
+		if errors.Is(err, pgx.ErrNoRows) {
+			activationErr = shared.ErrActivationFailed
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		if row.ActivationFailedAttempts >= maxActivationFailedAttempts {
+			activationErr = shared.ErrActivationFailed
+			return nil
+		}
+
+		if !row.IsActive || row.IDDocumentNumber != idDocumentNumber {
+			if err := q.IncrementActivationFailedAttempts(ctx, row.ID); err != nil {
+				return err
+			}
+			activationErr = shared.ErrActivationFailed
+			return nil
+		}
+
+		exists, err := q.HasCardholderUser(ctx, row.ID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			if err := q.IncrementActivationFailedAttempts(ctx, row.ID); err != nil {
+				return err
+			}
+			activationErr = shared.ErrActivationFailed
+			return nil
+		}
+
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+		if _, err := q.CreateCardholderUser(ctx, sqlcgen.CreateCardholderUserParams{
+			CardholderID: row.ID,
+			Email:        email,
+			PasswordHash: string(hash),
+		}); err != nil {
+			return err
+		}
+		// El contador deja de importar en cuanto la activación tuvo
+		// éxito (la cuenta ya existe, HasCardholderUser la bloquea de
+		// ahí en adelante) — se reinicia de todos modos por prolijidad,
+		// no por necesidad funcional.
+		if _, err := q.ResetActivationAttempts(ctx, row.ID); err != nil {
+			return err
+		}
+		if err := logAudit(ctx, q, auditActorCardholder, row.ID, "account_activated", "cardholder", row.ID, nil); err != nil {
+			return err
+		}
+
+		result = mapper.ToCardholderFromLogin(row.ID, row.ClientID, row.FullName, email, row.IsActive)
+		return nil
+	})
+	if err != nil {
+		return cardholder.Cardholder{}, err
+	}
+	if activationErr != nil {
+		return cardholder.Cardholder{}, activationErr
+	}
+	return result, nil
+}

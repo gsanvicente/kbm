@@ -1,17 +1,18 @@
 # Portal de autoservicio del Tarjetahabiente
 
-- Estado: **Implementado** (2026-09-21) — login, detalle de tarjeta
-  (saldo + Transferir + Bloqueo temporal), Movimientos (con filtro de
-  periodo y resumen) y presentar un reclamo existen en `cardholder/`,
-  con una navegación persistente (sidebar en pantallas anchas, barra
-  inferior en angostas, homologada visualmente con `admin/`) en vez de
-  una sola pantalla suelta — ver "Diseño" más abajo.
+- Estado: **Implementado** (2026-09-21) — login, activación de cuenta,
+  detalle de tarjeta (saldo + Transferir + Bloqueo temporal), Movimientos
+  (con filtro de periodo y resumen) y presentar un reclamo existen en
+  `cardholder/`, con una navegación persistente (sidebar en pantallas
+  anchas, barra inferior en angostas, homologada visualmente con
+  `admin/`) en vez de una sola pantalla suelta — ver "Diseño" más abajo.
 - ADR/TDR relacionados: `docs/adr/0002-flutter-web-mobile-two-apps.md`,
   `docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`,
   `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`,
   `docs/adr/0013-jwt-session-authentication.md`,
-  `docs/adr/0018-cardholder-filed-claims.md`
-- Amenazas relevantes: `docs/security/threat-model.md` puntos 6, 11 y 12
+  `docs/adr/0018-cardholder-filed-claims.md`,
+  `docs/adr/0019-cardholder-self-activation.md`
+- Amenazas relevantes: `docs/security/threat-model.md` puntos 6, 11, 12 y 16
 - Roles/actores involucrados: Tarjetahabiente únicamente (plano de
   identidad `cardholder_users`, separado de staff) — ver
   `docs/business/roles-and-permissions.md`, "Plano de autoservicio"
@@ -61,7 +62,15 @@ de la gestión de saldos del staff (sin Concentradora/Colectora, sin
   `docs/adr/0015-server-side-role-authorization-and-login-audit-log.md`.
 
 ## Pantallas / flujo principal
-1. **Login** — email + contraseña. **Implementado.**
+1. **Login** — email + contraseña. **Implementado.** Desde la propia
+   pantalla de login, un enlace **"¿Nuevo? Activa tu cuenta"** lleva a la
+   activación (ver siguiente punto) — visible en web y mobile por igual.
+1b. **Activar cuenta** — **implementado** (2026-09-21): email + número de
+    identificación oficial (los mismos datos que el staff ya capturó al
+    dar de alta al Tarjetahabiente) + nueva contraseña (mín. 8
+    caracteres, doble captura). Sin infraestructura de correo/SMS, ver
+    `docs/feature/activacion-de-tarjetahabiente/README.md` y
+    `docs/adr/0019-cardholder-self-activation.md`.
 2. **Inicio / selector de tarjeta** (si tiene más de una) — **implementado**,
    saldo y estado de cada tarjeta.
 3. **Dentro de una tarjeta** (pestañas "Inicio" y "Movimientos" del
@@ -126,10 +135,12 @@ reglas de negocio.
 Ver `docs/business/autoservicio-tarjetahabiente.md` — no se repiten aquí.
 
 ## Casos borde / fuera de alcance
-- Registro/activación de cuenta desde la web: fuera de alcance, ver
-  "Onboarding" en el doc de negocio.
-- Recuperación de contraseña: fuera de alcance de esta iteración, igual
-  que en `docs/feature/login-administrativo/`.
+- Recuperación de contraseña (una vez ya activada): fuera de alcance de
+  esta iteración, igual que en `docs/feature/login-administrativo/` — la
+  activación solo resuelve el caso de "nunca la ha puesto".
+- Notificar automáticamente al Tarjetahabiente que ya puede activar su
+  cuenta: fuera de alcance, no hay infraestructura de mensajería en el
+  proyecto — ver `docs/adr/0019-cardholder-self-activation.md`.
 - MFA: fuera de alcance, ver nota en el doc de negocio.
 - Notificaciones (push/email) de movimientos: fuera de alcance.
 - Descargar/exportar el estado de cuenta (PDF, CSV): fuera de alcance de

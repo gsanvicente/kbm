@@ -59,6 +59,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/healthz", h.healthz)
 
 	r.Post("/v1/cardholder-sessions", h.login)
+	r.Post("/v1/cardholder-activation", h.activate)
 	if h.StaffAuth != nil {
 		r.Post("/v1/staff-sessions", h.staffLogin)
 	}
@@ -168,6 +169,7 @@ func (h *Handler) Routes() chi.Router {
 					r.Post("/v1/cardholders", h.createCardholder)
 					r.Put("/v1/cardholders/{cardholderID}", h.updateCardholder)
 					r.Post("/v1/cardholders/{cardholderID}/active-status", h.setCardholderActive)
+					r.Post("/v1/cardholders/{cardholderID}/reset-activation-attempts", h.resetCardholderActivationAttempts)
 				}
 				if h.Ledger != nil {
 					r.Post("/v1/claims/{claimID}/resolve", h.resolveClaim)
@@ -211,6 +213,38 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ch, err := h.Auth.Login(r.Context(), req.Email, req.Password)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	token, err := h.Tokens.IssueCardholder(ch.ID, ch.ClientID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	resp := dto.FromCardholder(ch)
+	resp.AccessToken = token
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// minCardholderPasswordLength — mismo mínimo que ya rige para staff
+// (handler_management.go, minStaffPasswordLength), ver
+// docs/adr/0019-cardholder-self-activation.md.
+const minCardholderPasswordLength = 8
+
+// activate — ver docs/adr/0019-cardholder-self-activation.md. Sin
+// RequireAuth a propósito: es, por definición, para quien todavía no
+// tiene una sesión.
+func (h *Handler) activate(w http.ResponseWriter, r *http.Request) {
+	var req dto.ActivationRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if len(req.Password) < minCardholderPasswordLength {
+		writeErrorMessage(w, http.StatusBadRequest, "la contraseña debe tener al menos 8 caracteres")
+		return
+	}
+	ch, err := h.Auth.Activate(r.Context(), req.Email, req.IDDocumentNumber, req.Password)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -480,6 +514,10 @@ func writeError(w http.ResponseWriter, err error) {
 		writeErrorMessage(w, http.StatusForbidden, "esta empresa o tarjetahabiente está inactivo y no puede operar")
 	case errors.Is(err, shared.ErrInvalidCredentials):
 		writeErrorMessage(w, http.StatusUnauthorized, "Email o contraseña incorrectos.")
+	case errors.Is(err, shared.ErrActivationFailed):
+		// Mensaje genérico a propósito — nunca se distingue el motivo.
+		// Ver docs/security/threat-model.md punto 16.
+		writeErrorMessage(w, http.StatusUnauthorized, "No pudimos verificar tus datos. Contacta a tu administrador.")
 	case errors.Is(err, shared.ErrTooManyFailedAttempts):
 		writeErrorMessage(w, http.StatusTooManyRequests, "Demasiados intentos fallidos. Vuelve a iniciar sesión para intentar una transferencia de nuevo.")
 	case errors.Is(err, shared.ErrInsufficientFunds):

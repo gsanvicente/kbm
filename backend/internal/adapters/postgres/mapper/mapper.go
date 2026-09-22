@@ -87,6 +87,11 @@ func ToCardholderFromLogin(id, clientID, fullName, email string, isActive bool) 
 
 // CardholderRow mirrors the exact column list every cardholder-management
 // query in cardholders.sql selects — same reasoning as CardRow above.
+// Email is a plain string (not *string) since
+// docs/adr/0019-cardholder-self-activation.md made cardholders.email
+// NOT NULL — sqlc regenerates it that way for every query selecting the
+// column, so this must match exactly for the raw struct conversion below
+// to compile.
 type CardholderRow struct {
 	ID                   string
 	ClientID             string
@@ -104,7 +109,7 @@ type CardholderRow struct {
 	AddressPostalCode    *string
 	AddressCountry       *string
 	IsPoliticallyExposed bool
-	Email                *string
+	Email                string
 	Phone                *string
 	IsActive             bool
 }
@@ -127,7 +132,7 @@ func ToCardholder(r CardholderRow) cardholder.Cardholder {
 		AddressPostalCode:    r.AddressPostalCode,
 		AddressCountry:       strOrDefault(r.AddressCountry, "México"),
 		IsPoliticallyExposed: r.IsPoliticallyExposed,
-		Email:                r.Email,
+		Email:                &r.Email,
 		Phone:                r.Phone,
 		IsActive:             r.IsActive,
 	}

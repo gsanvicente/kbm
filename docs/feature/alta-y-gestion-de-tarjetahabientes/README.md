@@ -3,12 +3,15 @@
 - Estado: **Implementado** (diseñado y ampliado 2026-09-18 sobre lo que
   antes era "Detalle y gestión de Tarjetahabiente" — ver "Historial"
   abajo — implementado el mismo día) — dependía del CRUD de Clientes
-  (`docs/feature/alta-y-gestion-de-clientes/`), ya construido.
+  (`docs/feature/alta-y-gestion-de-clientes/`), ya construido. El email
+  pasó de opcional a requerido el 2026-09-21 al construirse
+  `docs/feature/activacion-de-tarjetahabiente/README.md`.
 - ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 (control
   de acceso roto — editar/desactivar/asignar sin verificar rol), 4
-  (trazabilidad de cambios) y 14 (Tarjetahabiente inactivo cuyas tarjetas
-  siguen operables)
+  (trazabilidad de cambios), 14 (Tarjetahabiente inactivo cuyas tarjetas
+  siguen operables) y 16 (el email capturado aquí, ahora requerido, es la
+  puerta de entrada de la activación de cuenta)
 - Roles/actores involucrados: Super Admin, Admin Cliente (pueden dar de
   alta, editar y desactivar); Operador, Auditor (solo ven)
 
@@ -133,8 +136,12 @@ completo de las reglas de negocio — aquí solo el flujo de UI.
   nacionalidades" abajo. Determina si CURP es requerido.
 - **Código postal**: solo dígitos, 5 caracteres.
 - **Teléfono**: solo dígitos, 10 caracteres.
-- **Email**: validación básica de formato (contiene `@` y un dominio con
-  punto) — no se verifica que la cuenta exista.
+- **Email**: **requerido** desde 2026-09-21 (antes opcional, solo
+  validación de formato) — es el identificador con el que el
+  Tarjetahabiente activa y luego inicia sesión en `cardholder/`, ver
+  `docs/feature/activacion-de-tarjetahabiente/README.md`. Sigue sin
+  verificarse que la cuenta de correo exista de verdad, solo formato
+  (contiene `@` y un dominio con punto).
 - **Domicilio (calle, colonia, ciudad, estado), fecha de nacimiento**:
   opcionales, sin formato especial más allá de texto libre.
 - Sin validación de dígito verificador real de CURP/RFC en esta

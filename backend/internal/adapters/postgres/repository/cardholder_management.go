@@ -88,9 +88,25 @@ func (s *ManagementStore) GetByID(ctx context.Context, cardholderID string) (*ca
 	return result, nil
 }
 
+// requireCardholderEmail — obligatorio desde
+// docs/adr/0019-cardholder-self-activation.md: sin él no hay identificador
+// con el que activar ni con el que iniciar sesión después. Validado
+// también en `cardholder/` (defensa en profundidad, mismo criterio que el
+// resto del proyecto).
+func requireCardholderEmail(email *string) (string, error) {
+	if email == nil || *email == "" {
+		return "", shared.ErrValidation
+	}
+	return *email, nil
+}
+
 func (s *ManagementStore) Create(ctx context.Context, draft cardholder.Cardholder) (cardholder.Cardholder, error) {
+	email, err := requireCardholderEmail(draft.Email)
+	if err != nil {
+		return cardholder.Cardholder{}, err
+	}
 	var result cardholder.Cardholder
-	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+	err = s.withRLS(ctx, func(q *sqlcgen.Queries) error {
 		nationality := draft.Nationality
 		country := draft.AddressCountry
 		row, err := q.CreateCardholder(ctx, sqlcgen.CreateCardholderParams{
@@ -109,7 +125,7 @@ func (s *ManagementStore) Create(ctx context.Context, draft cardholder.Cardholde
 			AddressPostalCode:    draft.AddressPostalCode,
 			AddressCountry:       &country,
 			IsPoliticallyExposed: draft.IsPoliticallyExposed,
-			Email:                draft.Email,
+			Email:                email,
 			Phone:                draft.Phone,
 		})
 		if err != nil {
@@ -125,8 +141,12 @@ func (s *ManagementStore) Create(ctx context.Context, draft cardholder.Cardholde
 }
 
 func (s *ManagementStore) Update(ctx context.Context, updated cardholder.Cardholder) (cardholder.Cardholder, error) {
+	email, err := requireCardholderEmail(updated.Email)
+	if err != nil {
+		return cardholder.Cardholder{}, err
+	}
 	var result cardholder.Cardholder
-	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+	err = s.withRLS(ctx, func(q *sqlcgen.Queries) error {
 		existing, err := s.getCardholderByIDTx(ctx, q, updated.ID)
 		if err != nil {
 			return err
@@ -158,7 +178,7 @@ func (s *ManagementStore) Update(ctx context.Context, updated cardholder.Cardhol
 			AddressPostalCode:    updated.AddressPostalCode,
 			AddressCountry:       &country,
 			IsPoliticallyExposed: updated.IsPoliticallyExposed,
-			Email:                updated.Email,
+			Email:                email,
 			Phone:                updated.Phone,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -197,6 +217,24 @@ func (s *ManagementStore) SetActive(ctx context.Context, cardholderID string, is
 		return cardholder.Cardholder{}, err
 	}
 	return result, nil
+}
+
+// ResetActivationAttempts — desbloquea la activación de cuenta de un
+// Tarjetahabiente tras 5 intentos fallidos (ver
+// docs/adr/0019-cardholder-self-activation.md, "Seguridad"). No toca
+// ninguna contraseña — no existe ninguna todavía si la activación nunca
+// tuvo éxito.
+func (s *ManagementStore) ResetActivationAttempts(ctx context.Context, cardholderID string) error {
+	return s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		_, err := q.ResetActivationAttempts(ctx, cardholderID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return shared.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return logCallerAudit(ctx, q, "cardholder_activation_attempts_reset", "cardholder", cardholderID, nil)
+	})
 }
 
 func (s *ManagementStore) IsOperable(ctx context.Context, cardholderID string) (bool, error) {

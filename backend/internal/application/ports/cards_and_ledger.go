@@ -98,14 +98,23 @@ type LedgerRepository interface {
 	ResolveClaim(ctx context.Context, claimID string, inFavor bool, resolutionNotes, resolvedByEmail string) (ledger.MovementClaim, error)
 }
 
-// CardholderAuthRepository respalda únicamente el login del portal de
-// autoservicio — ver docs/business/desactivacion-de-tarjetahabientes.md,
-// "Enforcement", Capa 1.
+// CardholderAuthRepository respalda el login y la activación de cuenta
+// del portal de autoservicio — ver
+// docs/business/desactivacion-de-tarjetahabientes.md, "Enforcement",
+// Capa 1.
 type CardholderAuthRepository interface {
 	// Login lanza shared.ErrInvalidCredentials tanto para credenciales
 	// incorrectas como para un Tarjetahabiente inactivo — mismo mensaje
 	// genérico, nunca se distingue el motivo.
 	Login(ctx context.Context, email, password string) (cardholder.Cardholder, error)
+
+	// Activate — primera creación de credenciales de un Tarjetahabiente,
+	// ver docs/adr/0019-cardholder-self-activation.md. Lanza
+	// shared.ErrActivationFailed (mensaje genérico) tanto si el email no
+	// existe, como si el documento no coincide, como si la cuenta ya fue
+	// activada, como si el Tarjetahabiente está inactivo, como si ya
+	// agotó sus 5 intentos — nunca se distingue cuál.
+	Activate(ctx context.Context, email, idDocumentNumber, password string) (cardholder.Cardholder, error)
 }
 
 // ResolvedTransferDestination es lo mínimo que la confirmación de una

@@ -545,27 +545,28 @@ type Card struct {
 }
 
 type Cardholder struct {
-	ID                   string
-	ClientID             string
-	FullName             string
-	IDDocumentType       IDDocumentType
-	IDDocumentNumber     string
-	Curp                 *string
-	Rfc                  *string
-	DateOfBirth          *time.Time
-	Nationality          *string
-	AddressStreet        *string
-	AddressNeighborhood  *string
-	AddressCity          *string
-	AddressState         *string
-	AddressPostalCode    *string
-	AddressCountry       *string
-	IsPoliticallyExposed bool
-	Email                *string
-	Phone                *string
-	IsActive             bool
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	ID                       string
+	ClientID                 string
+	FullName                 string
+	IDDocumentType           IDDocumentType
+	IDDocumentNumber         string
+	Curp                     *string
+	Rfc                      *string
+	DateOfBirth              *time.Time
+	Nationality              *string
+	AddressStreet            *string
+	AddressNeighborhood      *string
+	AddressCity              *string
+	AddressState             *string
+	AddressPostalCode        *string
+	AddressCountry           *string
+	IsPoliticallyExposed     bool
+	Email                    string
+	Phone                    *string
+	IsActive                 bool
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+	ActivationFailedAttempts int32
 }
 
 type CardholderUser struct {

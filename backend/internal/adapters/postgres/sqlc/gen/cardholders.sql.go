@@ -41,7 +41,7 @@ type CreateCardholderParams struct {
 	AddressPostalCode    *string
 	AddressCountry       *string
 	IsPoliticallyExposed bool
-	Email                *string
+	Email                string
 	Phone                *string
 }
 
@@ -62,7 +62,7 @@ type CreateCardholderRow struct {
 	AddressPostalCode    *string
 	AddressCountry       *string
 	IsPoliticallyExposed bool
-	Email                *string
+	Email                string
 	Phone                *string
 	IsActive             bool
 }
@@ -112,6 +112,25 @@ func (q *Queries) CreateCardholder(ctx context.Context, arg CreateCardholderPara
 	return i, err
 }
 
+const createCardholderUser = `-- name: CreateCardholderUser :one
+INSERT INTO cardholder_users (cardholder_id, email, password_hash)
+VALUES ($1, $2, $3)
+RETURNING id
+`
+
+type CreateCardholderUserParams struct {
+	CardholderID string
+	Email        string
+	PasswordHash string
+}
+
+func (q *Queries) CreateCardholderUser(ctx context.Context, arg CreateCardholderUserParams) (string, error) {
+	row := q.db.QueryRow(ctx, createCardholderUser, arg.CardholderID, arg.Email, arg.PasswordHash)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getCardholderByID = `-- name: GetCardholderByID :one
 SELECT id, client_id, full_name, id_document_type, id_document_number, curp, rfc,
        date_of_birth, nationality, address_street, address_neighborhood, address_city,
@@ -138,7 +157,7 @@ type GetCardholderByIDRow struct {
 	AddressPostalCode    *string
 	AddressCountry       *string
 	IsPoliticallyExposed bool
-	Email                *string
+	Email                string
 	Phone                *string
 	IsActive             bool
 }
@@ -170,6 +189,35 @@ func (q *Queries) GetCardholderByID(ctx context.Context, id string) (GetCardhold
 	return i, err
 }
 
+const getCardholderForActivation = `-- name: GetCardholderForActivation :one
+SELECT id, client_id, full_name, id_document_number, is_active, activation_failed_attempts
+FROM cardholders
+WHERE email = $1
+`
+
+type GetCardholderForActivationRow struct {
+	ID                       string
+	ClientID                 string
+	FullName                 string
+	IDDocumentNumber         string
+	IsActive                 bool
+	ActivationFailedAttempts int32
+}
+
+func (q *Queries) GetCardholderForActivation(ctx context.Context, email string) (GetCardholderForActivationRow, error) {
+	row := q.db.QueryRow(ctx, getCardholderForActivation, email)
+	var i GetCardholderForActivationRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.FullName,
+		&i.IDDocumentNumber,
+		&i.IsActive,
+		&i.ActivationFailedAttempts,
+	)
+	return i, err
+}
+
 const getCardholderForLogin = `-- name: GetCardholderForLogin :one
 SELECT ch.id, ch.client_id, ch.full_name, ch.email, ch.is_active, cu.password_hash
 FROM cardholder_users cu
@@ -181,7 +229,7 @@ type GetCardholderForLoginRow struct {
 	ID           string
 	ClientID     string
 	FullName     string
-	Email        *string
+	Email        string
 	IsActive     bool
 	PasswordHash string
 }
@@ -211,6 +259,27 @@ func (q *Queries) GetCardholderNameByID(ctx context.Context, id string) (string,
 	return full_name, err
 }
 
+const hasCardholderUser = `-- name: HasCardholderUser :one
+SELECT EXISTS (SELECT 1 FROM cardholder_users WHERE cardholder_id = $1)
+`
+
+func (q *Queries) HasCardholderUser(ctx context.Context, cardholderID string) (bool, error) {
+	row := q.db.QueryRow(ctx, hasCardholderUser, cardholderID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const incrementActivationFailedAttempts = `-- name: IncrementActivationFailedAttempts :exec
+UPDATE cardholders SET activation_failed_attempts = activation_failed_attempts + 1
+WHERE id = $1
+`
+
+func (q *Queries) IncrementActivationFailedAttempts(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, incrementActivationFailedAttempts, id)
+	return err
+}
+
 const listCardholdersByClient = `-- name: ListCardholdersByClient :many
 SELECT id, client_id, full_name, id_document_type, id_document_number, curp, rfc,
        date_of_birth, nationality, address_street, address_neighborhood, address_city,
@@ -238,7 +307,7 @@ type ListCardholdersByClientRow struct {
 	AddressPostalCode    *string
 	AddressCountry       *string
 	IsPoliticallyExposed bool
-	Email                *string
+	Email                string
 	Phone                *string
 	IsActive             bool
 }
@@ -310,7 +379,7 @@ type ListCardholdersByClientsRow struct {
 	AddressPostalCode    *string
 	AddressCountry       *string
 	IsPoliticallyExposed bool
-	Email                *string
+	Email                string
 	Phone                *string
 	IsActive             bool
 }
@@ -355,6 +424,64 @@ func (q *Queries) ListCardholdersByClients(ctx context.Context, clientIds []stri
 	return items, nil
 }
 
+const resetActivationAttempts = `-- name: ResetActivationAttempts :one
+UPDATE cardholders SET activation_failed_attempts = 0, updated_at = now()
+WHERE id = $1
+RETURNING id, client_id, full_name, id_document_type, id_document_number, curp, rfc,
+          date_of_birth, nationality, address_street, address_neighborhood, address_city,
+          address_state, address_postal_code, address_country, is_politically_exposed,
+          email, phone, is_active
+`
+
+type ResetActivationAttemptsRow struct {
+	ID                   string
+	ClientID             string
+	FullName             string
+	IDDocumentType       IDDocumentType
+	IDDocumentNumber     string
+	Curp                 *string
+	Rfc                  *string
+	DateOfBirth          *time.Time
+	Nationality          *string
+	AddressStreet        *string
+	AddressNeighborhood  *string
+	AddressCity          *string
+	AddressState         *string
+	AddressPostalCode    *string
+	AddressCountry       *string
+	IsPoliticallyExposed bool
+	Email                string
+	Phone                *string
+	IsActive             bool
+}
+
+func (q *Queries) ResetActivationAttempts(ctx context.Context, id string) (ResetActivationAttemptsRow, error) {
+	row := q.db.QueryRow(ctx, resetActivationAttempts, id)
+	var i ResetActivationAttemptsRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.FullName,
+		&i.IDDocumentType,
+		&i.IDDocumentNumber,
+		&i.Curp,
+		&i.Rfc,
+		&i.DateOfBirth,
+		&i.Nationality,
+		&i.AddressStreet,
+		&i.AddressNeighborhood,
+		&i.AddressCity,
+		&i.AddressState,
+		&i.AddressPostalCode,
+		&i.AddressCountry,
+		&i.IsPoliticallyExposed,
+		&i.Email,
+		&i.Phone,
+		&i.IsActive,
+	)
+	return i, err
+}
+
 const setCardholderActive = `-- name: SetCardholderActive :one
 UPDATE cardholders SET is_active = $2, updated_at = now()
 WHERE id = $1
@@ -386,7 +513,7 @@ type SetCardholderActiveRow struct {
 	AddressPostalCode    *string
 	AddressCountry       *string
 	IsPoliticallyExposed bool
-	Email                *string
+	Email                string
 	Phone                *string
 	IsActive             bool
 }
@@ -447,7 +574,7 @@ type UpdateCardholderParams struct {
 	AddressPostalCode    *string
 	AddressCountry       *string
 	IsPoliticallyExposed bool
-	Email                *string
+	Email                string
 	Phone                *string
 }
 
@@ -468,7 +595,7 @@ type UpdateCardholderRow struct {
 	AddressPostalCode    *string
 	AddressCountry       *string
 	IsPoliticallyExposed bool
-	Email                *string
+	Email                string
 	Phone                *string
 	IsActive             bool
 }

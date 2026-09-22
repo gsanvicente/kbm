@@ -80,6 +80,13 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+// ActivationRequest — ver docs/adr/0019-cardholder-self-activation.md.
+type ActivationRequest struct {
+	Email            string `json:"email"`
+	IDDocumentNumber string `json:"idDocumentNumber"`
+	Password         string `json:"password"`
+}
+
 type LoginResponse struct {
 	CardholderID string `json:"cardholderId"`
 	Email        string `json:"email"`

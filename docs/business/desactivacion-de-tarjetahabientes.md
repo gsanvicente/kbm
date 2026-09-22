@@ -1,6 +1,6 @@
 # Desactivación de Tarjetahabientes (gobernabilidad)
 
-> Referencia viva. Última revisión: 2026-09-18.
+> Referencia viva. Última revisión: 2026-09-21.
 
 ## Por qué existe esto
 Un Tarjetahabiente (persona física) puede dejar de estar asociado a un
@@ -71,11 +71,14 @@ alcance de Clientes). Operador y Auditor no pueden.
 Mismo patrón que Cliente (ver
 `docs/business/desactivacion-de-clientes.md`, "Enforcement"):
 
-### Capa 1 — bloqueo de login (autoservicio futuro)
-El portal de autoservicio del Tarjetahabiente
-(`docs/business/autoservicio-tarjetahabiente.md`) todavía no existe, pero
-cuando se construya, su login debe verificar `is_active` del
-Tarjetahabiente, igual que ya se documentó para Cliente.
+### Capa 1 — bloqueo de login y de activación (implementado)
+El login del portal de autoservicio del Tarjetahabiente
+(`docs/business/autoservicio-tarjetahabiente.md`) verifica `is_active` del
+Tarjetahabiente, igual que ya se documentó para Cliente. Desde 2026-09-21
+esto también cubre la **activación de cuenta**
+(`docs/feature/activacion-de-tarjetahabiente/README.md`): un Tarjetahabiente
+inactivo no puede activar su cuenta por primera vez tampoco — mismo
+mensaje genérico, nunca distingue "inactivo" de "datos incorrectos".
 
 ### Capa 2 — verificación en el repositorio
 `CardholderRepository.isOperable(cardholderId)` (equivalente a

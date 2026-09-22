@@ -388,3 +388,108 @@ func TestFileClaim_AuditorForbidden(t *testing.T) {
 		t.Fatalf("expected 200 for operator (staff role restriction preserved after the mixed-audience move), got %d: %s", allowed.Code, allowed.Body.String())
 	}
 }
+
+// TestActivate — docs/adr/0019-cardholder-self-activation.md. La cuenta
+// "Tarjetahabiente Sin Activar (demo)" (ver memory/repository/seed.go)
+// existe justo para ejercer esto: tiene email e id_document_number
+// sembrados pero ninguna contraseña todavía.
+func TestActivate(t *testing.T) {
+	srv := newTestServer()
+	const email = "sinactivar@cardholder.test"
+	const idDocumentNumber = "INE5555555555555"
+
+	rec := postJSON(t, srv, "", "/v1/cardholder-activation", dto.ActivationRequest{
+		Email: email, IDDocumentNumber: idDocumentNumber, Password: "NuevaClave123!",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 activating with the right data, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp dto.LoginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.AccessToken == "" {
+		t.Fatalf("expected a non-empty accessToken after activation")
+	}
+
+	// Ya no se puede activar de nuevo — mismo mensaje genérico.
+	again := postJSON(t, srv, "", "/v1/cardholder-activation", dto.ActivationRequest{
+		Email: email, IDDocumentNumber: idDocumentNumber, Password: "OtraClave456!",
+	})
+	if again.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 (generic) re-activating an already-activated account, got %d: %s", again.Code, again.Body.String())
+	}
+
+	// Ahora puede iniciar sesión con la contraseña que eligió.
+	login := postJSON(t, srv, "", "/v1/cardholder-sessions", dto.LoginRequest{Email: email, Password: "NuevaClave123!"})
+	if login.Code != http.StatusOK {
+		t.Fatalf("expected 200 logging in with the chosen password, got %d: %s", login.Code, login.Body.String())
+	}
+}
+
+func TestActivate_WrongDocumentNumber(t *testing.T) {
+	srv := newTestServer()
+	rec := postJSON(t, srv, "", "/v1/cardholder-activation", dto.ActivationRequest{
+		Email: "sinactivar@cardholder.test", IDDocumentNumber: "documento-equivocado", Password: "NuevaClave123!",
+	})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 (generic, never reveals which datum was wrong), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestActivate_UnknownEmail(t *testing.T) {
+	srv := newTestServer()
+	rec := postJSON(t, srv, "", "/v1/cardholder-activation", dto.ActivationRequest{
+		Email: "no-existe@cardholder.test", IDDocumentNumber: "cualquiera", Password: "NuevaClave123!",
+	})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected the exact same 401 as a wrong document number, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestActivate_InactiveCardholder(t *testing.T) {
+	srv := newTestServer()
+	// "Tarjetahabiente Inactivo (demo)" — ver memory/repository/seed.go.
+	rec := postJSON(t, srv, "", "/v1/cardholder-activation", dto.ActivationRequest{
+		Email: "inactivo@cardholder.test", IDDocumentNumber: "INE9999999999999", Password: "NuevaClave123!",
+	})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected the same generic 401 for an inactive cardholder, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestActivate_TooShortPassword(t *testing.T) {
+	srv := newTestServer()
+	rec := postJSON(t, srv, "", "/v1/cardholder-activation", dto.ActivationRequest{
+		Email: "sinactivar@cardholder.test", IDDocumentNumber: "INE5555555555555", Password: "corta",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for a too-short password, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestActivate_LockedAfterFiveFailedAttempts — docs/security/threat-model.md
+// punto 16: a diferencia del límite de la transferencia C2C (por sesión),
+// este bloqueo es permanente — ni siquiera los datos correctos funcionan
+// después del quinto intento fallido.
+func TestActivate_LockedAfterFiveFailedAttempts(t *testing.T) {
+	srv := newTestServer()
+	const email = "ana.torres@cardholder.test" // ya activada — cada intento cuenta como fallido
+
+	for i := 0; i < 5; i++ {
+		rec := postJSON(t, srv, "", "/v1/cardholder-activation", dto.ActivationRequest{
+			Email: email, IDDocumentNumber: "INE2345678901234", Password: "NuevaClave123!",
+		})
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %d: %s", i+1, rec.Code, rec.Body.String())
+		}
+	}
+
+	// El sexto intento, incluso si en teoría "calificara", sigue bloqueado.
+	locked := postJSON(t, srv, "", "/v1/cardholder-activation", dto.ActivationRequest{
+		Email: email, IDDocumentNumber: "INE2345678901234", Password: "NuevaClave123!",
+	})
+	if locked.Code != http.StatusUnauthorized {
+		t.Fatalf("expected the account to stay locked with the same generic 401, got %d: %s", locked.Code, locked.Body.String())
+	}
+}

@@ -7,6 +7,7 @@ import 'models/ledger_entry_type.dart';
 import 'models/ledger_movement.dart';
 import 'models/movement_claim.dart';
 import 'models/payment_card.dart';
+import 'models/shared/activation_failed_exception.dart';
 import 'models/shared/auth_exception.dart';
 import 'models/shared/claim_already_filed_exception.dart';
 import 'models/shared/insufficient_funds_exception.dart';
@@ -62,6 +63,30 @@ class HttpCardholderBackend implements CardholderAuthRepository, CardRepository,
       );
     } on KbmBackendException catch (e) {
       if (e.statusCode == 401) throw const AuthException();
+      rethrow;
+    }
+  }
+
+  @override
+  Future<CardholderSession> activate({
+    required String email,
+    required String idDocumentNumber,
+    required String password,
+  }) async {
+    try {
+      final json = await client.post('/v1/cardholder-activation', {
+        'email': email,
+        'idDocumentNumber': idDocumentNumber,
+        'password': password,
+      }) as Map<String, dynamic>;
+      client.accessToken = json['accessToken'] as String;
+      return CardholderSession(
+        cardholderId: json['cardholderId'] as String,
+        email: json['email'] as String,
+        fullName: json['fullName'] as String,
+      );
+    } on KbmBackendException catch (e) {
+      if (e.statusCode == 401) throw const ActivationFailedException();
       rethrow;
     }
   }

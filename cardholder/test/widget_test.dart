@@ -29,6 +29,42 @@ Future<void> _openTransferAndFill(WidgetTester tester, {required String amountCe
   await tester.pumpAndSettle();
 }
 
+Future<void> _openActivationScreen(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(1200, 900);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  await tester.pumpWidget(const KbmCardholderApp());
+  await tester.pumpAndSettle();
+  final link = find.text('¿Nuevo? Activa tu cuenta');
+  await tester.ensureVisible(link);
+  await tester.tap(link);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _fillActivationForm(
+  WidgetTester tester, {
+  required String email,
+  required String idDocumentNumber,
+  String password = 'NuevaClave123!',
+  String? confirmPassword,
+}) async {
+  await tester.enterText(find.widgetWithText(TextFormField, 'Email'), email);
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Número de identificación oficial'),
+    idDocumentNumber,
+  );
+  await tester.enterText(find.widgetWithText(TextFormField, 'Nueva contraseña'), password);
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Confirma tu contraseña'),
+    confirmPassword ?? password,
+  );
+  final submitButton = find.widgetWithText(FilledButton, 'Activar cuenta');
+  await tester.ensureVisible(submitButton);
+  await tester.tap(submitButton);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('shows the login screen with no session', (tester) async {
     await tester.pumpWidget(const KbmCardholderApp());
@@ -329,5 +365,63 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Transferencia enviada'), findsOneWidget);
+  });
+
+  // --- Activación de cuenta — docs/adr/0019-cardholder-self-activation.md ---
+
+  testWidgets('activating with the right email and document lets you straight into your account', (tester) async {
+    await _openActivationScreen(tester);
+    await _fillActivationForm(
+      tester,
+      email: 'sinactivar@cardholder.test',
+      idDocumentNumber: 'INE5555555555555',
+    );
+
+    // Activar deja una sesión igual que login — entra directo, sin
+    // volver a pedir credenciales en la pantalla de login.
+    expect(find.widgetWithText(FilledButton, 'Activar cuenta'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Ingresar'), findsNothing);
+  });
+
+  testWidgets('activating with the wrong document number gives the generic error', (tester) async {
+    await _openActivationScreen(tester);
+    await _fillActivationForm(
+      tester,
+      email: 'sinactivar@cardholder.test',
+      idDocumentNumber: 'documento-equivocado',
+    );
+
+    expect(find.text('No pudimos verificar tus datos. Contacta a tu administrador.'), findsOneWidget);
+  });
+
+  testWidgets('activating an already-activated account gives the exact same generic error', (tester) async {
+    await _openActivationScreen(tester);
+    await _fillActivationForm(
+      tester,
+      email: 'juan.perez@cardholder.test',
+      idDocumentNumber: 'INE1234567890123',
+    );
+
+    expect(find.text('No pudimos verificar tus datos. Contacta a tu administrador.'), findsOneWidget);
+  });
+
+  testWidgets('mismatched password confirmation is caught before calling the backend', (tester) async {
+    await _openActivationScreen(tester);
+    await _fillActivationForm(
+      tester,
+      email: 'sinactivar@cardholder.test',
+      idDocumentNumber: 'INE5555555555555',
+      confirmPassword: 'OtraClave999!',
+    );
+
+    expect(find.text('Las contraseñas no coinciden'), findsOneWidget);
+  });
+
+  testWidgets('"Volver a iniciar sesión" returns to the login screen', (tester) async {
+    await _openActivationScreen(tester);
+    await tester.tap(find.text('Volver a iniciar sesión'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(FilledButton, 'Ingresar'), findsOneWidget);
   });
 }

@@ -24,6 +24,11 @@ type CardholderManagementRepository interface {
 
 	SetActive(ctx context.Context, cardholderID string, isActive bool) (cardholder.Cardholder, error)
 
+	// ResetActivationAttempts — ver
+	// docs/adr/0019-cardholder-self-activation.md, "Seguridad": desbloquea
+	// la activación de cuenta tras 5 intentos fallidos.
+	ResetActivationAttempts(ctx context.Context, cardholderID string) error
+
 	// IsOperable — true solo si cardholderID existe y está activo. Sin
 	// cadena de ancestros (a diferencia de ClientRepository.IsOperable).
 	IsOperable(ctx context.Context, cardholderID string) (bool, error)

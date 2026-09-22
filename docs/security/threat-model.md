@@ -255,3 +255,21 @@ desarrollo de Flutter web (`http://127.0.0.1:8765`, `http://127.0.0.1:8766`),
 nunca un wildcard. Code review de `internal/adapters/http` debe verificar
 ambos puntos como criterio de aceptación — ver
 `backend/docs/tdr/0003-in-memory-repository-adapter.md`.
+
+## 16. Enumeración/fuerza bruta en la activación de cuenta del Tarjetahabiente
+**Riesgo:** `docs/adr/0019-cardholder-self-activation.md` prueba la
+identidad del Tarjetahabiente con dos datos que el staff ya capturó
+(email + número de identificación oficial) en vez de un canal de entrega
+(correo/SMS). Un endpoint sin sesión previa que acepta esos dos datos y
+deja elegir una contraseña es un blanco directo para (a) enumerar qué
+emails corresponden a Tarjetahabientes reales, y (b) probar números de
+documento al azar contra un email conocido/filtrado hasta acertar y tomar
+control de la cuenta antes que su dueño real la active.
+**Mitigación de diseño:** mensaje de error genérico — nunca distingue
+"el email no existe" de "el documento no coincide" de "esa cuenta ya fue
+activada" de "el Tarjetahabiente está inactivo" (mismo criterio que los
+puntos 9 y 12). Bloqueo permanente tras 5 intentos fallidos consecutivos
+por Tarjetahabiente, levantable solo por staff con `canManageCardholders`
+— a diferencia del límite de la transferencia C2C (punto 12, se reinicia
+solo con un nuevo login), aquí no hay sesión previa que reiniciar, así que
+el contador persiste hasta una intervención manual.

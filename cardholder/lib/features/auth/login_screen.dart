@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/auth_controller.dart';
+import 'activation_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.controller});
@@ -93,6 +94,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: widget.controller.isLoading
                               ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
                               : const Text('Ingresar'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: () {
+                            widget.controller.clearError();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => ActivationScreen(controller: widget.controller)),
+                            );
+                          },
+                          child: const Text('¿Nuevo? Activa tu cuenta'),
                         ),
                       ],
                     ),

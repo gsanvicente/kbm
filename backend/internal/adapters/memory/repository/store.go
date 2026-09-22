@@ -29,6 +29,12 @@ import (
 
 const maxFailedAttempts = 5
 
+// maxActivationFailedAttempts — ver
+// docs/adr/0019-cardholder-self-activation.md, "Seguridad". A diferencia
+// de maxFailedAttempts (transferencia C2C, se reinicia con cada login),
+// este contador es permanente — solo ResetActivationAttempts lo reinicia.
+const maxActivationFailedAttempts = 5
+
 // Ver Assign() — default cuando un Cliente no tiene override en
 // maxActiveCardsByClient.
 const defaultMaxActiveCardsPerCardholder = 1
@@ -472,4 +478,33 @@ func (s *Store) Login(_ context.Context, email, password string) (cardholder.Car
 		}
 	}
 	return cardholder.Cardholder{}, shared.ErrInvalidCredentials
+}
+
+// Activate — ver docs/adr/0019-cardholder-self-activation.md. Mismo
+// criterio de mensaje genérico que Login: shared.ErrActivationFailed
+// cubre email inexistente, documento que no coincide, cuenta ya
+// activada (Password no vacío), Tarjetahabiente inactivo, y también el
+// bloqueo por intentos.
+func (s *Store) Activate(_ context.Context, email, idDocumentNumber, password string) (cardholder.Cardholder, error) {
+	s.cardholdersMu.Lock()
+	defer s.cardholdersMu.Unlock()
+
+	for id, ch := range s.cardholders {
+		if ch.Email == nil || *ch.Email != email {
+			continue
+		}
+		if ch.ActivationFailedAttempts >= maxActivationFailedAttempts {
+			return cardholder.Cardholder{}, shared.ErrActivationFailed
+		}
+		if !ch.IsActive || ch.IDDocumentNumber != idDocumentNumber || ch.Password != "" {
+			ch.ActivationFailedAttempts++
+			s.cardholders[id] = ch
+			return cardholder.Cardholder{}, shared.ErrActivationFailed
+		}
+		ch.Password = password
+		ch.ActivationFailedAttempts = 0
+		s.cardholders[id] = ch
+		return ch, nil
+	}
+	return cardholder.Cardholder{}, shared.ErrActivationFailed
 }

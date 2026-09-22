@@ -11,6 +11,7 @@ import 'models/ledger_entry_type.dart';
 import 'models/ledger_movement.dart';
 import 'models/movement_claim.dart';
 import 'models/payment_card.dart';
+import 'models/shared/activation_failed_exception.dart';
 import 'models/shared/auth_exception.dart';
 import 'models/shared/claim_already_filed_exception.dart';
 import 'models/shared/insufficient_funds_exception.dart';
@@ -87,7 +88,32 @@ class FakeCardholderBackend implements CardholderAuthRepository, CardRepository,
       fullName: 'Sofia Ramirez',
       email: 'sofia.ramirez@cardholder.test',
     ),
+    // Cuenta de demo dedicada a ejercer
+    // docs/adr/0019-cardholder-self-activation.md — a propósito excluida
+    // de _passwordByEmail más abajo, "todavía no activó su cuenta".
+    Cardholder(
+      id: '20000000-0000-0000-0000-000000000098',
+      clientId: _clientA,
+      fullName: 'Tarjetahabiente Sin Activar (demo)',
+      email: 'sinactivar@cardholder.test',
+    ),
   ];
+
+  // Número de identificación oficial por email — solo para la
+  // verificación de identidad de activate() (ver
+  // docs/adr/0019-cardholder-self-activation.md); deliberadamente no
+  // vive en el modelo Cardholder (ver su doc: "nada de KYC/domicilio").
+  static const _idDocumentNumberByEmail = {
+    'juan.perez@cardholder.test': 'INE1234567890123',
+    'ana.torres@cardholder.test': 'INE2345678901234',
+    'maria.gomez@cardholder.test': 'INE3456789012345',
+    'carlos.ruiz@cardholder.test': 'G12345678',
+    'inactivo@cardholder.test': 'INE9999999999999',
+    'sofia.ramirez@cardholder.test': 'INE1111111111111',
+    'sinactivar@cardholder.test': 'INE5555555555555',
+  };
+
+  final Map<String, int> _activationFailedAttempts = {};
 
   final List<PaymentCard> _cards = [
     const PaymentCard(
@@ -175,7 +201,8 @@ class FakeCardholderBackend implements CardholderAuthRepository, CardRepository,
   };
 
   late final Map<String, String> _passwordByEmail = {
-    for (final c in _cardholders) c.email: _devPassword,
+    for (final c in _cardholders)
+      if (c.email != 'sinactivar@cardholder.test') c.email: _devPassword,
   };
 
   final Map<String, int> _failedAttempts = {};
@@ -279,6 +306,43 @@ class FakeCardholderBackend implements CardholderAuthRepository, CardRepository,
       throw const AuthException();
     }
     resetFailedAttempts(cardholder.id);
+    return CardholderSession(cardholderId: cardholder.id, email: cardholder.email, fullName: cardholder.fullName);
+  }
+
+  // maxActivationFailedAttempts — ver
+  // docs/adr/0019-cardholder-self-activation.md, "Seguridad": a
+  // diferencia de _failedAttempts (transferencia C2C, se reinicia con
+  // cada login), este bloqueo es permanente para efectos de esta sesión
+  // de la app (no hay "reiniciar sesión" que lo levante).
+  static const _maxActivationFailedAttempts = 5;
+
+  @override
+  Future<CardholderSession> activate({
+    required String email,
+    required String idDocumentNumber,
+    required String password,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final normalizedEmail = email.trim().toLowerCase();
+
+    if ((_activationFailedAttempts[normalizedEmail] ?? 0) >= _maxActivationFailedAttempts) {
+      throw const ActivationFailedException();
+    }
+
+    final cardholder = _cardholders.where((c) => c.email.toLowerCase() == normalizedEmail).firstOrNull;
+    final expectedDocument = _idDocumentNumberByEmail[normalizedEmail];
+    final alreadyActivated = cardholder != null && _passwordByEmail.containsKey(cardholder.email);
+
+    if (cardholder == null ||
+        !cardholder.isActive ||
+        expectedDocument != idDocumentNumber ||
+        alreadyActivated) {
+      _activationFailedAttempts[normalizedEmail] = (_activationFailedAttempts[normalizedEmail] ?? 0) + 1;
+      throw const ActivationFailedException();
+    }
+
+    _passwordByEmail[cardholder.email] = password;
+    _activationFailedAttempts.remove(normalizedEmail);
     return CardholderSession(cardholderId: cardholder.id, email: cardholder.email, fullName: cardholder.fullName);
   }
 
