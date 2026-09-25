@@ -1,9 +1,9 @@
 # Tesorería del Cliente (Cuenta Concentradora / Cuenta Colectora)
 
-- Estado: Implementado contra Postgres (`HttpTreasuryRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `FakeTreasuryRepository` solo para `flutter test`)
-- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`, `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`
+- Estado: Implementado contra Postgres (`HttpTreasuryRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `FakeTreasuryRepository` solo para `flutter test`). La sección "Estado de cuenta para directivos" y la descarga de movimientos (ver más abajo) también están implementadas — ver `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md` y `docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md` (formato PDF).
+- ADR/TDR relacionados: `docs/adr/0003-multitenancy-rls-hierarchy.md`, `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`, `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md` (estado de cuenta para directivos), `docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md` (formato PDF de la descarga)
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1, 2, 4 y 10
-- Roles/actores involucrados: Operador de Saldos (registra depósitos), Admin Cliente/Super Admin (concilian), Auditor (solo ve)
+- Roles/actores involucrados: Operador de Saldos (registra depósitos), Admin Cliente/Super Admin (concilian, y son los únicos que ven el "Estado de cuenta" para directivos), Auditor (solo ve el detalle operativo, no el estado de cuenta)
 
 ## Objetivo
 Dar a cada Cliente su propia Cuenta Concentradora (el pool real que
@@ -117,6 +117,63 @@ un ancestro suyo) está inactivo — mismo criterio y mismo motivo que en
 login) como a un ancestro que ya tenía sesión iniciada. Ver
 `docs/business/desactivacion-de-clientes.md`.
 
+## Estado de cuenta para directivos (ADR-0022)
+Nueva sección dentro de esta misma pestaña "Tesorería"
+(`_ExecutiveStatementSection` en `client_detail_view.dart`), **solo
+visible para Admin Cliente y Super Admin** (`canViewExecutiveDashboard`,
+mismo gate que el Panel directivo) — Operador y Auditor siguen viendo el
+detalle operativo de arriba (historial de Concentradora, depósitos de
+Colectora) sin cambio, pero no esta sección.
+
+- **Resumen** (una fila por Cliente/filial dentro del alcance de quien
+  consulta): total dispersado en el periodo, total conciliado desde
+  Colectora en el periodo, saldo actual de Concentradora. Si quien
+  consulta no tiene filiales, es una sola fila (su propia empresa). El
+  Cliente actual y sus descendientes se calculan del lado del Flutter,
+  recorriendo `parentClientId` sobre `listAccessibleClients(session)` —
+  no existe un endpoint de "descendientes de un Cliente puntual", y
+  agregar uno solo para esto no se justificó frente a filtrar en
+  cliente sobre un listado que la sesión ya puede pedir.
+- **Filtro de periodo**: preselecciones "Este mes" (default), "Últimos
+  30 días", "Últimos 90 días" y "Todo el historial" — recalcula los
+  totales del resumen y lo que se ve en el detalle/descarga, nunca el
+  saldo puntual de la Concentradora (ese es de "ahora", no de flujo).
+- **Detalle expandible**: tocar la fila de un Cliente revela su estado
+  de cuenta completo del periodo — lista cronológica de movimientos de
+  Concentradora, un solo listado ordenado por fecha. `ConcentratorEntry`
+  ya incluye el crédito de cada depósito de Colectora conciliado (lo
+  inserta `ReconcileDeposit` al conciliar, ver `treasury.Statement` en
+  `backend/internal/domain/treasury/treasury.go`), así que no hace falta
+  combinar dos fuentes por separado — combinarlas de nuevo contaría el
+  mismo movimiento dos veces. Respaldado por `GET
+  /v1/clients/{clientId}/treasury/statement`.
+- **Descargar** (PDF con branding de KBM/Koons): construido enteramente
+  en Flutter (`shared_widgets/pdf_statement.dart`) a partir del detalle
+  ya cargado en pantalla para el periodo activo, sin endpoint de
+  exportación dedicado. Lleva encabezado con logo, bloque de
+  identificación (Cliente, quién lo generó), saldo actual y periodo
+  cubierto, además de la tabla de movimientos — ver
+  `docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md` para el
+  diseño exacto del documento.
+- Este resumen es de **flujo** (cuánto se movió en el periodo), no
+  reemplaza al saldo puntual que ya muestra el resto de esta pestaña —
+  mismo distingo que ya hace la gráfica de volumen del Panel directivo
+  (`docs/feature/panel-directivo/README.md`, "Volumen de movimientos").
+
+## Descarga de movimientos de una Cuenta Individual (ADR-0022, formato PDF por ADR-0023)
+Aparte del estado de cuenta de Tesorería de arriba, staff con alcance
+sobre un Tarjetahabiente puede descargar (PDF) los movimientos de su
+Cuenta Individual desde la ficha de ese Tarjetahabiente (sección "Cuenta
+Individual" en `cardholder_detail_view.dart`) — mismo botón y mismo
+criterio "exporta lo que ya está en pantalla" que existe del lado del
+propio Tarjetahabiente en `cardholder/`
+(`docs/business/autoservicio-tarjetahabiente.md`). Disponible porque
+ADR-0022 relaja el acceso de lectura a la Cuenta Individual de
+`requireSelfCardholder` a `requireSelfOrStaff` — staff nunca podía ver
+esto antes si el Tarjetahabiente no tenía ninguna tarjeta asignada. El
+PDF identifica quién lo generó (el email de staff), no solo el titular
+de la cuenta — ver `docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md`.
+
 ## Reglas de negocio
 Ver `docs/business/tesoreria-cliente.md` y
 `docs/business/desactivacion-de-clientes.md` — no se repiten aquí.
@@ -128,8 +185,16 @@ Ver `docs/business/tesoreria-cliente.md` y
 - Retirar dinero de la Concentradora hacia fuera de KBM: fuera de
   alcance.
 - Consolidación de Concentradoras entre empresa padre e hijas: fuera de
-  alcance, cada Cliente tiene la suya de forma independiente.
+  alcance, cada Cliente tiene la suya de forma independiente. El "Estado
+  de cuenta para directivos" (ver arriba) muestra una fila por
+  Cliente/filial, nunca una sola cifra sumada entre todos.
 - Notificaciones cuando se concilia un depósito: fuera de alcance.
+- Endpoint de exportación server-side para el estado de cuenta: fuera de
+  alcance a propósito, ver ADR-0022 punto 6 y ADR-0023 — el PDF se arma
+  client-side sobre el mismo dato que ya se cargó para la pantalla.
+- Selector de rango de fechas del lado servidor para el estado de
+  cuenta: el filtro (si existe en la UI) es client-side sobre la lista
+  ya obtenida, mismo criterio que `MovementsTab` en `cardholder/`.
 
 ## Criterios de aceptación
 Ver `acceptance.feature` en esta misma carpeta.

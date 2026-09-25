@@ -1,4 +1,5 @@
 import 'card_blocked_reason.dart';
+import 'card_cancelled_reason.dart';
 import 'card_network.dart';
 import 'card_status.dart';
 
@@ -23,6 +24,11 @@ class PaymentCard {
   /// `copyWith` (ver fake_client_repository.dart).
   final CardBlockedReason? blockedReason;
 
+  /// Por qué está `cancelled` — `null` para cualquier otro estado. Ver
+  /// docs/adr/0020-cuenta-individual-tarjetahabiente.md, "Reemplazo de
+  /// tarjeta".
+  final CardCancelledReason? cancelledReason;
+
   PaymentCard({
     required this.id,
     required this.clientId,
@@ -34,6 +40,7 @@ class PaymentCard {
     required this.status,
     this.assignedAt,
     this.blockedReason,
+    this.cancelledReason,
   }) : assert(
           (cardholderId == null) == (assignedAt == null),
           'cardholderId and assignedAt must both be null or both be set — '
@@ -42,6 +49,10 @@ class PaymentCard {
         assert(
           status == CardStatus.blocked || blockedReason == null,
           'blockedReason only makes sense when status is blocked',
+        ),
+        assert(
+          status == CardStatus.cancelled || cancelledReason == null,
+          'cancelledReason only makes sense when status is cancelled',
         );
 
   bool get isAvailable => status == CardStatus.unassigned;
@@ -69,6 +80,10 @@ class PaymentCard {
       // nunca con copyWith. Aquí solo se preserva si sigue bloqueada, o
       // se limpia si el nuevo estado ya no lo es.
       blockedReason: (status ?? this.status) == CardStatus.blocked ? blockedReason : null,
+      // Mismo criterio que blockedReason arriba — cambiar el motivo de
+      // cancelación siempre se hace con una construcción directa (ver
+      // FakeCardRepository.replace), nunca con copyWith.
+      cancelledReason: (status ?? this.status) == CardStatus.cancelled ? cancelledReason : null,
     );
   }
 }

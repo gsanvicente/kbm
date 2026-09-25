@@ -6,6 +6,7 @@ import '../../core/models/ledger_entry_type.dart';
 import '../../core/models/shared/client_inactive_exception.dart';
 import '../../core/models/shared/insufficient_funds_exception.dart';
 import '../../core/models/shared/not_found_exception.dart';
+import '../../core/models/treasury_statement.dart';
 import '../clients/client_repository.dart';
 import 'treasury_repository.dart';
 
@@ -192,5 +193,14 @@ class FakeTreasuryRepository implements TreasuryRepository {
     );
     _deposits[index] = reconciled;
     return reconciled;
+  }
+
+  @override
+  Future<TreasuryStatement?> getStatement(String clientId) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final account = _concentratorByClient[clientId];
+    if (account == null) return null;
+    final entries = await listConcentratorEntries(account.id);
+    return TreasuryStatement(concentratorBalance: account.balance, currency: account.currency, entries: entries);
   }
 }

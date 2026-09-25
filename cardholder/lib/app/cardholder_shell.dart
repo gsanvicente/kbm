@@ -4,10 +4,12 @@ import '../core/models/payment_card.dart';
 import '../features/cards/card_repository.dart';
 import '../features/cards/home_tab.dart';
 import '../features/cards/movements_tab.dart';
+import '../features/spei/spei_repository.dart';
+import '../features/spei/spei_section.dart';
 import '../features/transfer/transfer_repository.dart';
 import 'theme.dart';
 
-enum _Tab { inicio, movimientos }
+enum _Tab { inicio, movimientos, cuenta }
 
 extension on _Tab {
   String get label {
@@ -16,6 +18,12 @@ extension on _Tab {
         return 'Inicio';
       case _Tab.movimientos:
         return 'Movimientos';
+      // "Cuenta" — CLABE/Beneficiarios/pagos SPEI, ver
+      // docs/adr/0021-conector-spei.md. Vive a nivel de Cuenta Individual,
+      // no de tarjeta, pero se navega desde aquí igual (todo Tarjetahabiente
+      // con una tarjeta también tiene una Cuenta, ver ADR-0020).
+      case _Tab.cuenta:
+        return 'Cuenta';
     }
   }
 
@@ -25,6 +33,8 @@ extension on _Tab {
         return Icons.home_outlined;
       case _Tab.movimientos:
         return Icons.receipt_long_outlined;
+      case _Tab.cuenta:
+        return Icons.account_balance_outlined;
     }
   }
 
@@ -34,6 +44,8 @@ extension on _Tab {
         return Icons.home_rounded;
       case _Tab.movimientos:
         return Icons.receipt_long_rounded;
+      case _Tab.cuenta:
+        return Icons.account_balance_rounded;
     }
   }
 }
@@ -53,6 +65,7 @@ class CardholderShell extends StatefulWidget {
     required this.cardholderEmail,
     required this.cardRepository,
     required this.transferRepository,
+    required this.speiRepository,
     required this.onLogout,
     this.onBack,
   });
@@ -63,6 +76,7 @@ class CardholderShell extends StatefulWidget {
   final String cardholderEmail;
   final CardRepository cardRepository;
   final TransferRepository transferRepository;
+  final SpeiRepository speiRepository;
   final VoidCallback onLogout;
 
   /// Null cuando esta es la única tarjeta del Tarjetahabiente (no hubo
@@ -90,17 +104,19 @@ class _CardholderShellState extends State<CardholderShell> {
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
-    final body = _selected == _Tab.inicio
-        ? HomeTab(
-            card: _card,
-            cardholderId: widget.cardholderId,
-            cardholderName: widget.cardholderName,
-            cardRepository: widget.cardRepository,
-            transferRepository: widget.transferRepository,
-            onCardUpdated: _onCardUpdated,
-            onTransferred: _onTransferred,
-          )
-        : MovementsTab(card: _card, cardRepository: widget.cardRepository);
+    final body = switch (_selected) {
+      _Tab.inicio => HomeTab(
+          card: _card,
+          cardholderId: widget.cardholderId,
+          cardholderName: widget.cardholderName,
+          cardRepository: widget.cardRepository,
+          transferRepository: widget.transferRepository,
+          onCardUpdated: _onCardUpdated,
+          onTransferred: _onTransferred,
+        ),
+      _Tab.movimientos => MovementsTab(card: _card, cardRepository: widget.cardRepository),
+      _Tab.cuenta => SpeiSection(cardholderId: widget.cardholderId, cardholderName: widget.cardholderName, repository: widget.speiRepository),
+    };
 
     // SafeArea (top) — un AppBar real de Flutter evita la barra de estado
     // del sistema automáticamente; _TopBar es un Container a mano y no lo

@@ -109,6 +109,70 @@ func TestAssign_RejectsUnavailableCard(t *testing.T) {
 	}
 }
 
+func TestReplaceCard_PreservesBalanceAndCardholder(t *testing.T) {
+	s := NewStore()
+	ctx := context.Background()
+
+	before, _, err := s.GetByCard(ctx, juanCard)
+	if err != nil {
+		t.Fatalf("unexpected error reading the original ledger: %v", err)
+	}
+
+	got, err := s.ReplaceCard(ctx, juanCard, poolCardA1, card.CancelledReasonStolen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Status != card.StatusActive {
+		t.Errorf("expected the replacement card to be StatusActive, got %v", got.Status)
+	}
+	if got.CardholderID == nil || *got.CardholderID != juanID {
+		t.Errorf("expected the replacement card to belong to Juan, got %v", got.CardholderID)
+	}
+
+	oldCard, err := s.GetByID(ctx, juanCard)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if oldCard.Status != card.StatusCancelled {
+		t.Errorf("expected the old card to be StatusCancelled, got %v", oldCard.Status)
+	}
+	if oldCard.CancelledReason == nil || *oldCard.CancelledReason != card.CancelledReasonStolen {
+		t.Errorf("expected CancelledReasonStolen, got %v", oldCard.CancelledReason)
+	}
+
+	after, _, err := s.GetByCard(ctx, poolCardA1)
+	if err != nil {
+		t.Fatalf("expected the balance to have moved to the new card: %v", err)
+	}
+	if after.Balance != before.Balance {
+		t.Errorf("expected balance %v to carry over, got %v", before.Balance, after.Balance)
+	}
+
+	if _, _, err := s.GetByCard(ctx, juanCard); !errors.Is(err, shared.ErrNotFound) {
+		t.Errorf("expected the old card's ledger entry to be gone, got %v", err)
+	}
+}
+
+func TestReplaceCard_RejectsUnavailableNewCard(t *testing.T) {
+	s := NewStore()
+	ctx := context.Background()
+
+	_, err := s.ReplaceCard(ctx, juanCard, mariaCard, card.CancelledReasonExpired)
+	if !errors.Is(err, shared.ErrCardNotAvailable) {
+		t.Fatalf("expected ErrCardNotAvailable, got %v", err)
+	}
+}
+
+func TestReplaceCard_RejectsOldCardNeverAssigned(t *testing.T) {
+	s := NewStore()
+	ctx := context.Background()
+
+	_, err := s.ReplaceCard(ctx, poolCardA1, poolCardA2, card.CancelledReasonLost)
+	if !errors.Is(err, shared.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
 func TestSetBlocked_ManualReason(t *testing.T) {
 	s := NewStore()
 	ctx := context.Background()

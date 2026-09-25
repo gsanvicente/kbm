@@ -1,6 +1,6 @@
 # Modelo de dominio — KBM
 
-> Referencia viva. Última revisión: 2026-09-15. El esquema real vive en
+> Referencia viva. Última revisión: 2026-09-24. El esquema real vive en
 > `backend/migrations/0001_init.sql` — si este documento y el esquema
 > divergen, el esquema manda y este documento debe corregirse.
 
@@ -10,8 +10,10 @@
 erDiagram
     CLIENTE ||--o{ CLIENTE : "tiene hijas"
     CLIENTE ||--o{ TARJETAHABIENTE : "pertenece a"
-    TARJETAHABIENTE ||--o{ TARJETA : "posee"
-    TARJETA ||--|| LEDGER_ACCOUNT : "tiene"
+    TARJETAHABIENTE ||--o{ CUENTA_INDIVIDUAL : "posee"
+    CUENTA_INDIVIDUAL ||--o{ TARJETA : "tiene (histórico, 1 activa a la vez)"
+    CUENTA_INDIVIDUAL ||--|| LEDGER_ACCOUNT : "tiene"
+    CUENTA_INDIVIDUAL ||--o| CLABE : "tiene asignada (vía SPEI)"
     LEDGER_ACCOUNT ||--o{ LEDGER_ENTRY : "acumula"
     TARJETA ||--o{ OPERACION_SALDO : "recibe"
     CLIENTE ||--o{ REGLA_APROBACION : "configura"
@@ -26,6 +28,9 @@ erDiagram
     TARJETA ||--|| PAN_HASH : "tiene (solo hash, nunca el PAN)"
     TARJETA ||--o{ TRANSFERENCIA_C2C : "origen/destino"
     CARDHOLDER_USER ||--o{ TRANSFERENCIA_C2C : "solicita"
+    CARDHOLDER_USER ||--o{ BENEFICIARIO_DE_PAGO : "registra"
+    BENEFICIARIO_DE_PAGO ||--o{ PAGO_SPEI : "recibe"
+    CUENTA_INDIVIDUAL ||--o{ PAGO_SPEI : "origina"
     CLIENTE ||--o{ APODERADO_LEGAL : "tiene (uno principal, otros opcionales)"
     CLIENTE ||--o{ BENEFICIARIO_CONTROLADOR : "tiene (uno mayoritario, otros opcionales)"
 ```
@@ -40,9 +45,18 @@ erDiagram
   nivel de base de datos (trigger `ledger_entries_no_update`) — cualquier
   corrección se modela como un nuevo movimiento compensatorio, nunca como
   edición del historial.
+- **`CUENTA_INDIVIDUAL`**, desde `docs/adr/0020-cuenta-individual-tarjetahabiente.md`:
+  el saldo dejó de vivir en `TARJETA` — vive aquí. Nace al dar de alta al
+  Tarjetahabiente (no al asignarle una tarjeta), tiene 1:1 su propio
+  `LEDGER_ACCOUNT`, y puede tener varias `TARJETA` a lo largo del tiempo
+  pero como máximo una `active` a la vez (ver "Reemplazo de tarjeta" en
+  `docs/business/tarjetas-y-asignacion.md`). No confundir con
+  `CUENTA_CONCENTRADORA`/`DEPOSITO_COLECTORA` (esas son del *Cliente*,
+  esta es del *Tarjetahabiente*) — tres "cuentas" distintas conviven en
+  el dominio, cada una con su propio dueño y propósito.
 - **Operación de saldo** es la única vía para mover el ledger de una
-  tarjeta — no hay escritura directa a `ledger_entries` fuera del flujo
-  de aprobación. Desde que existe la Cuenta Concentradora
+  Cuenta Individual — no hay escritura directa a `ledger_entries` fuera
+  del flujo de aprobación. Desde que existe la Cuenta Concentradora
   (`docs/business/tesoreria-cliente.md`), una Dispersión/Deducción
   también escribe un `concentrator_entry` del lado del Cliente — misma
   regla de append-only, misma operación, dos ledgers.
@@ -84,6 +98,17 @@ erDiagram
   mientras el Tarjetahabiente siga inactivo, sin importar el rol de quien
   lo intente. Ver `docs/business/tarjetas-y-asignacion.md`, "Motivo de
   bloqueo".
+- **`BENEFICIARIO_DE_PAGO`** (desde `docs/adr/0021-conector-spei.md`) es
+  una CLABE externa a la que un `CARDHOLDER_USER` puede pagar vía SPEI —
+  **no confundir con `BENEFICIARIO_CONTROLADOR`** (ver el siguiente punto):
+  son dos conceptos de "beneficiario" completamente distintos que
+  coexisten a propósito con nombres distintos para no colisionar. Sigue
+  siendo alta/edición 100% del propio `CARDHOLDER_USER` (nadie de staff
+  lo crea en su nombre), pero desde
+  `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md` staff sí
+  puede **verlo** dentro de su alcance jerárquico normal — no introduce
+  ninguna entidad ni relación nueva, es una corrección de visibilidad
+  sobre esta misma tabla.
 - **`APODERADO_LEGAL` y `BENEFICIARIO_CONTROLADOR`** son expedientes KYB
   del Cliente mismo (persona moral), no relacionados con `TARJETAHABIENTE`
   (persona física que usa una tarjeta) ni con `USUARIO` (quien opera la

@@ -2,6 +2,7 @@ import '../../core/models/collector_deposit.dart';
 import '../../core/models/concentrator_account.dart';
 import '../../core/models/concentrator_entry.dart';
 import '../../core/models/ledger_entry_type.dart';
+import '../../core/models/treasury_statement.dart';
 
 /// Cada Cliente tiene su propia Cuenta Concentradora y Cuenta Colectora,
 /// independientes entre sí y de las de otros Clientes — ver
@@ -57,4 +58,13 @@ abstract class TreasuryRepository {
     required String depositId,
     required String reconciledByEmail,
   });
+
+  /// El "Estado de cuenta para directivos" — saldo + movimientos de la
+  /// Concentradora, con los créditos por depósito conciliado ya
+  /// incluidos (nunca se combina por separado con CollectorDeposit, ver
+  /// TreasuryStatement). null si el Cliente todavía no tiene Cuenta
+  /// Concentradora. Ver
+  /// docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md, punto
+  /// 5.
+  Future<TreasuryStatement?> getStatement(String clientId);
 }

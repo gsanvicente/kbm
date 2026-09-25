@@ -66,6 +66,12 @@ type TreasuryRepository interface {
 	// Concentradora del mismo Cliente. Lanza shared.ErrInvalidState si el
 	// depósito ya fue conciliado.
 	ReconcileDeposit(ctx context.Context, depositID, reconciledByEmail string) (treasury.CollectorDeposit, error)
+
+	// GetStatement — el "Estado de cuenta para directivos", ver
+	// docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md, punto
+	// 5. nil sin error si el Cliente todavía no tiene Cuenta
+	// Concentradora.
+	GetStatement(ctx context.Context, clientID string) (*treasury.Statement, error)
 }
 
 // StaffAuthRepository respalda el login administrativo (admin/) — mismo

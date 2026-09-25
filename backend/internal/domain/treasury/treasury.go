@@ -50,3 +50,16 @@ type CollectorDeposit struct {
 	CreatedAt         time.Time
 	ReconciledAt      *time.Time
 }
+
+// Statement — saldo actual + movimientos de la Concentradora de un
+// Cliente, para el "Estado de cuenta" de directivos — ver
+// docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md, punto 5.
+// Entries ya incluye los créditos de depósitos de Colectora conciliados
+// (ReconcileDeposit los inserta como ConcentratorEntry, descripción
+// "Conciliación de depósito ...") — nunca se mezclan por separado con
+// CollectorDeposit, contarían el mismo movimiento dos veces.
+type Statement struct {
+	ConcentratorBalance float64
+	Currency            string
+	Entries             []ConcentratorEntry
+}

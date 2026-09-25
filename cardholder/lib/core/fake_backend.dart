@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import 'models/account_ledger.dart';
+import 'models/beneficiary.dart';
 import 'models/card_network.dart';
 import 'models/card_status.dart';
 import 'models/cardholder.dart';
@@ -16,8 +18,13 @@ import 'models/shared/auth_exception.dart';
 import 'models/shared/claim_already_filed_exception.dart';
 import 'models/shared/insufficient_funds_exception.dart';
 import 'models/shared/too_many_failed_attempts_exception.dart';
+import 'models/shared/validation_exception.dart';
+import 'models/spei_deposit.dart';
+import 'models/spei_payment.dart';
+import 'models/spei_payment_status.dart';
 import '../features/auth/cardholder_auth_repository.dart';
 import '../features/cards/card_repository.dart';
+import '../features/spei/spei_repository.dart';
 import '../features/transfer/transfer_repository.dart';
 
 /// Único "backend" fake de esta app — sin conexión real, ver
@@ -33,7 +40,7 @@ import '../features/transfer/transfer_repository.dart';
 /// ejecución. Los nombres/IDs coinciden con los de `admin/` solo por
 /// continuidad narrativa del demo, no hay sincronización real posible
 /// sin un backend compartido.
-class FakeCardholderBackend implements CardholderAuthRepository, CardRepository, TransferRepository {
+class FakeCardholderBackend implements CardholderAuthRepository, CardRepository, TransferRepository, SpeiRepository {
   static const _clientA = '00000000-0000-0000-0000-000000000002'; // Koons Subsidiaria A
   static const _clientB = '00000000-0000-0000-0000-000000000003'; // Koons Subsidiaria B
   static const _devPassword = 'LocalDevOnly123!';
@@ -206,6 +213,41 @@ class FakeCardholderBackend implements CardholderAuthRepository, CardRepository,
   };
 
   final Map<String, int> _failedAttempts = {};
+
+  // --- SPEI (docs/adr/0021-conector-spei.md) --------------------------
+  // Simplificación deliberada de este fake (solo usado en widget tests,
+  // ver el doc de la clase): la Cuenta Individual no existe como entidad
+  // aparte de PaymentCard aquí, así que un pago SPEI nunca descuenta
+  // ningún saldo ni valida fondos — siempre "se envía" si pasa los
+  // candados de beneficiario. El modo HTTP real sí lo hace de verdad
+  // contra la Cuenta Individual (ver core/http_backend.dart).
+  static const _clabeWeights = [3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7];
+  static const _bankNameByCode = {
+    '002': 'Banamex',
+    '012': 'BBVA México',
+    '014': 'Santander',
+    '072': 'Banorte',
+    '846': 'KBM (simulador de pruebas)',
+  };
+
+  static bool _validClabeChecksum(String clabe) {
+    if (clabe.length != 18 || int.tryParse(clabe) == null) return false;
+    var sum = 0;
+    for (var i = 0; i < 17; i++) {
+      sum += (int.parse(clabe[i]) * _clabeWeights[i]) % 10;
+    }
+    final verifier = (10 - (sum % 10)) % 10;
+    return verifier == int.parse(clabe[17]);
+  }
+
+  final Map<String, String> _clabeByCardholder = {};
+  final Map<String, List<Beneficiary>> _beneficiariesByCardholder = {};
+  final Map<String, List<SpeiPayment>> _speiPaymentsByCardholder = {};
+  final Map<String, List<SpeiDeposit>> _speiDepositsByCardholder = {};
+  final Map<String, double> _accountBalanceByCardholder = {};
+  final Map<String, List<LedgerMovement>> _accountMovementsByCardholder = {};
+  final Map<String, int> _beneficiaryFailedAttempts = {};
+  int _speiSeq = 0;
 
   // Movimientos sembrados por tarjeta — mismos montos/fechas que
   // `admin/lib/features/ledger/fake_ledger_repository.dart` donde el
@@ -488,6 +530,144 @@ class FakeCardholderBackend implements CardholderAuthRepository, CardRepository,
   @override
   void resetFailedAttempts(String cardholderId) {
     _failedAttempts.remove(cardholderId);
+  }
+
+  @override
+  Future<String?> getClabe(String cardholderId) async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    return _clabeByCardholder[cardholderId];
+  }
+
+  @override
+  Future<String> ensureClabe(String cardholderId) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    return _clabeByCardholder.putIfAbsent(cardholderId, () {
+      final digits = cardholderId.replaceAll(RegExp(r'[^0-9]'), '').padRight(14, '0').substring(0, 14);
+      final prefix = '846$digits';
+      var sum = 0;
+      for (var i = 0; i < 17; i++) {
+        sum += (int.parse(prefix[i]) * _clabeWeights[i]) % 10;
+      }
+      final verifier = (10 - (sum % 10)) % 10;
+      return '$prefix$verifier';
+    });
+  }
+
+  @override
+  Future<List<Beneficiary>> listBeneficiaries(String cardholderId) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    final list = (_beneficiariesByCardholder[cardholderId] ?? const <Beneficiary>[]).toList();
+    list.sort((a, b) => a.alias.compareTo(b.alias));
+    return list;
+  }
+
+  /// Registra un intento fallido de alta de beneficiario y lanza el error
+  /// correspondiente — nunca retorna. Mapa separado de `_failedAttempts`
+  /// (transferencia C2C): fallar aquí nunca consume ese otro cupo.
+  Never _failBeneficiaryAttempt(String cardholderId) {
+    final next = (_beneficiaryFailedAttempts[cardholderId] ?? 0) + 1;
+    _beneficiaryFailedAttempts[cardholderId] = next;
+    if (next >= 5) throw const TooManyFailedAttemptsException();
+    throw const ValidationException();
+  }
+
+  @override
+  Future<Beneficiary> registerBeneficiary({
+    required String cardholderId,
+    required String alias,
+    required String clabe,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    if ((_beneficiaryFailedAttempts[cardholderId] ?? 0) >= 5) {
+      throw const TooManyFailedAttemptsException();
+    }
+    if (!_validClabeChecksum(clabe)) _failBeneficiaryAttempt(cardholderId);
+    final bankName = _bankNameByCode[clabe.substring(0, 3)];
+    if (bankName == null) _failBeneficiaryAttempt(cardholderId);
+    if (_clabeByCardholder[cardholderId] == clabe) _failBeneficiaryAttempt(cardholderId);
+
+    final beneficiary = Beneficiary(
+      id: 'ben-${_speiSeq++}',
+      alias: alias,
+      clabe: clabe,
+      bankName: bankName,
+      coolingUntil: DateTime.now().add(const Duration(hours: 24)),
+      createdAt: DateTime.now(),
+    );
+    _beneficiariesByCardholder.putIfAbsent(cardholderId, () => []).add(beneficiary);
+    _beneficiaryFailedAttempts.remove(cardholderId);
+    return beneficiary;
+  }
+
+  @override
+  Future<List<SpeiPayment>> listPayments(String cardholderId) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    final list = (_speiPaymentsByCardholder[cardholderId] ?? const <SpeiPayment>[]).toList();
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+
+  @override
+  Future<AccountLedger> getAccountLedger(String cardholderId) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    final movements = (_accountMovementsByCardholder[cardholderId] ?? const <LedgerMovement>[]).toList();
+    movements.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return AccountLedger(
+      balance: _accountBalanceByCardholder[cardholderId] ?? 0,
+      currency: 'MXN',
+      movements: movements,
+    );
+  }
+
+  @override
+  Future<List<SpeiDeposit>> listDeposits(String cardholderId) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    final list = (_speiDepositsByCardholder[cardholderId] ?? const <SpeiDeposit>[]).toList();
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+
+  /// Mismo tope ilustrativo que el backend real
+  /// (beneficiary.CoolingPeriodMaxAmount en Go) — ver
+  /// docs/adr/0021-conector-spei.md, "Notas de implementación".
+  static const _coolingPeriodMaxAmount = 1000.0;
+
+  @override
+  Future<SpeiPayment> createPayment({
+    required String cardholderId,
+    required String beneficiaryId,
+    required double amount,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    final beneficiary = (_beneficiariesByCardholder[cardholderId] ?? const <Beneficiary>[])
+        .firstWhere((b) => b.id == beneficiaryId, orElse: () => throw const ValidationException());
+    if (beneficiary.isCooling && amount > _coolingPeriodMaxAmount) {
+      throw const ValidationException();
+    }
+    final payment = SpeiPayment(
+      id: 'spei-${_speiSeq++}',
+      beneficiaryId: beneficiary.id,
+      beneficiaryAlias: beneficiary.alias,
+      beneficiaryClabe: beneficiary.clabe,
+      amount: amount,
+      status: SpeiPaymentStatus.executed,
+      createdAt: DateTime.now(),
+    );
+    _speiPaymentsByCardholder.putIfAbsent(cardholderId, () => []).add(payment);
+
+    final newBalance = (_accountBalanceByCardholder[cardholderId] ?? 0) - amount;
+    _accountBalanceByCardholder[cardholderId] = newBalance;
+    _accountMovementsByCardholder.putIfAbsent(cardholderId, () => []).add(
+          LedgerMovement(
+            id: 'spei-mov-${_speiSeq++}',
+            type: LedgerEntryType.debit,
+            amount: amount,
+            balanceAfter: newBalance,
+            description: 'Pago SPEI a ${beneficiary.alias}',
+            createdAt: DateTime.now(),
+          ),
+        );
+    return payment;
   }
 }
 

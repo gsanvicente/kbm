@@ -132,6 +132,25 @@ func (s *ManagementStore) Create(ctx context.Context, draft cardholder.Cardholde
 			return err
 		}
 		result = mapper.ToCardholder(mapper.CardholderRow(row))
+
+		// La Cuenta Individual (y su ledger, con saldo cero) nace aquí, al
+		// alta del Tarjetahabiente — no al asignarle una tarjeta. Ver
+		// docs/adr/0020-cuenta-individual-tarjetahabiente.md.
+		acct, err := q.CreateIndividualAccount(ctx, sqlcgen.CreateIndividualAccountParams{
+			ClientID:     row.ClientID,
+			CardholderID: row.ID,
+		})
+		if err != nil {
+			return err
+		}
+		if _, err := q.CreateLedgerAccount(ctx, sqlcgen.CreateLedgerAccountParams{
+			ClientID:  row.ClientID,
+			AccountID: acct.ID,
+			Currency:  "MXN",
+		}); err != nil {
+			return err
+		}
+
 		return logCallerAudit(ctx, q, "cardholder_created", "cardholder", row.ID, map[string]any{"client_id": row.ClientID, "full_name": row.FullName})
 	})
 	if err != nil {

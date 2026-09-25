@@ -1,7 +1,7 @@
 # Movimientos y Reclamos
 
-- Estado: Implementado contra Postgres (`HttpLedgerRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `FakeLedgerRepository` solo para `flutter test`). El propio Tarjetahabiente también puede presentar un reclamo sobre su propio movimiento desde `cardholder/` (2026-09-21) — ver `docs/adr/0018-cardholder-filed-claims.md`.
-- ADR/TDR relacionados: `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`, `docs/adr/0018-cardholder-filed-claims.md`
+- Estado: Implementado contra Postgres (`HttpLedgerRepository` por default — ver `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`; `FakeLedgerRepository` solo para `flutter test`). El propio Tarjetahabiente también puede presentar un reclamo sobre su propio movimiento desde `cardholder/` (2026-09-21) — ver `docs/adr/0018-cardholder-filed-claims.md`. La pestaña "Movimientos" de `admin/` también puede descargarse en PDF (2026-09-25) — ver `docs/adr/0024-descarga-en-reportes-y-por-tarjeta.md`.
+- ADR/TDR relacionados: `docs/adr/0012-full-postgres-migration-clients-treasury-staff-approvals.md`, `docs/adr/0018-cardholder-filed-claims.md`, `docs/adr/0024-descarga-en-reportes-y-por-tarjeta.md` (descarga PDF)
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 1 (control de acceso — resolver sin verificar rol) y 4 (trazabilidad)
 - Roles/actores involucrados: Super Admin, Admin Cliente (solicitan y resuelven); Operador (solo solicita); Auditor (solo ve); Tarjetahabiente (solicita sobre su propio movimiento, nunca resuelve)
 
@@ -54,6 +54,13 @@ primera pieza de disputa de negocio. Ver
 5. Una tarjeta sin cuenta de saldo (disponible) muestra la pestaña
    "Movimientos" con el mismo mensaje de "sin cuenta" que ya usa la
    pestaña Resumen.
+5.1. **Descargar** (PDF con branding de KBM/Koons, 2026-09-25): botón
+   sobre la lista de movimientos que exporta el historial completo de
+   *esta tarjeta puntual* — identifica el PAN enmascarado y el
+   Tarjetahabiente, no la Cuenta Individual completa (relevante si el
+   Tarjetahabiente tiene más de una tarjeta). Mismo mecanismo
+   client-side que el resto de descargas de la plataforma, ver
+   `docs/adr/0024-descarga-en-reportes-y-por-tarjeta.md`.
 6. **`cardholder/`** tiene su propio flujo equivalente y más simple (sin
    código compartido con `admin/`, ver ADR-0002): tocar un movimiento
    propio en la pestaña "Movimientos" abre un diálogo con su detalle; si

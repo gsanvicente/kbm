@@ -22,6 +22,9 @@ import '../features/dashboard/fake_dashboard_repository.dart';
 import '../features/ledger/fake_ledger_repository.dart';
 import '../features/ledger/http_ledger_repository.dart';
 import '../features/ledger/ledger_repository.dart';
+import '../features/spei/fake_spei_repository.dart';
+import '../features/spei/http_spei_repository.dart';
+import '../features/spei/spei_repository.dart';
 import '../features/staff_users/fake_staff_user_repository.dart';
 import '../features/staff_users/http_staff_user_repository.dart';
 import '../features/staff_users/staff_user_repository.dart';
@@ -118,6 +121,8 @@ class _KbmAdminAppState extends State<KbmAdminApp> {
   );
   late final StaffUserRepository _staffUserRepository =
       widget.backendClient != null ? HttpStaffUserRepository(client: widget.backendClient!) : FakeStaffUserRepository();
+  late final SpeiRepository _speiRepository =
+      widget.backendClient != null ? HttpSpeiRepository(client: widget.backendClient!) : FakeSpeiRepository();
 
   @override
   Widget build(BuildContext context) {
@@ -142,6 +147,7 @@ class _KbmAdminAppState extends State<KbmAdminApp> {
             treasuryRepository: _treasuryRepository,
             dashboardRepository: _dashboardRepository,
             staffUserRepository: _staffUserRepository,
+            speiRepository: _speiRepository,
             authController: _authController,
           );
         },

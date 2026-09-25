@@ -14,12 +14,14 @@ import '../features/dashboard/dashboard_repository.dart';
 import '../features/dashboard/dashboard_section.dart';
 import '../features/ledger/ledger_repository.dart';
 import '../features/clients/clientes_section.dart';
+import '../features/reportes/reportes_section.dart';
+import '../features/spei/spei_repository.dart';
 import '../features/staff_users/staff_user_repository.dart';
 import '../features/treasury/treasury_repository.dart';
 import 'auth_controller.dart';
 import 'theme.dart';
 
-enum _Section { inicio, clientes, tarjetahabientes, tarjetas, aprobaciones }
+enum _Section { inicio, clientes, tarjetahabientes, tarjetas, aprobaciones, reportes }
 
 extension on _Section {
   String get label {
@@ -38,6 +40,12 @@ extension on _Section {
       // de menú sobre lo mismo no aportaba).
       case _Section.aprobaciones:
         return 'Operaciones de saldo';
+      // Consultas históricas de solo lectura — separado de
+      // "Operaciones de saldo" (que es "requiere tu acción"), mismo
+      // lenguaje que el documento de referencia original ("Reportes y
+      // consultas"). Ver docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md.
+      case _Section.reportes:
+        return 'Reportes';
     }
   }
 
@@ -53,6 +61,8 @@ extension on _Section {
         return Icons.credit_card_rounded;
       case _Section.aprobaciones:
         return Icons.swap_horiz_rounded;
+      case _Section.reportes:
+        return Icons.summarize_rounded;
     }
   }
 
@@ -70,6 +80,7 @@ class AdminShell extends StatefulWidget {
     required this.treasuryRepository,
     required this.dashboardRepository,
     required this.staffUserRepository,
+    required this.speiRepository,
     required this.authController,
   });
 
@@ -82,6 +93,7 @@ class AdminShell extends StatefulWidget {
   final TreasuryRepository treasuryRepository;
   final DashboardRepository dashboardRepository;
   final StaffUserRepository staffUserRepository;
+  final SpeiRepository speiRepository;
   final AuthController authController;
 
   @override
@@ -171,6 +183,7 @@ class _AdminShellState extends State<AdminShell> {
           balanceOperationRepository: widget.balanceOperationRepository,
           treasuryRepository: widget.treasuryRepository,
           staffUserRepository: widget.staffUserRepository,
+          speiRepository: widget.speiRepository,
         );
       case _Section.tarjetahabientes:
         return TarjetahabientesSection(
@@ -180,6 +193,7 @@ class _AdminShellState extends State<AdminShell> {
           cardRepository: widget.cardRepository,
           ledgerRepository: widget.ledgerRepository,
           balanceOperationRepository: widget.balanceOperationRepository,
+          speiRepository: widget.speiRepository,
         );
       case _Section.tarjetas:
         return TarjetasSection(
@@ -199,7 +213,18 @@ class _AdminShellState extends State<AdminShell> {
           ledgerRepository: widget.ledgerRepository,
           balanceOperationRepository: widget.balanceOperationRepository,
           treasuryRepository: widget.treasuryRepository,
+          speiRepository: widget.speiRepository,
           initialTabIndex: _aprobacionesTabIndex,
+        );
+      case _Section.reportes:
+        return ReportesSection(
+          session: widget.session,
+          clientRepository: widget.clientRepository,
+          speiRepository: widget.speiRepository,
+          cardholderRepository: widget.cardholderRepository,
+          cardRepository: widget.cardRepository,
+          ledgerRepository: widget.ledgerRepository,
+          treasuryRepository: widget.treasuryRepository,
         );
     }
   }

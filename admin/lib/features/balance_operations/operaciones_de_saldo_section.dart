@@ -40,6 +40,11 @@ class BalanceOperationTile extends StatelessWidget {
         return Icons.remove_circle_outline_rounded;
       case OperationType.transfer:
         return Icons.swap_horiz_rounded;
+      case OperationType.speiPayment:
+        // Nunca llega aquí en la práctica — un BalanceOperation nunca es
+        // de tipo speiPayment (ver docs/adr/0021-conector-spei.md); solo
+        // exhaustividad de Dart.
+        return Icons.send_rounded;
     }
   }
 

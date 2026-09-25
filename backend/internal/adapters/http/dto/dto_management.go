@@ -364,6 +364,29 @@ func FromConcentratorEntry(e treasury.ConcentratorEntry) ConcentratorEntry {
 	}
 }
 
+// TreasuryStatement — el "Estado de cuenta para directivos", ver
+// docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md, punto 5.
+// Entries ya incluye los créditos de depósitos de Colectora conciliados
+// — nunca se manda una lista aparte de CollectorDeposit, contaría el
+// mismo movimiento dos veces (ver treasury.Statement).
+type TreasuryStatement struct {
+	ConcentratorBalance float64             `json:"concentratorBalance"`
+	Currency            string              `json:"currency"`
+	Entries             []ConcentratorEntry `json:"entries"`
+}
+
+func FromTreasuryStatement(s treasury.Statement) TreasuryStatement {
+	entries := make([]ConcentratorEntry, 0, len(s.Entries))
+	for _, e := range s.Entries {
+		entries = append(entries, FromConcentratorEntry(e))
+	}
+	return TreasuryStatement{
+		ConcentratorBalance: s.ConcentratorBalance,
+		Currency:            s.Currency,
+		Entries:             entries,
+	}
+}
+
 type PostConcentratorEntryRequest struct {
 	Type        string  `json:"type"`
 	Amount      float64 `json:"amount"`

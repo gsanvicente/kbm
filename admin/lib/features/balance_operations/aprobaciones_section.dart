@@ -11,6 +11,7 @@ import '../../core/models/operation_status.dart';
 import '../../core/models/operation_type.dart';
 import '../../core/models/payment_card.dart';
 import '../../core/models/session.dart';
+import '../../core/models/spei_payment.dart';
 import '../../core/utils/currency_format.dart';
 import '../../shared_widgets/confirm_dialog.dart';
 import '../../shared_widgets/multi_select_filter_button.dart';
@@ -18,6 +19,7 @@ import '../cardholders/cardholder_repository.dart';
 import '../cards/card_repository.dart';
 import '../clients/client_repository.dart';
 import '../ledger/ledger_repository.dart';
+import '../spei/spei_repository.dart';
 import '../treasury/deposit_tile.dart';
 import '../treasury/treasury_repository.dart';
 import 'balance_operation_repository.dart';
@@ -47,6 +49,7 @@ class AprobacionesSection extends StatefulWidget {
     required this.ledgerRepository,
     required this.balanceOperationRepository,
     required this.treasuryRepository,
+    required this.speiRepository,
     this.initialTabIndex = 0,
   });
 
@@ -57,12 +60,13 @@ class AprobacionesSection extends StatefulWidget {
   final LedgerRepository ledgerRepository;
   final BalanceOperationRepository balanceOperationRepository;
   final TreasuryRepository treasuryRepository;
+  final SpeiRepository speiRepository;
 
   /// 0 = Pendientes de aprobación, 1 = Depósitos por conciliar, 2 =
-  /// Historial completo — usado por el hipervínculo de "Requiere tu
-  /// atención" en el Panel directivo para abrir directo en la pestaña
-  /// relevante (nunca apunta a la 2, nada la enlaza todavía). Ver
-  /// docs/feature/panel-directivo/README.md.
+  /// Historial completo, 3 = Pagos SPEI — usado por el hipervínculo de
+  /// "Requiere tu atención" en el Panel directivo para abrir directo en
+  /// la pestaña relevante (nunca apunta a la 2 ni a la 3, nada las
+  /// enlaza todavía). Ver docs/feature/panel-directivo/README.md.
   final int initialTabIndex;
 
   @override
@@ -75,7 +79,7 @@ class _AprobacionesSectionState extends State<AprobacionesSection> with SingleTi
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this, initialIndex: widget.initialTabIndex);
+    _tabController = TabController(length: 4, vsync: this, initialIndex: widget.initialTabIndex);
   }
 
   @override
@@ -98,6 +102,7 @@ class _AprobacionesSectionState extends State<AprobacionesSection> with SingleTi
               Tab(text: 'Pendientes de aprobación'),
               Tab(text: 'Depósitos por conciliar'),
               Tab(text: 'Historial completo'),
+              Tab(text: 'Pagos SPEI'),
             ],
           ),
           const Divider(height: 1),
@@ -125,6 +130,11 @@ class _AprobacionesSectionState extends State<AprobacionesSection> with SingleTi
                   cardRepository: widget.cardRepository,
                   ledgerRepository: widget.ledgerRepository,
                   balanceOperationRepository: widget.balanceOperationRepository,
+                ),
+                _PendingSpeiPaymentsTab(
+                  session: widget.session,
+                  clientRepository: widget.clientRepository,
+                  speiRepository: widget.speiRepository,
                 ),
               ],
             ),
@@ -618,6 +628,172 @@ class _PendingDepositsTabState extends State<_PendingDepositsTab> {
       },
     );
   }
+}
+
+/// Cola de pagos SPEI `pending_approval` — mismo criterio de visibilidad
+/// que _PendingOperationsTab (todo staff ve, solo manageRoles
+/// aprueba/rechaza), pero sin origen desde una tarjeta: el alta la hace
+/// el propio Tarjetahabiente desde `cardholder/`, ver
+/// docs/adr/0021-conector-spei.md.
+class _PendingSpeiPaymentsTab extends StatefulWidget {
+  const _PendingSpeiPaymentsTab({
+    required this.session,
+    required this.clientRepository,
+    required this.speiRepository,
+  });
+
+  final Session session;
+  final ClientRepository clientRepository;
+  final SpeiRepository speiRepository;
+
+  @override
+  State<_PendingSpeiPaymentsTab> createState() => _PendingSpeiPaymentsTabState();
+}
+
+class _PendingSpeiPaymentsTabState extends State<_PendingSpeiPaymentsTab> {
+  late Future<_SpeiScopeData> _future;
+  String? _busyPaymentId;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<_SpeiScopeData> _load() async {
+    final clients = await widget.clientRepository.listAccessibleClients(widget.session);
+    final clientIds = clients.map((c) => c.id).toList();
+    final payments = await widget.speiRepository.listPendingByClients(clientIds);
+    return _SpeiScopeData({for (final c in clients) c.id: c.name}, payments);
+  }
+
+  void _reload() => setState(() => _future = _load());
+
+  Future<void> _approve(SpeiPayment payment, {required String clientName}) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Aprobar pago SPEI',
+      message: '¿Deseas aprobar el pago de ${formatCurrency(payment.amount, 'MXN')} '
+          'a ${payment.beneficiaryAlias} del Cliente $clientName? Se despacha al proveedor de inmediato.',
+    );
+    if (!confirmed) return;
+
+    setState(() => _busyPaymentId = payment.id);
+    final result = await widget.speiRepository.approve(paymentId: payment.id, approvedByEmail: widget.session.email);
+    if (!mounted) return;
+    setState(() => _busyPaymentId = null);
+    _reload();
+    final message = result.status == OperationStatus.executed
+        ? 'Pago aprobado y enviado.'
+        : 'Pago fallido: ${result.resolutionNotes}';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _reject(SpeiPayment payment) async {
+    final reason = await showDialog<String>(context: context, builder: (context) => const _RejectDialog());
+    if (reason == null || reason.trim().isEmpty) return;
+
+    setState(() => _busyPaymentId = payment.id);
+    await widget.speiRepository.reject(paymentId: payment.id, rejectedByEmail: widget.session.email, reason: reason.trim());
+    if (!mounted) return;
+    setState(() => _busyPaymentId = null);
+    _reload();
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pago rechazado.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canApprove = widget.session.role.canApproveBalanceOperations;
+
+    return FutureBuilder<_SpeiScopeData>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error al cargar pagos SPEI: ${snapshot.error}'));
+        }
+        final data = snapshot.data!;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!canApprove)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Text(
+                  'Tu rol (${widget.session.role.label}) puede ver esta cola pero no aprobar ni rechazar.',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5, fontStyle: FontStyle.italic),
+                ),
+              ),
+            Expanded(
+              child: data.payments.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No hay pagos SPEI pendientes de aprobación.',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(8),
+                      itemCount: data.payments.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, indent: 68),
+                      itemBuilder: (context, index) {
+                        final payment = data.payments[index];
+                        final busy = _busyPaymentId == payment.id;
+                        final clientName = data.clientNameById[payment.clientId] ?? '—';
+                        return ListTile(
+                          leading: const CircleAvatar(child: Icon(Icons.send_rounded, size: 18)),
+                          title: Text('${payment.requestedByFullName} → ${payment.beneficiaryAlias}'),
+                          subtitle: Text('$clientName · ${payment.beneficiaryClabe}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                formatCurrency(payment.amount, 'MXN'),
+                                style: const TextStyle(fontWeight: FontWeight.w700, color: KoonsColors.navy),
+                              ),
+                              const SizedBox(width: 12),
+                              if (canApprove)
+                                busy
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            tooltip: 'Aprobar',
+                                            icon: Icon(Icons.check_circle_outline_rounded, color: Colors.green.shade700),
+                                            onPressed: () => _approve(payment, clientName: clientName),
+                                          ),
+                                          IconButton(
+                                            tooltip: 'Rechazar',
+                                            icon: Icon(Icons.cancel_outlined, color: Colors.red.shade700),
+                                            onPressed: () => _reject(payment),
+                                          ),
+                                        ],
+                                      ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _SpeiScopeData {
+  _SpeiScopeData(this.clientNameById, this.payments);
+  final Map<String, String> clientNameById;
+  final List<SpeiPayment> payments;
 }
 
 class _RejectDialog extends StatefulWidget {

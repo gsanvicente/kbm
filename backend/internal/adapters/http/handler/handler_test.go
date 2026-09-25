@@ -328,13 +328,48 @@ func TestManageRoles_AssignCard(t *testing.T) {
 	}
 }
 
+// TestManageRoles_ReplaceCard — reemplazar una tarjeta es manageRoles,
+// mismo criterio que TestManageRoles_AssignCard. Ver
+// docs/adr/0020-cuenta-individual-tarjetahabiente.md, "Reemplazo de
+// tarjeta".
+func TestManageRoles_ReplaceCard(t *testing.T) {
+	srv := newTestServer()
+	const juanCard = "40000000-0000-0000-0000-000000000001"   // Juan Perez, Koons Subsidiaria A
+	const poolCardA1 = "40000000-0000-0000-0000-000000000005" // pool disponible, Subsidiaria A
+	const poolCardA2 = "40000000-0000-0000-0000-000000000006" // pool disponible, Subsidiaria A
+
+	operatorTok := staffToken(t, srv, "operador.subA@koons.test")
+	forbidden := postJSON(t, srv, operatorTok, "/v1/cards/"+juanCard+"/replace", dto.ReplaceCardRequest{NewCardID: poolCardA1, Reason: "robada"})
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for operator, got %d: %s", forbidden.Code, forbidden.Body.String())
+	}
+
+	adminTok := staffToken(t, srv, "admin.subA@koons.test")
+	invalidReason := postJSON(t, srv, adminTok, "/v1/cards/"+juanCard+"/replace", dto.ReplaceCardRequest{NewCardID: poolCardA1, Reason: "porque si"})
+	if invalidReason.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an invalid reason, got %d: %s", invalidReason.Code, invalidReason.Body.String())
+	}
+
+	ok := postJSON(t, srv, adminTok, "/v1/cards/"+juanCard+"/replace", dto.ReplaceCardRequest{NewCardID: poolCardA2, Reason: "robada"})
+	if ok.Code != http.StatusOK {
+		t.Fatalf("expected 200 for client_admin, got %d: %s", ok.Code, ok.Body.String())
+	}
+	var replaced dto.Card
+	if err := json.Unmarshal(ok.Body.Bytes(), &replaced); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if replaced.Status != "active" {
+		t.Errorf("expected the replacement card to be active, got %v", replaced.Status)
+	}
+}
+
 // TestFileClaim_Cardholder — un Tarjetahabiente puede presentar un
 // reclamo sobre su propio movimiento (docs/business/reclamos-de-movimientos.md),
 // pero nunca sobre el de alguien más — mismo criterio "nunca revelar"
 // que el resto de los endpoints de alcance mixto.
 func TestFileClaim_Cardholder(t *testing.T) {
 	srv := newTestServer()
-	const juanEntryID = "60000000-0000-0000-0000-000000000001" // Carga inicial, tarjeta de Juan
+	const juanEntryID = "60000000-0000-0000-0000-000000000001"  // Carga inicial, tarjeta de Juan
 	const mariaEntryID = "60000000-0000-0000-0000-000000000004" // Carga inicial, tarjeta de Maria
 
 	juanTok := cardholderToken(t, srv)

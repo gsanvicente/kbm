@@ -92,6 +92,12 @@ class FakeDashboardRepository implements DashboardRepository {
           executedDeduccionTotal += op.amount;
         case OperationType.transfer:
           executedTransferenciaTotal += op.amount;
+        case OperationType.speiPayment:
+          // Nunca llega aquí — un BalanceOperation nunca es de tipo
+          // speiPayment (docs/adr/0021-conector-spei.md tiene su propia
+          // tabla/repositorio); solo exhaustividad de Dart. El volumen de
+          // pagos SPEI no forma parte de este panel sintético todavía.
+          break;
       }
     }
 

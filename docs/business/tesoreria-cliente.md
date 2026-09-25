@@ -1,6 +1,6 @@
 # Tesorería del Cliente: Cuenta Concentradora y Cuenta Colectora
 
-> Referencia viva. Última revisión: 2026-09-19.
+> Referencia viva. Última revisión: 2026-09-24.
 
 ## Por qué existen estos dos conceptos
 
@@ -91,17 +91,34 @@ declarado es real y ya se puede dispersar es una decisión de
 administrador, con el mismo criterio de separación de responsabilidades
 que ya existe entre solicitar y aprobar una operación de saldo.
 
+## Un segundo camino de fondeo, paralelo a este (implementado — ADR-0021)
+
+Este documento describe el fondeo **a nivel Cliente** (empresa deposita
+en su Colectora, se concilia, se dispersa a tarjetas vía la
+Concentradora). Desde `docs/adr/0021-conector-spei.md` existe un segundo
+camino, **a nivel Tarjetahabiente**: un depósito SPEI directo a la CLABE
+de la Cuenta Individual de una persona (`docs/adr/0020-cuenta-individual-tarjetahabiente.md`),
+que **no** pasa por Colectora ni por conciliación manual — el proveedor
+SPEI ya confirmó el depósito, acredita la Cuenta de inmediato. Un mismo
+Tarjetahabiente puede recibir dinero por ambos caminos sin distinguirse
+en su saldo (ver ADR-0020, "una sola Cuenta, sin distinguir origen del
+dinero") — este documento (Concentradora/Colectora) sigue exactamente
+igual, sin cambios, conviviendo con el nuevo camino.
+
 ## Fuera de alcance de esta iteración
 
-- **Integración bancaria real** (SPEI, webhooks de depósito): registrar un
-  depósito es una acción manual del staff en esta iteración — no hay
-  conexión a ningún banco o procesador todavía.
+- **Depósito SPEI directo a una tarjeta/Concentradora** vía este mismo
+  flujo de Colectora: no aplica — el fondeo por SPEI vive a nivel Cuenta
+  Individual, ver la sección de arriba, no como una forma nueva de
+  registrar un depósito de Colectora.
 - **Rechazar un depósito registrado por error**: no hay una acción para
   "descartar" un depósito `pending` sin conciliarlo — fuera de alcance,
   no solicitado.
 - **Consolidación de Concentradoras entre empresa padre e hijas**: cada
   Cliente tiene la suya, sin vista consolidada de grupo — ver "Alcance"
-  arriba.
+  arriba. El "Estado de cuenta para directivos" (ADR-0022, ver abajo)
+  muestra una fila de resumen **por** Cliente/filial, nunca una sola
+  cifra sumada entre todos — sigue sin haber consolidación real.
 - **Retirar dinero de la Concentradora hacia una cuenta bancaria externa**
   (lo inverso de un depósito): fuera de alcance, no solicitado.
 
@@ -134,7 +151,28 @@ el registro directo de depósitos en la Colectora de un Cliente (ya
 implementado) o convive con él. No implementar nada de esto sin ese
 diseño explícito — ver la regla MUST del `README.md` raíz.
 
+## Estado de cuenta para directivos (ADR-0022, formato de descarga corregido por ADR-0023)
+Solo Super Admin y Admin Cliente (`canViewExecutiveDashboard`) pueden ver
+un resumen de movimientos de Concentradora + depósitos conciliados de
+Colectora por periodo, con una fila por Cliente/filial dentro de su
+alcance y detalle expandible línea por línea, más una descarga (PDF, con
+branding de KBM/Koons) de ese detalle. Vive dentro de esta misma pestaña
+"Tesorería", no es una pantalla nueva — ver
+`docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md`,
+`docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md`, y
+`docs/feature/tesoreria-cliente/README.md` para el detalle completo.
+Operador y Auditor no ven esta sección específica, aunque sí el resto de
+la Tesorería sin cambio.
+
 ## Ver también
+- `docs/adr/0021-conector-spei.md` — el segundo camino de fondeo, a nivel
+  Tarjetahabiente, que convive con este.
+- `docs/adr/0020-cuenta-individual-tarjetahabiente.md` — dónde vive el
+  saldo que ese segundo camino acredita.
+- `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md` — estado
+  de cuenta para directivos y descarga de movimientos.
+- `docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md` — formato PDF
+  de esa descarga.
 - `docs/business/approval-policy.md` y
   `docs/business/roles-and-permissions.md` — reglas de aprobación y roles
   que ya aplicaban a Dispersión/Deducción/Transferencia, sin cambios ahí.

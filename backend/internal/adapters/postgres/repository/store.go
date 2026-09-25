@@ -46,13 +46,21 @@ type Store struct {
 
 	attemptsMu     sync.Mutex
 	failedAttempts map[string]int
+
+	// beneficiaryFailedAttempts — mismo throttle de sesión que
+	// failedAttempts, pero para el registro de un Beneficiario de Pago
+	// SPEI (ver docs/adr/0021-conector-spei.md, "Seguridad"). Mapa
+	// separado a propósito: fallar al registrar un beneficiario no debe
+	// consumir el cupo de intentos de una transferencia C2C, ni viceversa.
+	beneficiaryFailedAttempts map[string]int
 }
 
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{
-		pool:           pool,
-		q:              sqlcgen.New(pool),
-		failedAttempts: map[string]int{},
+		pool:                      pool,
+		q:                         sqlcgen.New(pool),
+		failedAttempts:            map[string]int{},
+		beneficiaryFailedAttempts: map[string]int{},
 	}
 }
 

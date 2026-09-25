@@ -1,6 +1,6 @@
 # Roles y permisos — KBM
 
-> Referencia viva. Última revisión: 2026-09-21.
+> Referencia viva. Última revisión: 2026-09-24.
 
 ## Roles administrativos/staff
 
@@ -124,6 +124,69 @@ Ver `docs/business/tesoreria-cliente.md` para el detalle funcional. Resumen de p
   `docs/feature/tesoreria-cliente/README.md`, "Dos entry points para
   conciliar".
 
+## Reportes de staff — Pagos SPEI, Depósitos, Beneficiarios de Pago y Movimientos (2026-09-24, pestaña "Movimientos" desde 2026-09-25)
+
+Ver `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md`,
+`docs/adr/0026-pestana-movimientos-centralizada-en-reportes.md` y
+`docs/feature/reportes-admin/README.md` para el detalle completo. Resumen
+de permisos:
+
+- **Ver** el historial completo de Pagos SPEI, Depósitos SPEI, y el
+  directorio de Beneficiarios de Pago: **cualquier rol de staff dentro de
+  su alcance, incluido Auditor** — mismo criterio que ya rige ver
+  Tarjetahabientes/Tarjetas/Tesorería. Esto **corrige**
+  `docs/adr/0021-conector-spei.md`, que originalmente hacía a un
+  Beneficiario de Pago 100% invisible para staff.
+- **Revelar la CLABE completa** de un Beneficiario dentro del directorio
+  agregado (ahí se muestra enmascarada por default, a diferencia de la
+  ficha individual del Tarjetahabiente — ver el ADR): solo **Admin
+  Cliente y Super Admin** (`canManageCardholders`), igual que otras
+  acciones sensibles sobre el expediente de un Tarjetahabiente. Queda
+  auditada.
+- **Registrar, editar o eliminar** un Beneficiario, o iniciar un pago
+  SPEI en nombre de alguien: **nadie de staff puede**, sin excepción —
+  eso sigue siendo 100% del propio Tarjetahabiente
+  (`docs/business/autoservicio-tarjetahabiente.md`). Ver esto no
+  significa poder actuar sobre esto.
+- **Buscar y descargar** el Estado de cuenta de un Cliente o la Cuenta
+  Individual/tarjetas de un Tarjetahabiente desde la pestaña
+  "Movimientos" de Reportes, sin tener que navegar hasta el detalle de
+  esa entidad primero: mismo alcance y mismos permisos que ya aplican a
+  esos mismos datos vistos desde su propio detalle — esta pestaña no
+  amplía ni restringe nada, solo agrega una segunda puerta de entrada al
+  mismo dato (ver ADR-0026).
+
+## Estado de cuenta de Tesorería para directivos (2026-09-24, formato PDF desde 2026-09-25)
+
+Ver `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md` y
+`docs/feature/tesoreria-cliente/README.md`. **Solo Super Admin y Admin
+Cliente** (`canViewExecutiveDashboard`, mismo grupo que el Panel
+directivo) ven el resumen + detalle expandible de movimientos de
+Concentradora/Colectora por filial, y pueden descargarlo (PDF con
+branding de KBM/Koons, ver
+`docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md`) — Operador y
+Auditor no ven esta sección específica, aunque sí siguen viendo el
+detalle operativo normal de Tesorería (historial de Concentradora,
+depósitos de Colectora) sin ningún cambio.
+
+## Descarga del estado de cuenta de una Cuenta Individual (2026-09-24, formato PDF desde 2026-09-25)
+
+Ver `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md`, punto
+6, y `docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md`. Dos casos,
+mismo mecanismo (PDF armado client-side sobre los movimientos ya
+cargados en pantalla, con branding de la plataforma y datos de
+identificación de la cuenta):
+
+- El propio **Tarjetahabiente** descarga su propio estado de cuenta
+  desde su portal — siempre disponible, sin restricción (mismo criterio
+  que ya puede ver sus propios movimientos).
+- **Cualquier rol de staff** dentro de su alcance descarga el de
+  cualquier Tarjetahabiente que pueda ver — disponible desde que
+  `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md` le da a
+  staff acceso de lectura a la Cuenta Individual completa, incluso de un
+  Tarjetahabiente sin ninguna tarjeta asignada (antes, ese caso no tenía
+  ninguna pantalla que lo mostrara).
+
 ## Gestión de Tarjetas (asignar del pool de disponibles)
 
 Mismo criterio que la gestión de Tarjetahabientes: **Super Admin** y
@@ -157,9 +220,13 @@ saldos que hace el staff — sin Cuentas Concentradoras/Colectoras de por
 medio. Ver `docs/business/autoservicio-tarjetahabiente.md` para el
 detalle completo; resumen de permisos:
 
-- **Ver** su propio saldo y estado de cuenta (movimientos, con filtros de
-  fecha — más "bancario" que el historial que ve el staff): siempre, sin
-  restricción.
+- **Ver y descargar** su propio saldo y estado de cuenta (movimientos,
+  con filtros de fecha — más "bancario" que el historial que ve el
+  staff): siempre, sin restricción. La descarga (PDF con branding de la
+  plataforma, 2026-09-25) exporta exactamente el rango que el filtro
+  activo esté mostrando — ver
+  `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md`, punto 6,
+  y `docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md`.
 - **Transferir** (C2C, a la tarjeta de otro Tarjetahabiente del **mismo
   Cliente**): libre, **sin pasar por `approval_rules`** — el
   Tarjetahabiente opera su propio saldo, distinto de cuando un Operador

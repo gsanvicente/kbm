@@ -53,6 +53,16 @@ type CardRepository interface {
 	// a usar el default de la aplicación). Ver
 	// docs/feature/configuracion-de-cliente/README.md.
 	SetMaxActiveCardsPerCardholder(ctx context.Context, clientID string, max *int) (*int, error)
+
+	// ReplaceCard — ver docs/adr/0020-cuenta-individual-tarjetahabiente.md
+	// y docs/business/tarjetas-y-asignacion.md, "Reemplazo de tarjeta".
+	// Atómico: cancela [oldCardID] (con [reason]) y asigna [newCardID]
+	// (que debe estar `unassigned`, del mismo Cliente) a la misma Cuenta
+	// Individual — el saldo, la CLABE y el historial no se tocan. Lanza
+	// shared.ErrCardNotAvailable si [newCardID] no está disponible, o
+	// shared.ErrNotFound si [oldCardID] no existe o no tiene Cuenta
+	// (nunca fue asignada). Devuelve la tarjeta nueva ya activa.
+	ReplaceCard(ctx context.Context, oldCardID, newCardID string, reason card.CancelledReason) (card.Card, error)
 }
 
 // LedgerRepository — el subconjunto de

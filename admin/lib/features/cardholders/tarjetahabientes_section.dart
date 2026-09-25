@@ -9,6 +9,7 @@ import '../cards/card_detail_view.dart';
 import '../cards/card_repository.dart';
 import '../clients/client_repository.dart';
 import '../ledger/ledger_repository.dart';
+import '../spei/spei_repository.dart';
 import 'cardholder_detail_view.dart';
 import 'cardholder_repository.dart';
 import 'global_cardholder_list_view.dart';
@@ -27,6 +28,7 @@ class TarjetahabientesSection extends StatefulWidget {
     required this.cardRepository,
     required this.ledgerRepository,
     required this.balanceOperationRepository,
+    required this.speiRepository,
   });
 
   final Session session;
@@ -35,6 +37,7 @@ class TarjetahabientesSection extends StatefulWidget {
   final CardRepository cardRepository;
   final LedgerRepository ledgerRepository;
   final BalanceOperationRepository balanceOperationRepository;
+  final SpeiRepository speiRepository;
 
   @override
   State<TarjetahabientesSection> createState() => _TarjetahabientesSectionState();
@@ -104,6 +107,7 @@ class _TarjetahabientesSectionState extends State<TarjetahabientesSection> {
         clientName: _selectedClientName ?? '—',
         repository: widget.cardholderRepository,
         cardRepository: widget.cardRepository,
+        speiRepository: widget.speiRepository,
         session: widget.session,
         onChanged: (updated) => setState(() => _selectedCardholder = updated),
         onSelectCard: (selected) => setState(() => _selectedCard = selected),

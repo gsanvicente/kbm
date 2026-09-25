@@ -12,6 +12,7 @@ import (
 	"github.com/koons/kbm/backend/internal/adapters/http/middleware"
 	memrepo "github.com/koons/kbm/backend/internal/adapters/memory/repository"
 	pgrepo "github.com/koons/kbm/backend/internal/adapters/postgres/repository"
+	"github.com/koons/kbm/backend/internal/adapters/spei"
 	"github.com/koons/kbm/backend/internal/platform/config"
 )
 
@@ -69,6 +70,12 @@ func main() {
 		h.BalanceOps = store
 		h.Cardholders = pgrepo.NewManagementStore(store)
 		h.StaffManagement = pgrepo.NewStaffManagementStore(store)
+		// SPEI — sin proveedor real elegido todavía, ver
+		// docs/adr/0021-conector-spei.md: el simulador cumple el mismo
+		// puerto (ports.SPEIGateway) que un proveedor real cumpliría
+		// después, sin rediseño.
+		h.SPEI = pgrepo.NewSPEIStore(store, spei.NewSimulator())
+		h.SPEIWebhookSecret = cfg.SPEIWebhookSecret
 		backend = "postgres"
 		closeFn = store.Close
 	default:

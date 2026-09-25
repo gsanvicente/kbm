@@ -5,10 +5,15 @@ import '../../core/models/card_status.dart';
 import '../../core/models/cardholder.dart';
 import '../../core/models/payment_card.dart';
 import '../../core/models/session.dart';
+import '../../core/models/ledger_entry_type.dart';
 import '../../core/models/shared/card_limit_exceeded_exception.dart';
 import '../../core/models/shared/cardholder_inactive_exception.dart';
+import '../../core/utils/date_format.dart';
+import '../../shared_widgets/pdf_download.dart';
+import '../../shared_widgets/pdf_statement.dart';
 import '../cards/card_list_view.dart';
 import '../cards/card_repository.dart';
+import '../spei/spei_repository.dart';
 import 'cardholder_form_dialog.dart';
 import 'cardholder_repository.dart';
 
@@ -19,6 +24,7 @@ class CardholderDetailView extends StatefulWidget {
     required this.clientName,
     required this.repository,
     required this.cardRepository,
+    required this.speiRepository,
     required this.session,
     required this.onChanged,
     this.onSelectCard,
@@ -28,6 +34,13 @@ class CardholderDetailView extends StatefulWidget {
   final String clientName;
   final CardholderRepository repository;
   final CardRepository cardRepository;
+
+  /// Para el botón "Descargar estado de cuenta" de la Cuenta Individual —
+  /// ver docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md,
+  /// punto 6. Disponible para cualquier Tarjetahabiente, incluso uno sin
+  /// ninguna tarjeta asignada, porque `getAccountLedger` ya usa
+  /// `requireSelfOrStaff` del lado del backend.
+  final SpeiRepository speiRepository;
   final Session session;
 
   /// Called after a successful edit/deactivate so the caller (list views)
@@ -48,6 +61,7 @@ class CardholderDetailView extends StatefulWidget {
 class _CardholderDetailViewState extends State<CardholderDetailView> {
   late Cardholder _cardholder = widget.cardholder;
   bool _busy = false;
+  bool _downloadingStatement = false;
 
   /// Fuerza a `CardListView` (sección "Tarjetas") a remontarse y volver a
   /// pedir sus datos tras (des)activar — el Future que ya resolvió no se
@@ -173,6 +187,51 @@ class _CardholderDetailViewState extends State<CardholderDetailView> {
     }
   }
 
+  /// "Descargar estado de cuenta" (PDF con branding de KBM) — ver
+  /// docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md, punto
+  /// 6. Disponible aunque `_cardholder` no tenga ninguna tarjeta
+  /// asignada: `getAccountLedger` relajó su gate a `requireSelfOrStaff`
+  /// justo para cubrir este caso. "Generado por" identifica que fue
+  /// staff, no el propio Tarjetahabiente, quien lo descargó.
+  Future<void> _downloadStatement() async {
+    setState(() => _downloadingStatement = true);
+    try {
+      final ledger = await widget.speiRepository.getAccountLedger(_cardholder.id);
+      final bytes = await buildStatementPdf(
+        accountTitle: 'Cuenta Individual',
+        infoFields: [
+          MapEntry('Titular', _cardholder.fullName),
+          MapEntry('Cliente', widget.clientName),
+          MapEntry('Identificación', '${_cardholder.idDocumentType.label} ${_cardholder.idDocumentNumber}'),
+          MapEntry('Generado por', widget.session.email),
+        ],
+        balance: ledger.balance,
+        currency: ledger.currency,
+        periodLabel: 'Historial completo',
+        rows: [
+          for (final e in ledger.entries)
+            PdfStatementRow(
+              date: formatDateTime(e.createdAt),
+              isCredit: e.type == LedgerEntryType.credit,
+              description: e.description ?? '',
+              amount: e.amount,
+              balanceAfter: e.balanceAfter,
+            ),
+        ],
+      );
+      if (!mounted) return;
+      downloadPdf(
+        'estado-de-cuenta-${_cardholder.id}-${DateTime.now().toIso8601String().split('T').first}.pdf',
+        bytes,
+      );
+    } on UnsupportedError catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'No se pudo descargar.')));
+    } finally {
+      if (mounted) setState(() => _downloadingStatement = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = _cardholder;
@@ -277,6 +336,23 @@ class _CardholderDetailViewState extends State<CardholderDetailView> {
             title: 'Cumplimiento',
             children: [
               _InfoRow(label: 'Persona Políticamente Expuesta', value: c.isPoliticallyExposed ? 'Sí' : 'No'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _Section(
+            title: 'Cuenta Individual',
+            trailing: TextButton.icon(
+              onPressed: _downloadingStatement ? null : _downloadStatement,
+              icon: _downloadingStatement
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.download_rounded, size: 18),
+              label: const Text('Descargar estado de cuenta'),
+            ),
+            children: const [
+              Text(
+                'Saldo y movimientos SPEI de este Tarjetahabiente, tenga o no una tarjeta asignada.',
+                style: TextStyle(color: Colors.grey, fontSize: 12.5),
+              ),
             ],
           ),
           const SizedBox(height: 16),

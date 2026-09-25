@@ -1047,7 +1047,11 @@ void main() {
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Tesorería');
 
-    expect(find.text('\$10,000.00 MXN'), findsOneWidget);
+    // Tesorería body + fila propia del Estado de cuenta para directivos
+    // (ADR-0022, punto 5) — super.admin no tiene chip de saldo en el
+    // encabezado (no tiene empresa propia), así que no hay una tercera
+    // coincidencia.
+    expect(find.text('\$10,000.00 MXN'), findsNWidgets(2));
     expect(find.textContaining('Referencia: SPEI-DEMO-001'), findsOneWidget);
     // super.admin can reconcile, so the row shows the action button
     // instead of a passive "Pendiente" badge — see the dedicated
@@ -1109,9 +1113,10 @@ void main() {
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Tesorería');
 
-    // Admin Cliente sees the same figure twice: the header chip (their
-    // own Concentradora) and the Tesorería body.
-    expect(find.text('\$10,000.00 MXN'), findsNWidgets(2));
+    // Admin Cliente sees the figure three times: the header chip (their
+    // own Concentradora), the Tesorería body, and their own row in the
+    // Estado de cuenta para directivos (ADR-0022, punto 5).
+    expect(find.text('\$10,000.00 MXN'), findsNWidgets(3));
     await tester.tap(find.widgetWithText(OutlinedButton, 'Conciliar'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
@@ -1119,7 +1124,9 @@ void main() {
 
     expect(find.textContaining('conciliado'), findsOneWidget);
     expect(find.text('Conciliado'), findsOneWidget);
-    expect(find.text('\$15,000.00 MXN'), findsOneWidget); // Tesorería body updates immediately
+    // Tesorería body and the Estado de cuenta row both update immediately
+    // (same _statementGeneration key remount as the body's own reload).
+    expect(find.text('\$15,000.00 MXN'), findsNWidgets(2));
     // The header chip was fetched once at login — it does not live-refresh.
     expect(find.text('\$10,000.00 MXN'), findsOneWidget);
   });
@@ -1151,7 +1158,8 @@ void main() {
     await _expandClientTreeNode(tester, 'Grupo Koons Holding');
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Tesorería');
-    expect(find.text('\$10,000.00 MXN'), findsOneWidget); // unchanged
+    // Tesorería body + Estado de cuenta row, unchanged.
+    expect(find.text('\$10,000.00 MXN'), findsNWidgets(2));
   });
 
   testWidgets('approving a Deducción credits the Concentradora', (tester) async {
@@ -1181,7 +1189,8 @@ void main() {
     await _expandClientTreeNode(tester, 'Grupo Koons Holding');
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Tesorería');
-    expect(find.text('\$10,050.00 MXN'), findsOneWidget); // 10,000.00 + 50.00
+    // Tesorería body + Estado de cuenta row.
+    expect(find.text('\$10,050.00 MXN'), findsNWidgets(2)); // 10,000.00 + 50.00
   });
 
   testWidgets('a transfer between two cards of the same Cliente never touches the Concentradora', (tester) async {
@@ -1204,7 +1213,8 @@ void main() {
     await _expandClientTreeNode(tester, 'Grupo Koons Holding');
     await _goToSection(tester, 'Koons Subsidiaria B');
     await _goToSection(tester, 'Tesorería');
-    expect(find.text('\$10,000.00 MXN'), findsOneWidget); // untouched
+    // Tesorería body + Estado de cuenta row, untouched.
+    expect(find.text('\$10,000.00 MXN'), findsNWidgets(2));
   });
 
   testWidgets('Admin Cliente sees their own Concentradora balance in the header', (tester) async {
@@ -1342,7 +1352,8 @@ void main() {
     await _goToSection(tester, 'Clientes');
     await _goToSection(tester, 'Koons Subsidiaria A');
     await _goToSection(tester, 'Tesorería');
-    expect(find.text('\$15,000.00 MXN'), findsOneWidget); // 10,000 + 5,000
+    // Tesorería body + Estado de cuenta row.
+    expect(find.text('\$15,000.00 MXN'), findsNWidgets(2)); // 10,000 + 5,000
   });
 
   testWidgets('tapping a pending deposit under "Requiere tu atención" opens the Depósitos por conciliar tab',
@@ -1525,8 +1536,10 @@ void main() {
 
     // Aterriza en el detalle de la filial recién creada: nace con su
     // propia Cuenta Concentradora en cero, nunca "Sin Cuenta
-    // Concentradora" — ver docs/business/tesoreria-cliente.md.
-    expect(find.text('\$0.00 MXN'), findsOneWidget);
+    // Concentradora" — ver docs/business/tesoreria-cliente.md. Aparece
+    // dos veces: el cuerpo de Tesorería y su propia fila en el Estado de
+    // cuenta para directivos.
+    expect(find.text('\$0.00 MXN'), findsNWidgets(2));
     expect(find.text('Sin Cuenta Concentradora'), findsNothing);
 
     // Bug real: el breadcrumb solo cambiaba el título mostrado, nunca el
@@ -1537,7 +1550,9 @@ void main() {
     // seguir pegado en el de la filial nueva.
     await tester.tap(find.byKey(const Key('breadcrumb-2'))); // Clientes > Grupo Koons Holding > [Koons Subsidiaria A]
     await tester.pumpAndSettle();
-    expect(find.text('\$10,000.00 MXN'), findsOneWidget);
+    // Tesorería body + su propia fila en el Estado de cuenta (la filial
+    // recién creada aparece como una fila aparte, en $0.00).
+    expect(find.text('\$10,000.00 MXN'), findsNWidgets(2));
   });
 
   testWidgets('Configuración lets Super Admin edit the max-active-cards limit and an approval rule', (tester) async {
@@ -1572,8 +1587,11 @@ void main() {
     expect(find.descendant(of: dispersionRow, matching: find.text('Requiere aprobación para cualquier monto')), findsOneWidget);
 
     // Deducción arranca sin regla (fail-safe) — configurarla y luego
-    // quitarla debe devolverla a "sin regla".
-    expect(find.text('Sin regla — requiere aprobación (default de seguridad)'), findsOneWidget);
+    // quitarla debe devolverla a "sin regla". Pago SPEI tampoco tiene
+    // regla configurada en el seed, así que el mismo texto aparece dos
+    // veces (ver docs/adr/0021-conector-spei.md — mismo mecanismo de
+    // approval_rules, sin regla propia todavía).
+    expect(find.text('Sin regla — requiere aprobación (default de seguridad)'), findsNWidgets(2));
     final deduccionRow = find.ancestor(of: find.text('Deducción'), matching: find.byType(ListTile));
     await tester.tap(find.descendant(of: deduccionRow, matching: find.widgetWithText(TextButton, 'Editar')));
     await tester.pumpAndSettle();
@@ -1586,7 +1604,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(TextButton, 'Quitar regla'));
     await tester.pumpAndSettle();
-    expect(find.text('Sin regla — requiere aprobación (default de seguridad)'), findsOneWidget);
+    // De vuelta a dos: Deducción (recién quitada) + Pago SPEI (nunca tuvo
+    // una).
+    expect(find.text('Sin regla — requiere aprobación (default de seguridad)'), findsNWidgets(2));
   });
 
   testWidgets('Operador never sees the Configuración tab', (tester) async {
@@ -1762,9 +1782,10 @@ void main() {
 
     expect(find.text('Cambios guardados.'), findsOneWidget);
     // El nombre comercial capturado ahora es el nombre mostrado en el
-    // encabezado del detalle y en el breadcrumb (mismo criterio que al
-    // crear un Cliente).
-    expect(find.text('Koons Holding'), findsNWidgets(2));
+    // encabezado del detalle, en el breadcrumb, y en su propia fila del
+    // Estado de cuenta para directivos (mismo criterio que al crear un
+    // Cliente).
+    expect(find.text('Koons Holding'), findsNWidgets(3));
 
     // La corrección también se refleja en el árbol.
     await tester.tap(find.byKey(const Key('breadcrumb-0')));
@@ -2098,7 +2119,8 @@ void main() {
     // pendiente (ver DepositTile) — sigue ahí, no se reemplazó por el
     // chip "Conciliado".
     expect(find.widgetWithText(OutlinedButton, 'Conciliar'), findsOneWidget);
-    expect(find.text('\$10,000.00 MXN'), findsNWidgets(2)); // sin cambios
+    // Header chip + Tesorería body + Estado de cuenta row, sin cambios.
+    expect(find.text('\$10,000.00 MXN'), findsNWidgets(3));
   });
 
   testWidgets('cancelling the block confirmation leaves the card active', (tester) async {

@@ -2,8 +2,7 @@ package card
 
 import "time"
 
-// Status mirrors admin/lib/core/models/card_status.dart, minus
-// "cancelled" (feature futura, este backend no la necesita todavía). See
+// Status mirrors admin/lib/core/models/card_status.dart. See
 // docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md.
 //
 // StatusFrozen es el autocongelamiento del propio Tarjetahabiente — ver
@@ -11,6 +10,10 @@ import "time"
 // una tarjeta". Distinto de StatusBlocked (solo staff): un bloqueo de
 // staff siempre pesa más y el Tarjetahabiente nunca puede revertirlo,
 // pero él (o el staff) sí puede revertir su propio congelamiento.
+//
+// StatusCancelled, desde docs/adr/0020-cuenta-individual-tarjetahabiente.md:
+// a diferencia de Blocked/Frozen, nunca es reversible — ver
+// docs/business/tarjetas-y-asignacion.md, "Reemplazo de tarjeta".
 type Status string
 
 const (
@@ -18,6 +21,7 @@ const (
 	StatusActive     Status = "active"
 	StatusBlocked    Status = "blocked"
 	StatusFrozen     Status = "frozen"
+	StatusCancelled  Status = "cancelled"
 )
 
 // BlockedReason distingue un bloqueo manual del staff de un congelamiento
@@ -29,6 +33,16 @@ type BlockedReason string
 const (
 	BlockedReasonManual             BlockedReason = "manual"
 	BlockedReasonCardholderInactive BlockedReason = "cardholder_inactive"
+)
+
+// CancelledReason — solo tiene sentido cuando Status == StatusCancelled,
+// mismo espíritu que BlockedReason. Ver "Reemplazo de tarjeta" arriba.
+type CancelledReason string
+
+const (
+	CancelledReasonExpired CancelledReason = "expirada"
+	CancelledReasonStolen  CancelledReason = "robada"
+	CancelledReasonLost    CancelledReason = "extraviada"
 )
 
 type Network string
@@ -43,16 +57,21 @@ const (
 // esos viven solo dentro del adaptador que resuelve transferencias C2C.
 // Ver docs/adr/0009-pan-hash-transit-for-c2c-transfers.md.
 type Card struct {
-	ID            string
-	ClientID      string
-	CardholderID  *string
-	MaskedPAN     string
-	Network       Network
-	ExpiryMonth   int
-	ExpiryYear    int
-	Status        Status
-	BlockedReason *BlockedReason
-	AssignedAt    *time.Time
+	ID           string
+	ClientID     string
+	CardholderID *string
+	// AccountID — la Cuenta Individual dueña del saldo detrás de esta
+	// tarjeta (nil solo si la tarjeta sigue `unassigned`). Ver
+	// docs/adr/0020-cuenta-individual-tarjetahabiente.md.
+	AccountID       *string
+	MaskedPAN       string
+	Network         Network
+	ExpiryMonth     int
+	ExpiryYear      int
+	Status          Status
+	BlockedReason   *BlockedReason
+	CancelledReason *CancelledReason
+	AssignedAt      *time.Time
 }
 
 func (c Card) IsAvailable() bool {

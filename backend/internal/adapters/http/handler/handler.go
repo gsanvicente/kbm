@@ -20,6 +20,7 @@ import (
 	"github.com/koons/kbm/backend/internal/adapters/http/dto"
 	authmw "github.com/koons/kbm/backend/internal/adapters/http/middleware"
 	"github.com/koons/kbm/backend/internal/application/ports"
+	"github.com/koons/kbm/backend/internal/domain/card"
 	"github.com/koons/kbm/backend/internal/domain/ledger"
 	"github.com/koons/kbm/backend/internal/domain/shared"
 )
@@ -42,6 +43,12 @@ type Handler struct {
 	BalanceOps      ports.BalanceOperationRepository
 	Cardholders     ports.CardholderManagementRepository
 	StaffManagement ports.StaffManagementRepository
+	SPEI            ports.SPEIRepository
+
+	// SPEIWebhookSecret — ver internal/platform/config.Config, mismo
+	// campo. Vacío deshabilita la ruta del webhook por completo (ver
+	// Routes) en vez de aceptarlo sin autenticar.
+	SPEIWebhookSecret string
 }
 
 func New(cards ports.CardRepository, ledgerRepo ports.LedgerRepository, auth ports.CardholderAuthRepository, transfers ports.TransferService, tokens *local.TokenIssuer) *Handler {
@@ -62,6 +69,13 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/v1/cardholder-activation", h.activate)
 	if h.StaffAuth != nil {
 		r.Post("/v1/staff-sessions", h.staffLogin)
+	}
+	// handleSPEIDepositWebhook — sin sesión JWT a propósito (lo llama un
+	// proveedor externo), ver docs/adr/0021-conector-spei.md y el propio
+	// handler. Nunca se registra sin secreto configurado — mejor sin ruta
+	// que con una ruta que acepta cualquier request sin autenticar.
+	if h.SPEI != nil && h.SPEIWebhookSecret != "" {
+		r.Post("/v1/spei/deposits", h.handleSPEIDepositWebhook)
 	}
 
 	r.Group(func(r chi.Router) {
@@ -105,6 +119,26 @@ func (h *Handler) Routes() chi.Router {
 			r.Post("/v1/ledger-entries/{entryID}/claim", h.fileClaim)
 		}
 
+		// SPEI — Cuenta CLABE/Beneficiarios/Pagos. Escritura 100%
+		// self-service del propio Tarjetahabiente (requireSelfCardholder,
+		// ver docs/adr/0021-conector-spei.md punto 5). Lectura: desde
+		// ADR-0022, el propio Tarjetahabiente O cualquier staff con
+		// alcance sobre él (requireSelfOrStaff) — ver
+		// docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md,
+		// punto 1. El listado de pendientes y la aprobación/rechazo de
+		// staff, y los reportes cross-cliente, quedan más abajo, dentro de
+		// RequireStaff/manageRoles.
+		if h.SPEI != nil {
+			r.Get("/v1/cardholders/{cardholderID}/clabe", h.getCLABE)
+			r.Post("/v1/cardholders/{cardholderID}/clabe", h.ensureCLABE)
+			r.Get("/v1/cardholders/{cardholderID}/account/ledger", h.getAccountLedger)
+			r.Get("/v1/cardholders/{cardholderID}/beneficiaries", h.listBeneficiaries)
+			r.Post("/v1/cardholders/{cardholderID}/beneficiaries", h.registerBeneficiary)
+			r.Get("/v1/cardholders/{cardholderID}/spei-payments", h.listSPEIPayments)
+			r.Post("/v1/cardholders/{cardholderID}/spei-payments", h.createSPEIPayment)
+			r.Get("/v1/cardholders/{cardholderID}/spei-deposits", h.listSPEIDeposits)
+		}
+
 		r.Group(func(r chi.Router) {
 			r.Use(authmw.RequireStaff)
 
@@ -129,6 +163,7 @@ func (h *Handler) Routes() chi.Router {
 				r.Get("/v1/clients/{clientID}/treasury/concentrator", h.getConcentratorAccount)
 				r.Get("/v1/concentrator-accounts/{accountID}/entries", h.listConcentratorEntries)
 				r.Get("/v1/clients/{clientID}/treasury/collector-deposits", h.listCollectorDeposits)
+				r.Get("/v1/clients/{clientID}/treasury/statement", h.getTreasuryStatement)
 			}
 			if h.Cardholders != nil {
 				r.Get("/v1/cardholders", h.listCardholders)
@@ -140,11 +175,22 @@ func (h *Handler) Routes() chi.Router {
 			if h.StaffManagement != nil {
 				r.Get("/v1/clients/{clientID}/staff-users", h.listStaffUsers)
 			}
+			if h.SPEI != nil {
+				r.Get("/v1/spei-payments/pending", h.listPendingSPEIPayments)
+				// Reportes de staff — ver
+				// docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md
+				// y docs/feature/reportes-admin/README.md. Cualquier rol de
+				// staff en su alcance, incluido Auditor (solo lectura).
+				r.Get("/v1/spei-payments", h.listAllSPEIPayments)
+				r.Get("/v1/spei-deposits", h.listAllSPEIDeposits)
+				r.Get("/v1/spei-beneficiaries", h.listSPEIBeneficiaries)
+			}
 
 			// manageRoles — Super Admin/Admin Cliente, ver authz.go.
 			r.Group(func(r chi.Router) {
 				r.Use(authmw.RequireRole(manageRoles...))
 				r.Post("/v1/cards/{cardID}/assign", h.assignCard)
+				r.Post("/v1/cards/{cardID}/replace", h.replaceCard)
 				r.Post("/v1/cardholders/{cardholderID}/freeze-cards", h.freezeCards)
 
 				if h.Clients != nil {
@@ -179,6 +225,14 @@ func (h *Handler) Routes() chi.Router {
 					r.Put("/v1/staff-users/{userID}", h.updateStaffUser)
 					r.Post("/v1/staff-users/{userID}/active-status", h.setStaffUserActive)
 					r.Post("/v1/staff-users/{userID}/reset-password", h.resetStaffUserPassword)
+				}
+				if h.SPEI != nil {
+					r.Post("/v1/spei-payments/{paymentID}/approve", h.approveSPEIPayment)
+					r.Post("/v1/spei-payments/{paymentID}/reject", h.rejectSPEIPayment)
+					// Revelar CLABE completa — solo manageRoles, ver
+					// docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md,
+					// punto 2.
+					r.Post("/v1/spei-beneficiaries/{beneficiaryID}/reveal", h.revealBeneficiaryCLABE)
 				}
 			})
 
@@ -332,6 +386,28 @@ func (h *Handler) assignCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, err := h.Cards.Assign(r.Context(), chi.URLParam(r, "cardID"), req.CardholderID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dto.FromCard(c))
+}
+
+// replaceCard — ver docs/adr/0020-cuenta-individual-tarjetahabiente.md,
+// "Reemplazo de tarjeta". Staff-only (manageRoles, ver handler.go).
+func (h *Handler) replaceCard(w http.ResponseWriter, r *http.Request) {
+	var req dto.ReplaceCardRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	reason := card.CancelledReason(req.Reason)
+	switch reason {
+	case card.CancelledReasonExpired, card.CancelledReasonStolen, card.CancelledReasonLost:
+	default:
+		writeError(w, shared.ErrValidation)
+		return
+	}
+	c, err := h.Cards.ReplaceCard(r.Context(), chi.URLParam(r, "cardID"), req.NewCardID, reason)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -519,7 +595,10 @@ func writeError(w http.ResponseWriter, err error) {
 		// Ver docs/security/threat-model.md punto 16.
 		writeErrorMessage(w, http.StatusUnauthorized, "No pudimos verificar tus datos. Contacta a tu administrador.")
 	case errors.Is(err, shared.ErrTooManyFailedAttempts):
-		writeErrorMessage(w, http.StatusTooManyRequests, "Demasiados intentos fallidos. Vuelve a iniciar sesión para intentar una transferencia de nuevo.")
+		// Mensaje genérico a propósito — este mismo error cubre tanto la
+		// resolución de destino C2C como, desde ADR-0021, el registro de
+		// un Beneficiario de Pago SPEI.
+		writeErrorMessage(w, http.StatusTooManyRequests, "Demasiados intentos fallidos. Vuelve a iniciar sesión para intentarlo de nuevo.")
 	case errors.Is(err, shared.ErrInsufficientFunds):
 		writeErrorMessage(w, http.StatusPaymentRequired, "Fondos insuficientes.")
 	case errors.Is(err, shared.ErrCardLimitExceeded):

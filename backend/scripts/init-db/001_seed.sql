@@ -52,6 +52,16 @@ INSERT INTO cardholder_users (id, cardholder_id, email, password_hash) VALUES
     ('30000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'maria.gomez@cardholder.test', crypt('LocalDevOnly123!', gen_salt('bf'))),
     ('30000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000004', 'carlos.ruiz@cardholder.test', crypt('LocalDevOnly123!', gen_salt('bf')));
 
+-- Cuenta Individual — una por Tarjetahabiente, nace con él (ver
+-- docs/adr/0020-cuenta-individual-tarjetahabiente.md), independiente de
+-- si ya tiene tarjeta o no. Sin CLABE todavía (sin proveedor SPEI real,
+-- ver docs/adr/0021-conector-spei.md).
+INSERT INTO individual_accounts (id, client_id, cardholder_id) VALUES
+    ('70000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001'),
+    ('70000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002'),
+    ('70000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000003'),
+    ('70000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000004');
+
 -- pan_hash values below are the HMAC-SHA256 (pgcrypto's hmac(), same
 -- algorithm as internal/adapters/memory/repository/transfer.go's
 -- hashPAN()) of a synthetic full PAN that's never itself stored — see
@@ -65,11 +75,11 @@ INSERT INTO cardholder_users (id, cardholder_id, email, password_hash) VALUES
 -- exercise the pool/assignment empty-state UI, but keeping her card-less
 -- would make the Postgres-backed demo diverge from the in-memory one now
 -- that Postgres is the default, see ADR-0011).
-INSERT INTO cards (id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, assigned_at, pan_hash, blocked_reason) VALUES
-    ('40000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', '**** **** **** 1234', 'visa', 8, 2027, 'active', now(), encode(hmac('4111111111111234', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), NULL),
-    ('40000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002', '**** **** **** 5678', 'mastercard', 3, 2026, 'active', now(), encode(hmac('5500000000005678', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), NULL),
-    ('40000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000004', '**** **** **** 7890', 'visa', 11, 2026, 'blocked', now(), encode(hmac('4111111111117890', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), 'manual'),
-    ('40000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000003', '**** **** **** 5566', 'mastercard', 2, 2028, 'active', '2026-01-22 09:00:00-06', encode(hmac('5500000000005566', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), NULL);
+INSERT INTO cards (id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, assigned_at, pan_hash, blocked_reason) VALUES
+    ('40000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000001', '**** **** **** 1234', 'visa', 8, 2027, 'active', now(), encode(hmac('4111111111111234', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), NULL),
+    ('40000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002', '70000000-0000-0000-0000-000000000002', '**** **** **** 5678', 'mastercard', 3, 2026, 'active', now(), encode(hmac('5500000000005678', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), NULL),
+    ('40000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000004', '70000000-0000-0000-0000-000000000004', '**** **** **** 7890', 'visa', 11, 2026, 'blocked', now(), encode(hmac('4111111111117890', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), 'manual'),
+    ('40000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000003', '70000000-0000-0000-0000-000000000003', '**** **** **** 5566', 'mastercard', 2, 2028, 'active', '2026-01-22 09:00:00-06', encode(hmac('5500000000005566', 'kbm-backend-fake-pan-hmac-key-dev-only', 'sha256'), 'hex'), NULL);
 
 -- Available pool: belongs to a Cliente already, not yet assigned to anyone.
 INSERT INTO cards (id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, assigned_at) VALUES
@@ -78,11 +88,11 @@ INSERT INTO cards (id, client_id, cardholder_id, masked_pan, network, expiry_mon
     ('40000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000003', NULL, '**** **** **** 3001', 'visa', 1, 2029, 'unassigned', NULL),
     ('40000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000003', NULL, '**** **** **** 3002', 'mastercard', 7, 2027, 'unassigned', NULL);
 
-INSERT INTO ledger_accounts (id, client_id, card_id, currency) VALUES
-    ('50000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000001', 'MXN'),
-    ('50000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000002', 'MXN'),
-    ('50000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000010', 'MXN'),
-    ('50000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000004', 'MXN');
+INSERT INTO ledger_accounts (id, client_id, account_id, currency) VALUES
+    ('50000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '70000000-0000-0000-0000-000000000001', 'MXN'),
+    ('50000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', '70000000-0000-0000-0000-000000000002', 'MXN'),
+    ('50000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', '70000000-0000-0000-0000-000000000003', 'MXN'),
+    ('50000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000003', '70000000-0000-0000-0000-000000000004', 'MXN');
 
 -- Movement history so the balance shown in the UI has real traceability
 -- from day one (docs/business/saldo-y-ledger.md) — never a bare number

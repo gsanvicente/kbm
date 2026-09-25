@@ -11,10 +11,14 @@ import '../../core/models/concentrator_entry.dart';
 import '../../core/models/ledger_entry_type.dart';
 import '../../core/models/operation_type.dart';
 import '../../core/models/session.dart';
+import '../../core/models/treasury_statement.dart';
 import '../../core/utils/currency_format.dart';
 import '../../core/utils/date_format.dart';
 import '../../shared_widgets/confirm_dialog.dart';
+import '../../shared_widgets/pdf_download.dart';
+import '../../shared_widgets/pdf_statement.dart';
 import '../../shared_widgets/currency_field.dart';
+import '../../shared_widgets/period_filter.dart';
 import '../balance_operations/balance_operation_repository.dart';
 import '../cardholders/cardholder_list_view.dart';
 import '../cardholders/cardholder_repository.dart';
@@ -232,6 +236,7 @@ class _ClientDetailViewState extends State<ClientDetailView> with SingleTickerPr
                 client: widget.client,
                 session: widget.session,
                 treasuryRepository: widget.treasuryRepository,
+                clientRepository: widget.clientRepository,
               ),
               CardholderListView(
                 repository: widget.cardholderRepository,
@@ -267,11 +272,17 @@ class _TreasuryData {
 }
 
 class _TreasuryTab extends StatefulWidget {
-  const _TreasuryTab({required this.client, required this.session, required this.treasuryRepository});
+  const _TreasuryTab({
+    required this.client,
+    required this.session,
+    required this.treasuryRepository,
+    required this.clientRepository,
+  });
 
   final Client client;
   final Session session;
   final TreasuryRepository treasuryRepository;
+  final ClientRepository clientRepository;
 
   @override
   State<_TreasuryTab> createState() => _TreasuryTabState();
@@ -279,6 +290,14 @@ class _TreasuryTab extends StatefulWidget {
 
 class _TreasuryTabState extends State<_TreasuryTab> {
   late Future<_TreasuryData> _future;
+
+  /// Fuerza a `_ExecutiveStatementSection` a remontarse y volver a pedir
+  /// sus datos tras registrar/conciliar un depósito o postear un
+  /// movimiento — igual que `_cardsListGeneration` en
+  /// `CardholderDetailView`. Sin esto, su Future ya resuelto (cacheado en
+  /// su propio State) se queda con el saldo/entries de antes de la
+  /// conciliación, porque este widget nunca se desmonta entre rebuilds.
+  int _statementGeneration = 0;
 
   @override
   void initState() {
@@ -297,6 +316,7 @@ class _TreasuryTabState extends State<_TreasuryTab> {
   void _reload() {
     setState(() {
       _future = _load();
+      _statementGeneration++;
     });
   }
 
@@ -389,6 +409,16 @@ class _TreasuryTabState extends State<_TreasuryTab> {
                 ),
               ),
               const SizedBox(height: 28),
+              if (widget.session.role.canViewExecutiveDashboard) ...[
+                _ExecutiveStatementSection(
+                  key: ValueKey(_statementGeneration),
+                  rootClient: widget.client,
+                  session: widget.session,
+                  clientRepository: widget.clientRepository,
+                  treasuryRepository: widget.treasuryRepository,
+                ),
+                const SizedBox(height: 32),
+              ],
               Text('Movimientos de la Concentradora', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
               if (data.entries.isEmpty)
@@ -457,6 +487,271 @@ class _TreasuryTabState extends State<_TreasuryTab> {
           ),
         );
       },
+    );
+  }
+}
+
+/// El "Estado de cuenta para directivos" (ADR-0022, punto 5) — resumen de
+/// flujo por Cliente/filial (widget.rootClient + sus descendientes dentro
+/// del alcance de la sesión), con detalle expandible y descarga CSV.
+/// `canViewExecutiveDashboard` ya la gatea en `_TreasuryTabState`. El
+/// filtro de periodo (`PeriodFilter`) es compartido con los reportes de
+/// staff — ver `shared_widgets/period_filter.dart`.
+class _ClientStatement {
+  _ClientStatement(this.client, this.statement);
+  final Client client;
+  final TreasuryStatement? statement;
+}
+
+class _ExecutiveStatementSection extends StatefulWidget {
+  const _ExecutiveStatementSection({
+    super.key,
+    required this.rootClient,
+    required this.session,
+    required this.clientRepository,
+    required this.treasuryRepository,
+  });
+
+  final Client rootClient;
+  final Session session;
+  final ClientRepository clientRepository;
+  final TreasuryRepository treasuryRepository;
+
+  @override
+  State<_ExecutiveStatementSection> createState() => _ExecutiveStatementSectionState();
+}
+
+class _ExecutiveStatementSectionState extends State<_ExecutiveStatementSection> {
+  late Future<List<_ClientStatement>> _future;
+  PeriodFilter _period = PeriodFilter.thisMonth;
+  final Set<String> _expandedClientIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<_ClientStatement>> _load() async {
+    final accessible = await widget.clientRepository.listAccessibleClients(widget.session);
+    final scoped = _selfAndDescendants(widget.rootClient, accessible);
+    final statements = await Future.wait(scoped.map((c) => widget.treasuryRepository.getStatement(c.id)));
+    return [for (var i = 0; i < scoped.length; i++) _ClientStatement(scoped[i], statements[i])];
+  }
+
+  /// [root] siempre va primero, aunque no aparezca en [all] (puede ser
+  /// una empresa fuera del alcance de sesión si un Super Admin navegó
+  /// hasta aquí desde otra pantalla) — luego cada descendiente, vía
+  /// `parentClientId`, sin duplicar [root].
+  List<Client> _selfAndDescendants(Client root, List<Client> all) {
+    final result = <Client>[root];
+    final queue = <String>[root.id];
+    while (queue.isNotEmpty) {
+      final parentId = queue.removeAt(0);
+      for (final c in all) {
+        if (c.parentClientId == parentId && c.id != root.id && !result.any((r) => r.id == c.id)) {
+          result.add(c);
+          queue.add(c.id);
+        }
+      }
+    }
+    return result;
+  }
+
+  List<ConcentratorEntry> _entriesInPeriod(TreasuryStatement statement) {
+    final start = _period.startDate(DateTime.now());
+    if (start == null) return statement.entries;
+    return statement.entries.where((e) => !e.createdAt.isBefore(start)).toList();
+  }
+
+  Future<void> _download(Client client, TreasuryStatement statement, List<ConcentratorEntry> entries) async {
+    final bytes = await buildStatementPdf(
+      accountTitle: 'Cuenta Concentradora',
+      infoFields: [
+        MapEntry('Cliente', client.name),
+        MapEntry('Generado por', widget.session.email),
+      ],
+      balance: statement.concentratorBalance,
+      currency: statement.currency,
+      periodLabel: _period.label,
+      rows: [
+        for (final e in entries)
+          PdfStatementRow(
+            date: formatDateTime(e.createdAt),
+            isCredit: e.type == LedgerEntryType.credit,
+            description: e.description ?? '',
+            amount: e.amount,
+            balanceAfter: e.balanceAfter,
+          ),
+      ],
+    );
+    if (!mounted) return;
+    try {
+      downloadPdf(
+        'estado-de-cuenta-${client.id}-${DateTime.now().toIso8601String().split('T').first}.pdf',
+        bytes,
+      );
+    } on UnsupportedError catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.message ?? 'No se pudo descargar.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<_ClientStatement>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError) {
+          return const SizedBox.shrink();
+        }
+        final rows = snapshot.data!;
+        return Card(
+          margin: EdgeInsets.zero,
+          color: KoonsColors.blue.withValues(alpha: 0.04),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text('Estado de cuenta', style: Theme.of(context).textTheme.titleMedium),
+                    const Spacer(),
+                    PeriodDropdown(value: _period, onChanged: (value) => setState(() => _period = value)),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Resumen de flujo del periodo — no reemplaza el saldo puntual de arriba.',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                for (final row in rows)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _ClientStatementRow(
+                      row: row,
+                      expanded: _expandedClientIds.contains(row.client.id),
+                      onToggle: () => setState(() {
+                        if (!_expandedClientIds.add(row.client.id)) {
+                          _expandedClientIds.remove(row.client.id);
+                        }
+                      }),
+                      entriesInPeriod: row.statement == null ? const [] : _entriesInPeriod(row.statement!),
+                      onDownload: row.statement == null
+                          ? null
+                          : () => _download(row.client, row.statement!, _entriesInPeriod(row.statement!)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ClientStatementRow extends StatelessWidget {
+  const _ClientStatementRow({
+    required this.row,
+    required this.expanded,
+    required this.onToggle,
+    required this.entriesInPeriod,
+    required this.onDownload,
+  });
+
+  final _ClientStatement row;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final List<ConcentratorEntry> entriesInPeriod;
+  final VoidCallback? onDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    final statement = row.statement;
+    if (statement == null) {
+      return Card(
+        margin: EdgeInsets.zero,
+        elevation: 0,
+        color: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade200)),
+        child: ListTile(
+          dense: true,
+          title: Text(row.client.name),
+          subtitle: const Text('Sin Cuenta Concentradora', style: TextStyle(fontSize: 12)),
+        ),
+      );
+    }
+
+    final totalDispersado = entriesInPeriod
+        .where((e) => e.type == LedgerEntryType.debit)
+        .fold<double>(0, (sum, e) => sum + e.amount);
+    final totalConciliado = entriesInPeriod
+        .where((e) => e.type == LedgerEntryType.credit && (e.description?.startsWith('Conciliación') ?? false))
+        .fold<double>(0, (sum, e) => sum + e.amount);
+
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade200)),
+      child: Column(
+        children: [
+          ListTile(
+            onTap: onToggle,
+            title: Text(row.client.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              'Dispersado: ${formatCurrency(totalDispersado, statement.currency)}   ·   '
+              'Conciliado: ${formatCurrency(totalConciliado, statement.currency)}',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  formatCurrency(statement.concentratorBalance, statement.currency),
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: KoonsColors.navy),
+                ),
+                const SizedBox(width: 4),
+                Icon(expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: Colors.grey.shade500),
+              ],
+            ),
+          ),
+          if (expanded) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Row(
+                children: [
+                  Text('Detalle del periodo', style: Theme.of(context).textTheme.labelLarge),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: onDownload,
+                    icon: const Icon(Icons.download_rounded, size: 16),
+                    label: const Text('Descargar'),
+                  ),
+                ],
+              ),
+            ),
+            if (entriesInPeriod.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text('Sin movimientos en este periodo.', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+              )
+            else
+              for (final entry in entriesInPeriod) _ConcentratorEntryTile(entry: entry, currency: statement.currency),
+            const SizedBox(height: 4),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -698,7 +993,7 @@ class _ConfigurationTabState extends State<_ConfigurationTab> {
               Text('Reglas de aprobación', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
               Text(
-                'Cuándo una Dispersión, Deducción o Transferencia necesita aprobación de un Admin Cliente o Super Admin antes de ejecutarse. Un tipo sin regla configurada siempre requiere aprobación — ver docs/business/approval-policy.md.',
+                'Cuándo una Dispersión, Deducción, Transferencia o Pago SPEI necesita aprobación de un Admin Cliente o Super Admin antes de ejecutarse. Un tipo sin regla configurada siempre requiere aprobación — ver docs/business/approval-policy.md y docs/adr/0021-conector-spei.md.',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
               ),
               const SizedBox(height: 12),

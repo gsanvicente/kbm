@@ -180,6 +180,61 @@ func (s *Store) Assign(_ context.Context, cardID, cardholderID string) (card.Car
 	return c, nil
 }
 
+// ReplaceCard — ver internal/application/ports.CardRepository.ReplaceCard y
+// docs/adr/0020-cuenta-individual-tarjetahabiente.md. El modo demo nunca
+// tuvo una Cuenta Individual separada de la tarjeta (ledger.Account sigue
+// indexado por CardID, ver ledger.go) — aquí "mover la Cuenta" es
+// literalmente mover esa entrada de mapa de oldCardID a newCardID, para
+// que el saldo y el historial sobrevivan al reemplazo igual que en
+// Postgres.
+func (s *Store) ReplaceCard(_ context.Context, oldCardID, newCardID string, reason card.CancelledReason) (card.Card, error) {
+	s.cardsMu.Lock()
+	defer s.cardsMu.Unlock()
+
+	old, ok := s.cards[oldCardID]
+	if !ok || old.CardholderID == nil {
+		// Nunca fue asignada — no hay Cuenta a la que reasignar.
+		return card.Card{}, shared.ErrNotFound
+	}
+	newCard, ok := s.cards[newCardID]
+	if !ok {
+		return card.Card{}, shared.ErrNotFound
+	}
+	if !newCard.IsAvailable() || newCard.ClientID != old.ClientID {
+		return card.Card{}, shared.ErrCardNotAvailable
+	}
+
+	r := reason
+	old.Status = card.StatusCancelled
+	old.CancelledReason = &r
+	s.cards[oldCardID] = old
+
+	holderID := *old.CardholderID
+	now := time.Now()
+	newCard.CardholderID = &holderID
+	newCard.Status = card.StatusActive
+	newCard.BlockedReason = nil
+	newCard.AssignedAt = &now
+	s.cards[newCardID] = newCard
+
+	s.ledgerMu.Lock()
+	if acct, ok := s.accounts[oldCardID]; ok {
+		acct.CardID = newCardID
+		s.accounts[newCardID] = acct
+		delete(s.accounts, oldCardID)
+	}
+	if entries, ok := s.entries[oldCardID]; ok {
+		for i := range entries {
+			entries[i].CardID = newCardID
+		}
+		s.entries[newCardID] = entries
+		delete(s.entries, oldCardID)
+	}
+	s.ledgerMu.Unlock()
+
+	return newCard, nil
+}
+
 func (s *Store) SetBlocked(_ context.Context, cardID string, blocked bool) (card.Card, error) {
 	s.cardsMu.Lock()
 	defer s.cardsMu.Unlock()

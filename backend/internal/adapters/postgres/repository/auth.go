@@ -63,15 +63,37 @@ func (s *Store) Login(ctx context.Context, email, password string) (cardholder.C
 			return nil
 		}
 
+		// Capa 1 de docs/business/desactivacion-de-clientes.md, extendida al
+		// Tarjetahabiente (ver "Autoservicio del Tarjetahabiente" en ese
+		// mismo doc): un Cliente inactivo (o alguno de sus ancestros) bloquea
+		// el login aunque el propio Tarjetahabiente siga is_active — mismo
+		// criterio exacto que staff_auth.go's Login. Antes de ADR-0021 esto
+		// no importaba tanto (la Transferencia C2C nunca saca dinero del
+		// ecosistema); con pagos SPEI reales saliendo hacia un banco externo,
+		// dejar esto sin verificar era un hueco real.
+		operable, err := s.IsOperable(ctx, row.ClientID)
+		if err != nil {
+			return err
+		}
+		if !operable {
+			if auditErr := logAudit(ctx, q, auditActorCardholder, row.ID, "login_failed", "cardholder", row.ID, map[string]any{"reason": "client_inactive"}); auditErr != nil {
+				return auditErr
+			}
+			loginErr = shared.ErrInvalidCredentials
+			return nil
+		}
+
 		if err := logAudit(ctx, q, auditActorCardholder, row.ID, "login_success", "cardholder", row.ID, nil); err != nil {
 			return err
 		}
 
-		// El límite de intentos fallidos de transferencia es por sesión,
+		// El límite de intentos fallidos de transferencia (y, desde
+		// ADR-0021, de registro de un Beneficiario de Pago) es por sesión,
 		// nunca permanente — se reinicia en cada login exitoso, ver
 		// docs/security/threat-model.md punto 12.
 		s.attemptsMu.Lock()
 		delete(s.failedAttempts, row.ID)
+		delete(s.beneficiaryFailedAttempts, row.ID)
 		s.attemptsMu.Unlock()
 
 		result = mapper.ToCardholderFromLogin(row.ID, row.ClientID, row.FullName, email, row.IsActive)

@@ -14,42 +14,99 @@ import (
 
 const assignCardIfAvailable = `-- name: AssignCardIfAvailable :one
 UPDATE cards
-SET cardholder_id = $2, status = 'active', assigned_at = now(), blocked_reason = NULL, updated_at = now()
+SET cardholder_id = $2, account_id = $3, status = 'active', assigned_at = now(), blocked_reason = NULL, updated_at = now()
 WHERE id = $1 AND status = 'unassigned'
-RETURNING id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, assigned_at
+RETURNING id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, cancelled_reason, assigned_at
 `
 
 type AssignCardIfAvailableParams struct {
 	ID           string
 	CardholderID *string
+	AccountID    *string
 }
 
 type AssignCardIfAvailableRow struct {
-	ID            string
-	ClientID      string
-	CardholderID  *string
-	MaskedPan     string
-	Network       CardNetwork
-	ExpiryMonth   int16
-	ExpiryYear    int16
-	Status        CardStatus
-	BlockedReason NullCardBlockedReason
-	AssignedAt    *time.Time
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          CardStatus
+	BlockedReason   NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
 }
 
+// account_id ($3) — la Cuenta Individual del Tarjetahabiente destino, ver
+// docs/adr/0020-cuenta-individual-tarjetahabiente.md. Debe existir de
+// antemano (nace al dar de alta al Tarjetahabiente, no aquí).
 func (q *Queries) AssignCardIfAvailable(ctx context.Context, arg AssignCardIfAvailableParams) (AssignCardIfAvailableRow, error) {
-	row := q.db.QueryRow(ctx, assignCardIfAvailable, arg.ID, arg.CardholderID)
+	row := q.db.QueryRow(ctx, assignCardIfAvailable, arg.ID, arg.CardholderID, arg.AccountID)
 	var i AssignCardIfAvailableRow
 	err := row.Scan(
 		&i.ID,
 		&i.ClientID,
 		&i.CardholderID,
+		&i.AccountID,
 		&i.MaskedPan,
 		&i.Network,
 		&i.ExpiryMonth,
 		&i.ExpiryYear,
 		&i.Status,
 		&i.BlockedReason,
+		&i.CancelledReason,
+		&i.AssignedAt,
+	)
+	return i, err
+}
+
+const cancelCard = `-- name: CancelCard :one
+UPDATE cards
+SET status = 'cancelled', cancelled_reason = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, cancelled_reason, assigned_at
+`
+
+type CancelCardParams struct {
+	ID              string
+	CancelledReason *string
+}
+
+type CancelCardRow struct {
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          CardStatus
+	BlockedReason   NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
+}
+
+// Terminal, nunca reversible — ver
+// docs/business/tarjetas-y-asignacion.md, "Reemplazo de tarjeta".
+func (q *Queries) CancelCard(ctx context.Context, arg CancelCardParams) (CancelCardRow, error) {
+	row := q.db.QueryRow(ctx, cancelCard, arg.ID, arg.CancelledReason)
+	var i CancelCardRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.CardholderID,
+		&i.AccountID,
+		&i.MaskedPan,
+		&i.Network,
+		&i.ExpiryMonth,
+		&i.ExpiryYear,
+		&i.Status,
+		&i.BlockedReason,
+		&i.CancelledReason,
 		&i.AssignedAt,
 	)
 	return i, err
@@ -78,7 +135,7 @@ func (q *Queries) FreezeAllUnblockedCardsForCardholder(ctx context.Context, card
 }
 
 const getCardByClientAndPANHash = `-- name: GetCardByClientAndPANHash :one
-SELECT id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, assigned_at
+SELECT id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, cancelled_reason, assigned_at
 FROM cards
 WHERE client_id = $1 AND pan_hash = $2 AND cardholder_id IS DISTINCT FROM $3
 LIMIT 1
@@ -91,16 +148,18 @@ type GetCardByClientAndPANHashParams struct {
 }
 
 type GetCardByClientAndPANHashRow struct {
-	ID            string
-	ClientID      string
-	CardholderID  *string
-	MaskedPan     string
-	Network       CardNetwork
-	ExpiryMonth   int16
-	ExpiryYear    int16
-	Status        CardStatus
-	BlockedReason NullCardBlockedReason
-	AssignedAt    *time.Time
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          CardStatus
+	BlockedReason   NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
 }
 
 func (q *Queries) GetCardByClientAndPANHash(ctx context.Context, arg GetCardByClientAndPANHashParams) (GetCardByClientAndPANHashRow, error) {
@@ -110,34 +169,38 @@ func (q *Queries) GetCardByClientAndPANHash(ctx context.Context, arg GetCardByCl
 		&i.ID,
 		&i.ClientID,
 		&i.CardholderID,
+		&i.AccountID,
 		&i.MaskedPan,
 		&i.Network,
 		&i.ExpiryMonth,
 		&i.ExpiryYear,
 		&i.Status,
 		&i.BlockedReason,
+		&i.CancelledReason,
 		&i.AssignedAt,
 	)
 	return i, err
 }
 
 const getCardByID = `-- name: GetCardByID :one
-SELECT id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, assigned_at
+SELECT id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, cancelled_reason, assigned_at
 FROM cards
 WHERE id = $1
 `
 
 type GetCardByIDRow struct {
-	ID            string
-	ClientID      string
-	CardholderID  *string
-	MaskedPan     string
-	Network       CardNetwork
-	ExpiryMonth   int16
-	ExpiryYear    int16
-	Status        CardStatus
-	BlockedReason NullCardBlockedReason
-	AssignedAt    *time.Time
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          CardStatus
+	BlockedReason   NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
 }
 
 func (q *Queries) GetCardByID(ctx context.Context, id string) (GetCardByIDRow, error) {
@@ -147,12 +210,14 @@ func (q *Queries) GetCardByID(ctx context.Context, id string) (GetCardByIDRow, e
 		&i.ID,
 		&i.ClientID,
 		&i.CardholderID,
+		&i.AccountID,
 		&i.MaskedPan,
 		&i.Network,
 		&i.ExpiryMonth,
 		&i.ExpiryYear,
 		&i.Status,
 		&i.BlockedReason,
+		&i.CancelledReason,
 		&i.AssignedAt,
 	)
 	return i, err
@@ -169,24 +234,81 @@ func (q *Queries) GetClientMaxActiveCards(ctx context.Context, clientID string) 
 	return max_active_cards_per_cardholder, err
 }
 
+const listAvailableCardsByClient = `-- name: ListAvailableCardsByClient :many
+SELECT id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, cancelled_reason, assigned_at
+FROM cards
+WHERE client_id = $1 AND status = 'unassigned'
+ORDER BY id
+`
+
+type ListAvailableCardsByClientRow struct {
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          CardStatus
+	BlockedReason   NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
+}
+
+func (q *Queries) ListAvailableCardsByClient(ctx context.Context, clientID string) ([]ListAvailableCardsByClientRow, error) {
+	rows, err := q.db.Query(ctx, listAvailableCardsByClient, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAvailableCardsByClientRow
+	for rows.Next() {
+		var i ListAvailableCardsByClientRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClientID,
+			&i.CardholderID,
+			&i.AccountID,
+			&i.MaskedPan,
+			&i.Network,
+			&i.ExpiryMonth,
+			&i.ExpiryYear,
+			&i.Status,
+			&i.BlockedReason,
+			&i.CancelledReason,
+			&i.AssignedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCardsByCardholder = `-- name: ListCardsByCardholder :many
-SELECT id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, assigned_at
+SELECT id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, cancelled_reason, assigned_at
 FROM cards
 WHERE cardholder_id = $1
 ORDER BY id
 `
 
 type ListCardsByCardholderRow struct {
-	ID            string
-	ClientID      string
-	CardholderID  *string
-	MaskedPan     string
-	Network       CardNetwork
-	ExpiryMonth   int16
-	ExpiryYear    int16
-	Status        CardStatus
-	BlockedReason NullCardBlockedReason
-	AssignedAt    *time.Time
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          CardStatus
+	BlockedReason   NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
 }
 
 func (q *Queries) ListCardsByCardholder(ctx context.Context, cardholderID *string) ([]ListCardsByCardholderRow, error) {
@@ -202,12 +324,14 @@ func (q *Queries) ListCardsByCardholder(ctx context.Context, cardholderID *strin
 			&i.ID,
 			&i.ClientID,
 			&i.CardholderID,
+			&i.AccountID,
 			&i.MaskedPan,
 			&i.Network,
 			&i.ExpiryMonth,
 			&i.ExpiryYear,
 			&i.Status,
 			&i.BlockedReason,
+			&i.CancelledReason,
 			&i.AssignedAt,
 		); err != nil {
 			return nil, err
@@ -221,23 +345,25 @@ func (q *Queries) ListCardsByCardholder(ctx context.Context, cardholderID *strin
 }
 
 const listCardsByClient = `-- name: ListCardsByClient :many
-SELECT id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, assigned_at
+SELECT id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, cancelled_reason, assigned_at
 FROM cards
 WHERE client_id = $1
 ORDER BY id
 `
 
 type ListCardsByClientRow struct {
-	ID            string
-	ClientID      string
-	CardholderID  *string
-	MaskedPan     string
-	Network       CardNetwork
-	ExpiryMonth   int16
-	ExpiryYear    int16
-	Status        CardStatus
-	BlockedReason NullCardBlockedReason
-	AssignedAt    *time.Time
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          CardStatus
+	BlockedReason   NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
 }
 
 func (q *Queries) ListCardsByClient(ctx context.Context, clientID string) ([]ListCardsByClientRow, error) {
@@ -253,12 +379,14 @@ func (q *Queries) ListCardsByClient(ctx context.Context, clientID string) ([]Lis
 			&i.ID,
 			&i.ClientID,
 			&i.CardholderID,
+			&i.AccountID,
 			&i.MaskedPan,
 			&i.Network,
 			&i.ExpiryMonth,
 			&i.ExpiryYear,
 			&i.Status,
 			&i.BlockedReason,
+			&i.CancelledReason,
 			&i.AssignedAt,
 		); err != nil {
 			return nil, err
@@ -275,20 +403,22 @@ const setCardBlocked = `-- name: SetCardBlocked :one
 UPDATE cards
 SET status = 'blocked', blocked_reason = 'manual', updated_at = now()
 WHERE id = $1
-RETURNING id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, assigned_at
+RETURNING id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, cancelled_reason, assigned_at
 `
 
 type SetCardBlockedRow struct {
-	ID            string
-	ClientID      string
-	CardholderID  *string
-	MaskedPan     string
-	Network       CardNetwork
-	ExpiryMonth   int16
-	ExpiryYear    int16
-	Status        CardStatus
-	BlockedReason NullCardBlockedReason
-	AssignedAt    *time.Time
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          CardStatus
+	BlockedReason   NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
 }
 
 func (q *Queries) SetCardBlocked(ctx context.Context, id string) (SetCardBlockedRow, error) {
@@ -298,12 +428,14 @@ func (q *Queries) SetCardBlocked(ctx context.Context, id string) (SetCardBlocked
 		&i.ID,
 		&i.ClientID,
 		&i.CardholderID,
+		&i.AccountID,
 		&i.MaskedPan,
 		&i.Network,
 		&i.ExpiryMonth,
 		&i.ExpiryYear,
 		&i.Status,
 		&i.BlockedReason,
+		&i.CancelledReason,
 		&i.AssignedAt,
 	)
 	return i, err
@@ -313,7 +445,7 @@ const setCardFrozenByOwner = `-- name: SetCardFrozenByOwner :one
 UPDATE cards
 SET status = 'frozen', updated_at = now()
 WHERE id = $1 AND cardholder_id = $2 AND status = 'active'
-RETURNING id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, assigned_at
+RETURNING id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, cancelled_reason, assigned_at
 `
 
 type SetCardFrozenByOwnerParams struct {
@@ -322,16 +454,18 @@ type SetCardFrozenByOwnerParams struct {
 }
 
 type SetCardFrozenByOwnerRow struct {
-	ID            string
-	ClientID      string
-	CardholderID  *string
-	MaskedPan     string
-	Network       CardNetwork
-	ExpiryMonth   int16
-	ExpiryYear    int16
-	Status        CardStatus
-	BlockedReason NullCardBlockedReason
-	AssignedAt    *time.Time
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          CardStatus
+	BlockedReason   NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
 }
 
 func (q *Queries) SetCardFrozenByOwner(ctx context.Context, arg SetCardFrozenByOwnerParams) (SetCardFrozenByOwnerRow, error) {
@@ -341,12 +475,14 @@ func (q *Queries) SetCardFrozenByOwner(ctx context.Context, arg SetCardFrozenByO
 		&i.ID,
 		&i.ClientID,
 		&i.CardholderID,
+		&i.AccountID,
 		&i.MaskedPan,
 		&i.Network,
 		&i.ExpiryMonth,
 		&i.ExpiryYear,
 		&i.Status,
 		&i.BlockedReason,
+		&i.CancelledReason,
 		&i.AssignedAt,
 	)
 	return i, err
@@ -356,20 +492,22 @@ const setCardUnblocked = `-- name: SetCardUnblocked :one
 UPDATE cards
 SET status = 'active', blocked_reason = NULL, updated_at = now()
 WHERE id = $1
-RETURNING id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, assigned_at
+RETURNING id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, cancelled_reason, assigned_at
 `
 
 type SetCardUnblockedRow struct {
-	ID            string
-	ClientID      string
-	CardholderID  *string
-	MaskedPan     string
-	Network       CardNetwork
-	ExpiryMonth   int16
-	ExpiryYear    int16
-	Status        CardStatus
-	BlockedReason NullCardBlockedReason
-	AssignedAt    *time.Time
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          CardStatus
+	BlockedReason   NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
 }
 
 func (q *Queries) SetCardUnblocked(ctx context.Context, id string) (SetCardUnblockedRow, error) {
@@ -379,12 +517,14 @@ func (q *Queries) SetCardUnblocked(ctx context.Context, id string) (SetCardUnblo
 		&i.ID,
 		&i.ClientID,
 		&i.CardholderID,
+		&i.AccountID,
 		&i.MaskedPan,
 		&i.Network,
 		&i.ExpiryMonth,
 		&i.ExpiryYear,
 		&i.Status,
 		&i.BlockedReason,
+		&i.CancelledReason,
 		&i.AssignedAt,
 	)
 	return i, err
@@ -394,7 +534,7 @@ const setCardUnfrozenByOwner = `-- name: SetCardUnfrozenByOwner :one
 UPDATE cards
 SET status = 'active', updated_at = now()
 WHERE id = $1 AND cardholder_id = $2 AND status = 'frozen'
-RETURNING id, client_id, cardholder_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, assigned_at
+RETURNING id, client_id, cardholder_id, account_id, masked_pan, network, expiry_month, expiry_year, status, blocked_reason, cancelled_reason, assigned_at
 `
 
 type SetCardUnfrozenByOwnerParams struct {
@@ -403,16 +543,18 @@ type SetCardUnfrozenByOwnerParams struct {
 }
 
 type SetCardUnfrozenByOwnerRow struct {
-	ID            string
-	ClientID      string
-	CardholderID  *string
-	MaskedPan     string
-	Network       CardNetwork
-	ExpiryMonth   int16
-	ExpiryYear    int16
-	Status        CardStatus
-	BlockedReason NullCardBlockedReason
-	AssignedAt    *time.Time
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          CardStatus
+	BlockedReason   NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
 }
 
 func (q *Queries) SetCardUnfrozenByOwner(ctx context.Context, arg SetCardUnfrozenByOwnerParams) (SetCardUnfrozenByOwnerRow, error) {
@@ -422,12 +564,14 @@ func (q *Queries) SetCardUnfrozenByOwner(ctx context.Context, arg SetCardUnfroze
 		&i.ID,
 		&i.ClientID,
 		&i.CardholderID,
+		&i.AccountID,
 		&i.MaskedPan,
 		&i.Network,
 		&i.ExpiryMonth,
 		&i.ExpiryYear,
 		&i.Status,
 		&i.BlockedReason,
+		&i.CancelledReason,
 		&i.AssignedAt,
 	)
 	return i, err

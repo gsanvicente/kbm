@@ -294,6 +294,26 @@ func (h *Handler) getConcentratorAccount(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, dto.FromConcentratorAccount(*account))
 }
 
+// getTreasuryStatement — el "Estado de cuenta para directivos", ver
+// docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md, punto 5.
+// Sin gate de rol adicional en el servidor — mismo criterio que el resto
+// de Tesorería (GetConcentratorAccount/ListConcentratorEntries ya son
+// visibles a cualquier staff en su alcance); "solo para directivos" se
+// aplica en la UI (canViewExecutiveDashboard), igual que el Panel
+// directivo mismo.
+func (h *Handler) getTreasuryStatement(w http.ResponseWriter, r *http.Request) {
+	statement, err := h.Treasury.GetStatement(r.Context(), chi.URLParam(r, "clientID"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if statement == nil {
+		writeErrorMessage(w, http.StatusNotFound, "no encontrado")
+		return
+	}
+	writeJSON(w, http.StatusOK, dto.FromTreasuryStatement(*statement))
+}
+
 func (h *Handler) createConcentratorAccount(w http.ResponseWriter, r *http.Request) {
 	account, err := h.Treasury.CreateConcentratorAccount(r.Context(), chi.URLParam(r, "clientID"))
 	if err != nil {

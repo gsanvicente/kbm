@@ -1,5 +1,6 @@
 import '../../core/http/kbm_backend_client.dart';
 import '../../core/models/card_blocked_reason.dart';
+import '../../core/models/card_cancelled_reason.dart';
 import '../../core/models/card_network.dart';
 import '../../core/models/card_status.dart';
 import '../../core/models/payment_card.dart';
@@ -41,6 +42,7 @@ class HttpCardRepository implements CardRepository {
       expiryYear: json['expiryYear'] as int,
       status: CardStatus.values.byName(json['status'] as String),
       blockedReason: _blockedReasonFromJson(json['blockedReason'] as String?),
+      cancelledReason: _cancelledReasonFromJson(json['cancelledReason'] as String?),
       assignedAt: json['assignedAt'] != null ? DateTime.parse(json['assignedAt'] as String) : null,
     );
   }
@@ -51,6 +53,19 @@ class HttpCardRepository implements CardRepository {
         return CardBlockedReason.manual;
       case 'cardholder_inactive':
         return CardBlockedReason.cardholderInactive;
+      default:
+        return null;
+    }
+  }
+
+  CardCancelledReason? _cancelledReasonFromJson(String? value) {
+    switch (value) {
+      case 'expirada':
+        return CardCancelledReason.expired;
+      case 'robada':
+        return CardCancelledReason.stolen;
+      case 'extraviada':
+        return CardCancelledReason.lost;
       default:
         return null;
     }
@@ -171,5 +186,24 @@ class HttpCardRepository implements CardRepository {
   @override
   Future<void> freezeAllForCardholder(String cardholderId) async {
     await client.post('/v1/cardholders/$cardholderId/freeze-cards');
+  }
+
+  @override
+  Future<PaymentCard> replace({
+    required String oldCardId,
+    required String newCardId,
+    required CardCancelledReason reason,
+  }) async {
+    try {
+      final json = await client.post('/v1/cards/$oldCardId/replace', {
+        'newCardId': newCardId,
+        'reason': reason.wireValue,
+      });
+      return _fromJson(json as Map<String, dynamic>);
+    } on KbmBackendException catch (e) {
+      if (e.statusCode == 404) throw NotFoundException('Tarjeta $oldCardId no encontrada');
+      if (e.statusCode == 409) throw StateError('La tarjeta de reemplazo ya no está disponible.');
+      rethrow;
+    }
   }
 }

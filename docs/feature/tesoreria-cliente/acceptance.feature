@@ -73,3 +73,39 @@ Característica: Tesorería del Cliente (Cuenta Concentradora y Cuenta Colectora
     Dado que "Koons Subsidiaria A" está inactiva
     Cuando alguien con sesión activa intenta registrar o conciliar un depósito de "Koons Subsidiaria A"
     Entonces la acción se rechaza
+
+  # --- Estado de cuenta para directivos (ADR-0022) ---
+
+  Escenario: Admin Cliente ve el Estado de cuenta con una fila por filial
+    Dado que "Koons Subsidiaria A" tiene dos filiales
+    Y "Carlos" es Admin Cliente de "Koons Subsidiaria A"
+    Cuando "Carlos" ve la pestaña "Tesorería" > "Estado de cuenta"
+    Entonces ve una fila de resumen por cada una de las dos filiales, más la suya propia
+
+  Escenario: Expandir una fila del Estado de cuenta muestra el detalle cronológico combinado
+    Dado que "Koons Subsidiaria A" tiene un depósito conciliado y una Dispersión en el periodo
+    Y "Carlos" es Admin Cliente de "Koons Subsidiaria A"
+    Cuando "Carlos" expande la fila de "Koons Subsidiaria A" en el Estado de cuenta
+    Entonces ve ambos movimientos en un solo listado, ordenados por fecha
+
+  Escenario: Operador y Auditor no ven el Estado de cuenta para directivos
+    Dado que inicié sesión como Operador de "Koons Subsidiaria A"
+    Cuando veo la pestaña "Tesorería" de "Koons Subsidiaria A"
+    Entonces no veo la sección "Estado de cuenta"
+
+  Escenario: Descargar el Estado de cuenta exporta exactamente lo que está en pantalla
+    Dado que "Carlos" tiene el Estado de cuenta de "Koons Subsidiaria A" filtrado a un rango de fechas
+    Cuando "Carlos" pulsa "Descargar"
+    Entonces el PDF contiene solo los movimientos de ese rango, no el historial completo
+    Y el PDF muestra el branding de KBM/Koons, el nombre del Cliente y quién lo generó
+
+  Escenario: Un Tarjetahabiente puede descargar su propio estado de cuenta
+    Dado que "Juan" tiene movimientos en su Cuenta Individual
+    Cuando "Juan" pulsa "Descargar estado de cuenta" en su portal
+    Entonces recibe un PDF con sus movimientos, su nombre y su CLABE completa
+
+  Escenario: Staff puede descargar el estado de cuenta de un Tarjetahabiente sin ninguna tarjeta asignada
+    Dado que "Ana" no tiene ninguna tarjeta asignada pero sí tiene un depósito SPEI
+    Y "Carlos" es Admin Cliente de "Koons Subsidiaria A"
+    Cuando "Carlos" ve la ficha de "Ana" y pulsa "Descargar estado de cuenta"
+    Entonces recibe un PDF con el depósito de "Ana" y "Generado por" muestra el email de "Carlos"

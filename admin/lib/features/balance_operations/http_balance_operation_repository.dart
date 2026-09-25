@@ -145,7 +145,7 @@ class HttpBalanceOperationRepository implements BalanceOperationRepository {
 
   ApprovalRule _ruleFromJson(Map<String, dynamic> json) => ApprovalRule(
         clientId: json['clientId'] as String,
-        operationType: OperationType.values.byName(json['operationType'] as String),
+        operationType: OperationType.fromWireValue(json['operationType'] as String),
         requiresApproval: json['requiresApproval'] as bool,
         minAmount: (json['minAmount'] as num?)?.toDouble(),
       );
@@ -163,7 +163,7 @@ class HttpBalanceOperationRepository implements BalanceOperationRepository {
     required bool requiresApproval,
     double? minAmount,
   }) async {
-    final json = await client.put('/v1/clients/$clientId/approval-rules/${type.name}', {
+    final json = await client.put('/v1/clients/$clientId/approval-rules/${type.wireValue}', {
       'requiresApproval': requiresApproval,
       'minAmount': minAmount,
     }) as Map<String, dynamic>;
@@ -172,6 +172,6 @@ class HttpBalanceOperationRepository implements BalanceOperationRepository {
 
   @override
   Future<void> deleteApprovalRule({required String clientId, required OperationType type}) async {
-    await client.delete('/v1/clients/$clientId/approval-rules/${type.name}');
+    await client.delete('/v1/clients/$clientId/approval-rules/${type.wireValue}');
   }
 }

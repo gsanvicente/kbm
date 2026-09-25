@@ -11,30 +11,30 @@ import (
 )
 
 const createLedgerAccount = `-- name: CreateLedgerAccount :one
-INSERT INTO ledger_accounts (client_id, card_id, currency) VALUES ($1, $2, $3)
-RETURNING id, client_id, card_id, currency
+INSERT INTO ledger_accounts (client_id, account_id, currency) VALUES ($1, $2, $3)
+RETURNING id, client_id, account_id, currency
 `
 
 type CreateLedgerAccountParams struct {
-	ClientID string
-	CardID   string
-	Currency string
+	ClientID  string
+	AccountID string
+	Currency  string
 }
 
 type CreateLedgerAccountRow struct {
-	ID       string
-	ClientID string
-	CardID   string
-	Currency string
+	ID        string
+	ClientID  string
+	AccountID string
+	Currency  string
 }
 
 func (q *Queries) CreateLedgerAccount(ctx context.Context, arg CreateLedgerAccountParams) (CreateLedgerAccountRow, error) {
-	row := q.db.QueryRow(ctx, createLedgerAccount, arg.ClientID, arg.CardID, arg.Currency)
+	row := q.db.QueryRow(ctx, createLedgerAccount, arg.ClientID, arg.AccountID, arg.Currency)
 	var i CreateLedgerAccountRow
 	err := row.Scan(
 		&i.ID,
 		&i.ClientID,
-		&i.CardID,
+		&i.AccountID,
 		&i.Currency,
 	)
 	return i, err
@@ -54,47 +54,111 @@ func (q *Queries) GetLatestLedgerBalance(ctx context.Context, ledgerAccountID st
 	return balance_after, err
 }
 
+const getLedgerAccountByAccountID = `-- name: GetLedgerAccountByAccountID :one
+SELECT id, client_id, account_id, currency FROM ledger_accounts WHERE account_id = $1
+`
+
+type GetLedgerAccountByAccountIDRow struct {
+	ID        string
+	ClientID  string
+	AccountID string
+	Currency  string
+}
+
+func (q *Queries) GetLedgerAccountByAccountID(ctx context.Context, accountID string) (GetLedgerAccountByAccountIDRow, error) {
+	row := q.db.QueryRow(ctx, getLedgerAccountByAccountID, accountID)
+	var i GetLedgerAccountByAccountIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.AccountID,
+		&i.Currency,
+	)
+	return i, err
+}
+
+const getLedgerAccountByAccountIDForUpdate = `-- name: GetLedgerAccountByAccountIDForUpdate :one
+SELECT id, client_id, account_id, currency FROM ledger_accounts WHERE account_id = $1
+FOR UPDATE
+`
+
+type GetLedgerAccountByAccountIDForUpdateRow struct {
+	ID        string
+	ClientID  string
+	AccountID string
+	Currency  string
+}
+
+// Mismo propósito que GetLedgerAccountByCardIDForUpdate — bloquea la fila
+// para serializar movimientos concurrentes sobre la misma Cuenta
+// Individual. Usado por pagos/depósitos SPEI, que se dirigen a la Cuenta
+// directamente, no a través de una tarjeta (ver
+// internal/adapters/postgres/repository/spei.go).
+func (q *Queries) GetLedgerAccountByAccountIDForUpdate(ctx context.Context, accountID string) (GetLedgerAccountByAccountIDForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getLedgerAccountByAccountIDForUpdate, accountID)
+	var i GetLedgerAccountByAccountIDForUpdateRow
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.AccountID,
+		&i.Currency,
+	)
+	return i, err
+}
+
 const getLedgerAccountByCardID = `-- name: GetLedgerAccountByCardID :one
-SELECT id, client_id, card_id, currency FROM ledger_accounts WHERE card_id = $1
+SELECT la.id, la.client_id, la.account_id, la.currency
+FROM ledger_accounts la
+JOIN cards c ON c.account_id = la.account_id
+WHERE c.id = $1
 `
 
 type GetLedgerAccountByCardIDRow struct {
-	ID       string
-	ClientID string
-	CardID   string
-	Currency string
+	ID        string
+	ClientID  string
+	AccountID string
+	Currency  string
 }
 
-func (q *Queries) GetLedgerAccountByCardID(ctx context.Context, cardID string) (GetLedgerAccountByCardIDRow, error) {
-	row := q.db.QueryRow(ctx, getLedgerAccountByCardID, cardID)
+// GetLedgerAccountByCardID/ForUpdate — el ledger vive en la Cuenta
+// Individual desde docs/adr/0020-cuenta-individual-tarjetahabiente.md,
+// no en la tarjeta; se llega a él vía cards.account_id. La firma (recibe
+// un cardID) no cambió a propósito — todo el código Go que llama a estas
+// dos queries sigue igual, ver internal/adapters/postgres/repository/ledger.go.
+func (q *Queries) GetLedgerAccountByCardID(ctx context.Context, id string) (GetLedgerAccountByCardIDRow, error) {
+	row := q.db.QueryRow(ctx, getLedgerAccountByCardID, id)
 	var i GetLedgerAccountByCardIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.ClientID,
-		&i.CardID,
+		&i.AccountID,
 		&i.Currency,
 	)
 	return i, err
 }
 
 const getLedgerAccountByCardIDForUpdate = `-- name: GetLedgerAccountByCardIDForUpdate :one
-SELECT id, client_id, card_id, currency FROM ledger_accounts WHERE card_id = $1 FOR UPDATE
+SELECT la.id, la.client_id, la.account_id, la.currency
+FROM ledger_accounts la
+JOIN cards c ON c.account_id = la.account_id
+WHERE c.id = $1
+FOR UPDATE
 `
 
 type GetLedgerAccountByCardIDForUpdateRow struct {
-	ID       string
-	ClientID string
-	CardID   string
-	Currency string
+	ID        string
+	ClientID  string
+	AccountID string
+	Currency  string
 }
 
-func (q *Queries) GetLedgerAccountByCardIDForUpdate(ctx context.Context, cardID string) (GetLedgerAccountByCardIDForUpdateRow, error) {
-	row := q.db.QueryRow(ctx, getLedgerAccountByCardIDForUpdate, cardID)
+func (q *Queries) GetLedgerAccountByCardIDForUpdate(ctx context.Context, id string) (GetLedgerAccountByCardIDForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getLedgerAccountByCardIDForUpdate, id)
 	var i GetLedgerAccountByCardIDForUpdateRow
 	err := row.Scan(
 		&i.ID,
 		&i.ClientID,
-		&i.CardID,
+		&i.AccountID,
 		&i.Currency,
 	)
 	return i, err

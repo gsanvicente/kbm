@@ -73,6 +73,12 @@ dinero o cambian estado verifican `is_active` del Cliente involucrado
 - `TreasuryRepository.registerDeposit` / `.reconcileDeposit`.
 - Asignar/bloquear una Tarjeta, gestionar un Tarjetahabiente.
 - `LedgerRepository.fileClaim` / `.resolveClaim`.
+- **Desde ADR-0021 (2026-09-24)**: `SPEIStore.EnsureCLABE` / `.RegisterBeneficiary`
+  / `.CreatePayment` (autoservicio del Tarjetahabiente) y
+  `.ApprovePayment` / `.RejectPayment` (staff) — un pago SPEI saca dinero
+  de verdad hacia un banco externo, así que este chequeo pesa más aquí
+  que en la Transferencia C2C (que nunca sale del ecosistema KBM). Ver
+  "Autoservicio del Tarjetahabiente" abajo.
 
 Mismo patrón que ya existe para fondos insuficientes: una excepción de
 dominio dedicada (`ClientInactiveException` o similar) en vez de dejar
@@ -87,11 +93,15 @@ reactivar, esas operaciones vuelven a estar disponibles para
 aprobar/rechazar normalmente, sin haber perdido ningún dato ni cambiado
 de estado mientras tanto.
 
-## Autoservicio del Tarjetahabiente (nota para cuando se construya)
-El portal de autoservicio (`docs/business/autoservicio-tarjetahabiente.md`)
-todavía no existe, pero cuando se construya, su login debe aplicar
-exactamente la misma regla de la Capa 1: un Tarjetahabiente de un Cliente
-inactivo (o descendiente de uno) no puede iniciar sesión en el portal.
+## Autoservicio del Tarjetahabiente (implementado)
+El login del portal de autoservicio
+(`docs/business/autoservicio-tarjetahabiente.md`) aplica la misma regla
+de la Capa 1: un Tarjetahabiente de un Cliente inactivo (o descendiente
+de uno) no puede iniciar sesión, aunque su propio `is_active` siga en
+`true` — mismo criterio exacto que `staff_auth.go`'s Login
+(`IsOperable` sobre `row.ClientID`), mensaje genérico idéntico a
+credenciales incorrectas. Auditado con `reason: "client_inactive"`, igual
+que el lado staff.
 
 ## Fuera de alcance
 - Eliminar un Cliente por completo (ver

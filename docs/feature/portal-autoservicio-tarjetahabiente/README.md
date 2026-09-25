@@ -143,9 +143,12 @@ Ver `docs/business/autoservicio-tarjetahabiente.md` — no se repiten aquí.
   proyecto — ver `docs/adr/0019-cardholder-self-activation.md`.
 - MFA: fuera de alcance, ver nota en el doc de negocio.
 - Notificaciones (push/email) de movimientos: fuera de alcance.
-- Descargar/exportar el estado de cuenta (PDF, CSV): fuera de alcance de
-  esta primera versión — el resumen de periodo en pantalla cubre el "más
-  bancario" pedido, exportar es una extensión futura.
+- Descargar/exportar el estado de cuenta: **ya no está fuera de
+  alcance** — implementado después de escrito este documento, como parte
+  de la pestaña "Cuenta" (`SpeiSection`, fuera del alcance original de
+  este README), ver `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md`,
+  punto 6, y `docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md`
+  (formato PDF con branding).
 
 ## Criterios de aceptación
 Ver `acceptance.feature` en esta misma carpeta.

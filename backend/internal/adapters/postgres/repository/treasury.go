@@ -117,6 +117,29 @@ func (s *Store) PostConcentratorEntry(ctx context.Context, concentratorAccountID
 	return result, nil
 }
 
+// GetStatement — el "Estado de cuenta para directivos" de ADR-0022,
+// punto 5. Reusa GetConcentratorAccount + ListConcentratorEntries (cada
+// uno ya con su propio withRLS) en vez de una consulta nueva — nil, nil
+// si el Cliente todavía no tiene Cuenta Concentradora creada.
+func (s *Store) GetStatement(ctx context.Context, clientID string) (*treasury.Statement, error) {
+	account, err := s.GetConcentratorAccount(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	if account == nil {
+		return nil, nil
+	}
+	entries, err := s.ListConcentratorEntries(ctx, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &treasury.Statement{
+		ConcentratorBalance: account.Balance,
+		Currency:            account.Currency,
+		Entries:             entries,
+	}, nil
+}
+
 func (s *Store) ListCollectorDeposits(ctx context.Context, clientID string) ([]treasury.CollectorDeposit, error) {
 	var out []treasury.CollectorDeposit
 	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {

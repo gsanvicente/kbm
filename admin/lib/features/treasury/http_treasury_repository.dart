@@ -4,6 +4,7 @@ import '../../core/models/collector_deposit_status.dart';
 import '../../core/models/concentrator_account.dart';
 import '../../core/models/concentrator_entry.dart';
 import '../../core/models/ledger_entry_type.dart';
+import '../../core/models/treasury_statement.dart';
 import 'treasury_repository.dart';
 
 /// Implementación real de `TreasuryRepository` contra el backend
@@ -112,5 +113,21 @@ class HttpTreasuryRepository implements TreasuryRepository {
       'reconciledByEmail': reconciledByEmail,
     }) as Map<String, dynamic>;
     return _depositFromJson(json);
+  }
+
+  @override
+  Future<TreasuryStatement?> getStatement(String clientId) async {
+    try {
+      final json = await client.get('/v1/clients/$clientId/treasury/statement') as Map<String, dynamic>;
+      final entries = (json['entries'] as List<dynamic>).map((e) => _entryFromJson(e as Map<String, dynamic>)).toList();
+      return TreasuryStatement(
+        concentratorBalance: (json['concentratorBalance'] as num).toDouble(),
+        currency: json['currency'] as String,
+        entries: entries,
+      );
+    } on KbmBackendException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
   }
 }

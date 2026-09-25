@@ -221,6 +221,13 @@ class FakeBalanceOperationRepository implements BalanceOperationRepository {
             amount: op.amount,
             description: 'Transferencia recibida',
           );
+        case OperationType.speiPayment:
+          // Nunca llega aquí en la práctica — un pago SPEI nunca pasa por
+          // BalanceOperationRepository.request()/tryExecute, tiene su
+          // propio flujo en features/spei/ (ver
+          // docs/adr/0021-conector-spei.md). Este case solo existe porque
+          // Dart exige un switch exhaustivo sobre OperationType.
+          throw UnsupportedError('Un pago SPEI nunca se crea como BalanceOperation.');
       }
       return op.copyWith(status: OperationStatus.executed, updatedAt: DateTime.now());
     } on InsufficientFundsException catch (e) {

@@ -21,6 +21,11 @@ type auditActorType string
 const (
 	auditActorStaff      auditActorType = "staff"
 	auditActorCardholder auditActorType = "cardholder"
+	// auditActorSystem — sin actor_user_id (NULL), para acciones que
+	// origina un proveedor externo, no una sesión autenticada. Primer uso:
+	// el webhook de depósito SPEI entrante, ver
+	// internal/adapters/postgres/repository/spei.go HandleDeposit.
+	auditActorSystem auditActorType = "system"
 )
 
 // logAudit escribe una fila de audit_log — nunca falla en silencio:
@@ -46,6 +51,27 @@ func logAudit(ctx context.Context, q *sqlcgen.Queries, actorType auditActorType,
 		EntityType:  entityType,
 		EntityID:    entityID,
 		Metadata:    metaBytes,
+	})
+}
+
+// logSystemAudit — logAudit con actor_user_id NULL, para una acción que
+// no la origina ninguna sesión autenticada (staff o Tarjetahabiente),
+// sino un proveedor externo llamando a un webhook. Ver auditActorSystem.
+func logSystemAudit(ctx context.Context, q *sqlcgen.Queries, action, entityType, entityID string, metadata map[string]any) error {
+	var metaBytes []byte
+	if metadata != nil {
+		b, err := json.Marshal(metadata)
+		if err != nil {
+			return err
+		}
+		metaBytes = b
+	}
+	return q.InsertAuditLog(ctx, sqlcgen.InsertAuditLogParams{
+		ActorType:  string(auditActorSystem),
+		Action:     action,
+		EntityType: entityType,
+		EntityID:   entityID,
+		Metadata:   metaBytes,
 	})
 }
 

@@ -1,4 +1,6 @@
 import 'http/kbm_backend_client.dart';
+import 'models/account_ledger.dart';
+import 'models/beneficiary.dart';
 import 'models/card_network.dart';
 import 'models/card_status.dart';
 import 'models/cardholder_session.dart';
@@ -12,8 +14,13 @@ import 'models/shared/auth_exception.dart';
 import 'models/shared/claim_already_filed_exception.dart';
 import 'models/shared/insufficient_funds_exception.dart';
 import 'models/shared/too_many_failed_attempts_exception.dart';
+import 'models/shared/validation_exception.dart';
+import 'models/spei_deposit.dart';
+import 'models/spei_payment.dart';
+import 'models/spei_payment_status.dart';
 import '../features/auth/cardholder_auth_repository.dart';
 import '../features/cards/card_repository.dart';
+import '../features/spei/spei_repository.dart';
 import '../features/transfer/transfer_repository.dart';
 
 /// Implementación real de las tres interfaces (auth, tarjetas,
@@ -28,7 +35,7 @@ import '../features/transfer/transfer_repository.dart';
 /// backend calcula su HMAC ahí, esta clase ya no lo hace (a diferencia
 /// de `FakeCardholderBackend`, que sí lo simulaba en Dart). Ver
 /// docs/adr/0009-pan-hash-transit-for-c2c-transfers.md.
-class HttpCardholderBackend implements CardholderAuthRepository, CardRepository, TransferRepository {
+class HttpCardholderBackend implements CardholderAuthRepository, CardRepository, TransferRepository, SpeiRepository {
   HttpCardholderBackend(this.client);
 
   final KbmBackendClient client;
@@ -99,8 +106,15 @@ class HttpCardholderBackend implements CardholderAuthRepository, CardRepository,
   @override
   Future<List<PaymentCard>> listMine(String cardholderId) async {
     final cardsJson = await client.get('/v1/cards?cardholder_id=$cardholderId') as List<dynamic>;
-    final cards = await Future.wait(cardsJson.map((json) async {
-      final cardMap = json as Map<String, dynamic>;
+    // Una tarjeta `cancelled` (reemplazada por vencimiento/robo/extravío,
+    // ver docs/adr/0020-cuenta-individual-tarjetahabiente.md) sigue
+    // devolviéndose en este listado (nunca se borra, es historial), pero
+    // ya no es una tarjeta con la que este Tarjetahabiente pueda hacer
+    // nada — la propia app ni siquiera tiene ese estado en su enum
+    // (ver core/models/card_status.dart). La Cuenta Individual detrás
+    // sigue viva con su tarjeta de reemplazo, que sí aparece aparte.
+    final cardsToShow = cardsJson.cast<Map<String, dynamic>>().where((m) => m['status'] != 'cancelled');
+    final cards = await Future.wait(cardsToShow.map((cardMap) async {
       final ledger = await client.get('/v1/cards/${cardMap['id']}/ledger') as Map<String, dynamic>;
       return _fromCardJson(
         cardMap,
@@ -137,12 +151,7 @@ class HttpCardholderBackend implements CardholderAuthRepository, CardRepository,
     }
   }
 
-  @override
-  Future<List<LedgerMovement>> listMovements(String cardId) async {
-    final json = await client.get('/v1/cards/$cardId/ledger') as Map<String, dynamic>;
-    final movements = (json['entries'] as List<dynamic>).map((e) {
-      final map = e as Map<String, dynamic>;
-      return LedgerMovement(
+  LedgerMovement _movementFromJson(Map<String, dynamic> map) => LedgerMovement(
         id: map['id'] as String,
         type: (map['type'] as String) == 'credit' ? LedgerEntryType.credit : LedgerEntryType.debit,
         amount: (map['amount'] as num).toDouble(),
@@ -150,7 +159,12 @@ class HttpCardholderBackend implements CardholderAuthRepository, CardRepository,
         description: map['description'] as String?,
         createdAt: DateTime.parse(map['createdAt'] as String),
       );
-    }).toList();
+
+  @override
+  Future<List<LedgerMovement>> listMovements(String cardId) async {
+    final json = await client.get('/v1/cards/$cardId/ledger') as Map<String, dynamic>;
+    final movements =
+        (json['entries'] as List<dynamic>).map((e) => _movementFromJson(e as Map<String, dynamic>)).toList();
     movements.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return movements;
   }
@@ -259,5 +273,132 @@ class HttpCardholderBackend implements CardholderAuthRepository, CardRepository,
     // memoria del lado del servidor y los reinicia él mismo en cada
     // login exitoso — no hay nada que hacer aquí. Ver
     // docs/security/threat-model.md punto 12.
+  }
+
+  @override
+  Future<String?> getClabe(String cardholderId) async {
+    final json = await client.get('/v1/cardholders/$cardholderId/clabe') as Map<String, dynamic>;
+    return json['clabe'] as String?;
+  }
+
+  @override
+  Future<String> ensureClabe(String cardholderId) async {
+    final json = await client.post('/v1/cardholders/$cardholderId/clabe') as Map<String, dynamic>;
+    return json['clabe'] as String;
+  }
+
+  @override
+  Future<AccountLedger> getAccountLedger(String cardholderId) async {
+    final json = await client.get('/v1/cardholders/$cardholderId/account/ledger') as Map<String, dynamic>;
+    final movements =
+        (json['entries'] as List<dynamic>).map((e) => _movementFromJson(e as Map<String, dynamic>)).toList();
+    movements.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return AccountLedger(
+      balance: (json['balance'] as num).toDouble(),
+      currency: json['currency'] as String,
+      movements: movements,
+    );
+  }
+
+  @override
+  Future<List<SpeiDeposit>> listDeposits(String cardholderId) async {
+    final json = await client.get('/v1/cardholders/$cardholderId/spei-deposits') as List<dynamic>;
+    final deposits = json.map((e) {
+      final map = e as Map<String, dynamic>;
+      return SpeiDeposit(
+        id: map['id'] as String,
+        amount: (map['amount'] as num).toDouble(),
+        providerReference: map['providerReference'] as String,
+        createdAt: DateTime.parse(map['createdAt'] as String),
+      );
+    }).toList();
+    deposits.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return deposits;
+  }
+
+  Beneficiary _beneficiaryFromJson(Map<String, dynamic> json) => Beneficiary(
+        id: json['id'] as String,
+        alias: json['alias'] as String,
+        clabe: json['clabe'] as String,
+        bankName: json['bankName'] as String,
+        coolingUntil: DateTime.parse(json['coolingUntil'] as String),
+        createdAt: DateTime.parse(json['createdAt'] as String),
+      );
+
+  @override
+  Future<List<Beneficiary>> listBeneficiaries(String cardholderId) async {
+    final json = await client.get('/v1/cardholders/$cardholderId/beneficiaries') as List<dynamic>;
+    return json.map((e) => _beneficiaryFromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  @override
+  Future<Beneficiary> registerBeneficiary({
+    required String cardholderId,
+    required String alias,
+    required String clabe,
+  }) async {
+    try {
+      final json = await client.post('/v1/cardholders/$cardholderId/beneficiaries', {
+        'alias': alias,
+        'clabe': clabe,
+      }) as Map<String, dynamic>;
+      return _beneficiaryFromJson(json);
+    } on KbmBackendException catch (e) {
+      if (e.statusCode == 429) throw const TooManyFailedAttemptsException();
+      if (e.statusCode == 400) throw const ValidationException();
+      rethrow;
+    }
+  }
+
+  SpeiPaymentStatus _speiStatusFromJson(String value) {
+    switch (value) {
+      case 'pending_approval':
+        return SpeiPaymentStatus.pendingApproval;
+      case 'executed':
+        return SpeiPaymentStatus.executed;
+      case 'rejected':
+        return SpeiPaymentStatus.rejected;
+      case 'failed':
+        return SpeiPaymentStatus.failed;
+      default:
+        return SpeiPaymentStatus.pendingApproval;
+    }
+  }
+
+  SpeiPayment _speiPaymentFromJson(Map<String, dynamic> json) => SpeiPayment(
+        id: json['id'] as String,
+        beneficiaryId: json['beneficiaryId'] as String,
+        beneficiaryAlias: json['beneficiaryAlias'] as String? ?? '',
+        beneficiaryClabe: json['beneficiaryClabe'] as String? ?? '',
+        amount: (json['amount'] as num).toDouble(),
+        status: _speiStatusFromJson(json['status'] as String),
+        resolutionNotes: json['resolutionNotes'] as String?,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+      );
+
+  @override
+  Future<List<SpeiPayment>> listPayments(String cardholderId) async {
+    final json = await client.get('/v1/cardholders/$cardholderId/spei-payments') as List<dynamic>;
+    final payments = json.map((e) => _speiPaymentFromJson(e as Map<String, dynamic>)).toList();
+    payments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return payments;
+  }
+
+  @override
+  Future<SpeiPayment> createPayment({
+    required String cardholderId,
+    required String beneficiaryId,
+    required double amount,
+  }) async {
+    try {
+      final json = await client.post('/v1/cardholders/$cardholderId/spei-payments', {
+        'beneficiaryId': beneficiaryId,
+        'amount': amount,
+      }) as Map<String, dynamic>;
+      return _speiPaymentFromJson(json);
+    } on KbmBackendException catch (e) {
+      if (e.statusCode == 400) throw const ValidationException();
+      rethrow;
+    }
   }
 }

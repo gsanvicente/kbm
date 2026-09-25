@@ -10,16 +10,21 @@ import (
 
 // Card — ver backend/api/openapi.yaml, components.schemas.Card.
 type Card struct {
-	ID            string     `json:"id"`
-	ClientID      string     `json:"clientId"`
-	CardholderID  *string    `json:"cardholderId"`
-	MaskedPAN     string     `json:"maskedPan"`
-	Network       string     `json:"network"`
-	ExpiryMonth   int        `json:"expiryMonth"`
-	ExpiryYear    int        `json:"expiryYear"`
-	Status        string     `json:"status"`
-	BlockedReason *string    `json:"blockedReason"`
-	AssignedAt    *time.Time `json:"assignedAt"`
+	ID           string  `json:"id"`
+	ClientID     string  `json:"clientId"`
+	CardholderID *string `json:"cardholderId"`
+	// AccountID — la Cuenta Individual dueña del saldo, ver
+	// docs/adr/0020-cuenta-individual-tarjetahabiente.md. nil solo si la
+	// tarjeta sigue `unassigned`.
+	AccountID       *string    `json:"accountId"`
+	MaskedPAN       string     `json:"maskedPan"`
+	Network         string     `json:"network"`
+	ExpiryMonth     int        `json:"expiryMonth"`
+	ExpiryYear      int        `json:"expiryYear"`
+	Status          string     `json:"status"`
+	BlockedReason   *string    `json:"blockedReason"`
+	CancelledReason *string    `json:"cancelledReason"`
+	AssignedAt      *time.Time `json:"assignedAt"`
 }
 
 func FromCard(c card.Card) Card {
@@ -27,6 +32,7 @@ func FromCard(c card.Card) Card {
 		ID:           c.ID,
 		ClientID:     c.ClientID,
 		CardholderID: c.CardholderID,
+		AccountID:    c.AccountID,
 		MaskedPAN:    c.MaskedPAN,
 		Network:      string(c.Network),
 		ExpiryMonth:  c.ExpiryMonth,
@@ -37,6 +43,10 @@ func FromCard(c card.Card) Card {
 	if c.BlockedReason != nil {
 		reason := string(*c.BlockedReason)
 		out.BlockedReason = &reason
+	}
+	if c.CancelledReason != nil {
+		reason := string(*c.CancelledReason)
+		out.CancelledReason = &reason
 	}
 	return out
 }
@@ -112,6 +122,15 @@ type AssignRequest struct {
 
 type BlockStatusRequest struct {
 	Blocked bool `json:"blocked"`
+}
+
+// ReplaceCardRequest — ver
+// docs/adr/0020-cuenta-individual-tarjetahabiente.md, "Reemplazo de
+// tarjeta". NewCardID debe estar `unassigned` y ser del mismo Cliente que
+// la tarjeta reemplazada.
+type ReplaceCardRequest struct {
+	NewCardID string `json:"newCardId"`
+	Reason    string `json:"reason"`
 }
 
 type SelfFreezeRequest struct {

@@ -7,12 +7,15 @@ import (
 	"time"
 
 	sqlcgen "github.com/koons/kbm/backend/internal/adapters/postgres/sqlc/gen"
+	"github.com/koons/kbm/backend/internal/domain/account"
 	"github.com/koons/kbm/backend/internal/domain/approval"
+	"github.com/koons/kbm/backend/internal/domain/beneficiary"
 	"github.com/koons/kbm/backend/internal/domain/card"
 	"github.com/koons/kbm/backend/internal/domain/cardholder"
 	kbmclient "github.com/koons/kbm/backend/internal/domain/client"
 	"github.com/koons/kbm/backend/internal/domain/ledger"
 	"github.com/koons/kbm/backend/internal/domain/shared"
+	"github.com/koons/kbm/backend/internal/domain/speipayment"
 	"github.com/koons/kbm/backend/internal/domain/staff"
 	"github.com/koons/kbm/backend/internal/domain/treasury"
 )
@@ -39,16 +42,18 @@ func floatOrZero(f *float64) float64 {
 // conversion (valid because the underlying layouts match) before calling
 // ToCard, instead of this package depending on every generated type.
 type CardRow struct {
-	ID            string
-	ClientID      string
-	CardholderID  *string
-	MaskedPan     string
-	Network       sqlcgen.CardNetwork
-	ExpiryMonth   int16
-	ExpiryYear    int16
-	Status        sqlcgen.CardStatus
-	BlockedReason sqlcgen.NullCardBlockedReason
-	AssignedAt    *time.Time
+	ID              string
+	ClientID        string
+	CardholderID    *string
+	AccountID       *string
+	MaskedPan       string
+	Network         sqlcgen.CardNetwork
+	ExpiryMonth     int16
+	ExpiryYear      int16
+	Status          sqlcgen.CardStatus
+	BlockedReason   sqlcgen.NullCardBlockedReason
+	CancelledReason *string
+	AssignedAt      *time.Time
 }
 
 func ToCard(r CardRow) card.Card {
@@ -56,6 +61,7 @@ func ToCard(r CardRow) card.Card {
 		ID:           r.ID,
 		ClientID:     r.ClientID,
 		CardholderID: r.CardholderID,
+		AccountID:    r.AccountID,
 		MaskedPAN:    r.MaskedPan,
 		Network:      card.Network(r.Network),
 		ExpiryMonth:  int(r.ExpiryMonth),
@@ -67,7 +73,30 @@ func ToCard(r CardRow) card.Card {
 		reason := card.BlockedReason(r.BlockedReason.CardBlockedReason)
 		c.BlockedReason = &reason
 	}
+	if r.CancelledReason != nil {
+		reason := card.CancelledReason(*r.CancelledReason)
+		c.CancelledReason = &reason
+	}
 	return c
+}
+
+// ToAccount toma sqlcgen.IndividualAccount directamente (no un "Row"
+// intermedio, a diferencia de CardRow): todo query en
+// internal/adapters/postgres/sqlc/queries/accounts.sql hace
+// RETURNING/SELECT de la fila completa, así que sqlc ya reusa ese único
+// tipo generado en vez de emitir uno distinto por query. Clabe es
+// pgtype.Text (no el override de *string, que solo aplica a columnas
+// `text` — esta es `char(18)`), de ahí la conversión explícita.
+func ToAccount(r sqlcgen.IndividualAccount) account.Account {
+	a := account.Account{
+		ID:           r.ID,
+		ClientID:     r.ClientID,
+		CardholderID: r.CardholderID,
+	}
+	if r.Clabe.Valid {
+		a.CLABE = &r.Clabe.String
+	}
+	return a
 }
 
 // ToCardholderFromLogin — la fila de GetCardholderForLogin trae solo lo
@@ -429,5 +458,55 @@ func ToLedgerEntry(cardID string, r LedgerEntryRow) ledger.Entry {
 		BalanceAfter: r.BalanceAfter,
 		Description:  desc,
 		CreatedAt:    r.CreatedAt,
+	}
+}
+
+// ToBeneficiary — igual criterio que ToAccount: sqlc reusa
+// sqlcgen.PaymentBeneficiary para todo query de payment_beneficiaries.sql
+// que trae la fila completa, así que no hace falta un "Row" intermedio.
+func ToBeneficiary(r sqlcgen.PaymentBeneficiary) beneficiary.Beneficiary {
+	return beneficiary.Beneficiary{
+		ID:           r.ID,
+		ClientID:     r.ClientID,
+		CardholderID: r.CardholderID,
+		Alias:        r.Alias,
+		CLABE:        r.Clabe,
+		BankName:     r.BankName,
+		CoolingUntil: r.CoolingUntil,
+		CreatedAt:    r.CreatedAt,
+	}
+}
+
+// ToSPEIPayment toma sqlcgen.SpeiPayment directamente — resultado de
+// CreateSPEIPayment/GetSPEIPaymentForUpdate, sin los campos de join
+// (alias/CLABE del beneficiario, nombre del solicitante) que solo traen
+// los queries de listado; ver speipayment.Payment para por qué esos
+// quedan vacíos aquí (el llamador los llena aparte cuando sí los tiene).
+func ToSPEIPayment(r sqlcgen.SpeiPayment) speipayment.Payment {
+	return speipayment.Payment{
+		ID:                      r.ID,
+		ClientID:                r.ClientID,
+		AccountID:               r.AccountID,
+		BeneficiaryID:           r.BeneficiaryID,
+		Amount:                  r.Amount,
+		Status:                  approval.OperationStatus(r.Status),
+		RequestedByCardholderID: r.RequestedByCardholderID,
+		ResolutionNotes:         r.ResolutionNotes,
+		ProviderReference:       r.ProviderReference,
+		CreatedAt:               r.CreatedAt,
+		UpdatedAt:               r.UpdatedAt,
+	}
+}
+
+// ToSPEIDeposit toma sqlcgen.SpeiDeposit directamente — mismo criterio
+// que ToBeneficiary.
+func ToSPEIDeposit(r sqlcgen.SpeiDeposit) speipayment.Deposit {
+	return speipayment.Deposit{
+		ID:                r.ID,
+		ClientID:          r.ClientID,
+		AccountID:         r.AccountID,
+		Amount:            r.Amount,
+		ProviderReference: r.ProviderReference,
+		CreatedAt:         r.CreatedAt,
 	}
 }

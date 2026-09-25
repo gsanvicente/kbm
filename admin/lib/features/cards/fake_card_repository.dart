@@ -1,4 +1,5 @@
 import '../../core/models/card_blocked_reason.dart';
+import '../../core/models/card_cancelled_reason.dart';
 import '../../core/models/card_network.dart';
 import '../../core/models/card_status.dart';
 import '../../core/models/payment_card.dart';
@@ -262,5 +263,54 @@ class FakeCardRepository implements CardRepository {
         blockedReason: CardBlockedReason.cardholderInactive,
       );
     }
+  }
+
+  @override
+  Future<PaymentCard> replace({
+    required String oldCardId,
+    required String newCardId,
+    required CardCancelledReason reason,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 250));
+
+    final oldIndex = _cards.indexWhere((c) => c.id == oldCardId);
+    if (oldIndex == -1) throw NotFoundException('Tarjeta $oldCardId no encontrada');
+    final old = _cards[oldIndex];
+    if (old.cardholderId == null) {
+      throw StateError('No se puede reemplazar una tarjeta que nunca fue asignada.');
+    }
+
+    final newIndex = _cards.indexWhere((c) => c.id == newCardId);
+    if (newIndex == -1) throw NotFoundException('Tarjeta $newCardId no encontrada');
+    final newCard = _cards[newIndex];
+    if (!newCard.isAvailable || newCard.clientId != old.clientId) {
+      throw StateError('La tarjeta de reemplazo ya no está disponible.');
+    }
+
+    _cards[oldIndex] = PaymentCard(
+      id: old.id,
+      clientId: old.clientId,
+      cardholderId: old.cardholderId,
+      maskedPan: old.maskedPan,
+      network: old.network,
+      expiryMonth: old.expiryMonth,
+      expiryYear: old.expiryYear,
+      status: CardStatus.cancelled,
+      assignedAt: old.assignedAt,
+      cancelledReason: reason,
+    );
+    final replacement = PaymentCard(
+      id: newCard.id,
+      clientId: newCard.clientId,
+      cardholderId: old.cardholderId,
+      maskedPan: newCard.maskedPan,
+      network: newCard.network,
+      expiryMonth: newCard.expiryMonth,
+      expiryYear: newCard.expiryYear,
+      status: CardStatus.active,
+      assignedAt: DateTime.now(),
+    );
+    _cards[newIndex] = replacement;
+    return replacement;
   }
 }

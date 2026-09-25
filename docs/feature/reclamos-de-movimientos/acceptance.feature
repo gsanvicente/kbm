@@ -32,3 +32,9 @@ Característica: Movimientos y Reclamos
     Dado que inicié sesión como Operador
     Y veo un movimiento con un reclamo "Abierto"
     Entonces no veo botones para resolverlo, solo su estado
+
+  Escenario: Descargar los Movimientos de una tarjeta genera un PDF de esa tarjeta, no de toda la Cuenta Individual
+    Dado que "Juan Perez" tiene dos tarjetas, cada una con sus propios movimientos
+    Cuando entro a la pestaña "Movimientos" de una de sus tarjetas y pulso "Descargar"
+    Entonces recibo un PDF con branding de KBM/Koons que identifica esa tarjeta y a "Juan Perez"
+    Y el PDF no incluye los movimientos de su otra tarjeta

@@ -14,6 +14,13 @@ const (
 	OperationTypeLoad     OperationType = "load"
 	OperationTypeDebit    OperationType = "debit"
 	OperationTypeTransfer OperationType = "transfer"
+	// OperationTypeSPEIPayment — pago SPEI a un Beneficiario de Pago, ver
+	// docs/adr/0021-conector-spei.md, punto 7. A diferencia de los otros
+	// tres, requires_approval no se evalúa aquí (internal/adapters/postgres/repository/approval.go's
+	// needsApproval) sino desde internal/adapters/postgres/repository/spei.go
+	// — mismo mecanismo de approval_rules, distinto originador (el propio
+	// Tarjetahabiente, no staff sobre una tarjeta).
+	OperationTypeSPEIPayment OperationType = "spei_payment"
 )
 
 // OperationStatus mirrors admin/lib/core/models/operation_status.dart.

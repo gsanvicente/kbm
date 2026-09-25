@@ -1,6 +1,6 @@
 # Modelo de amenazas — KBM
 
-> Referencia viva. Última revisión: 2026-09-21 (ADR-0017). Este documento es punto de
+> Referencia viva. Última revisión: 2026-09-24 (puntos 17 y 18, ADR-0021 y ADR-0022). Este documento es punto de
 > entrada para la auditoría de seguridad — ver también
 > `docs/security/data-classification.md` y `docs/security/compliance-notes.md`,
 > y el `SECURITY.md` operativo de cada componente.
@@ -273,3 +273,80 @@ por Tarjetahabiente, levantable solo por staff con `canManageCardholders`
 — a diferencia del límite de la transferencia C2C (punto 12, se reinicia
 solo con un nuevo login), aquí no hay sesión previa que reiniciar, así que
 el contador persiste hasta una intervención manual.
+
+## 17. Fraude/PLD en pagos SPEI a un Beneficiario externo
+**Riesgo:** `docs/adr/0021-conector-spei.md` permite que un Tarjetahabiente
+mande dinero real a **cualquier CLABE externa** que él mismo registre como
+Beneficiario de Pago — a diferencia de la Transferencia C2C (punto 12,
+acotada al mismo Cliente, sin salir nunca del ecosistema KBM), aquí el
+dinero sale de verdad hacia un banco externo. Una cuenta comprometida
+(credenciales robadas) podría registrar un Beneficiario propio del
+atacante y vaciar el saldo de la Cuenta Individual de la víctima.
+**Mitigación de diseño:** validación de CLABE por dígito verificador y
+catálogo de bancos (rechaza destinos mal formados antes de intentar
+nada), confirmación explícita del beneficiario antes de pagar, bloqueo
+tras intentos fallidos al registrar un Beneficiario, periodo de
+enfriamiento para Beneficiarios recién agregados (no reciben montos
+grandes de inmediato), y un umbral de monto configurable por Cliente
+(`approval_rules`) por encima del cual el pago requiere aprobación del
+staff — mismo mecanismo que ya usan Dispersión/Deducción, con el mismo
+default fail-safe (sin regla configurada, requiere aprobación siempre).
+**Lo que esto NO resuelve, marcado explícitamente como pendiente**:
+verificación real contra listas de PLD/OFAC/SAT de un Beneficiario
+requiere un proveedor SPEI elegido — ninguno de los candados de arriba la
+sustituye. Validar con quien lleve el tema legal/compliance en Koons
+antes de mover dinero real; no es una decisión que ADR-0021 resuelva por
+sí solo.
+
+## 18. Exposición agregada de Beneficiarios de Pago a staff, y la bandera de CLABE compartida entre tenants
+**Riesgo:** `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md`
+le da a staff (cualquier rol, incluido Auditor) visibilidad de lectura
+sobre los Beneficiarios de Pago de sus Tarjetahabientes — antes 100%
+privados (punto 17). Dos riesgos nuevos, distintos entre sí:
+1. **Exposición masiva**: a diferencia de ver un Beneficiario a la vez en
+   la ficha de un Tarjetahabiente, el directorio agregado
+   (`GET /v1/spei-beneficiaries`) puede traer cientos de filas de un
+   jalón — un objetivo más atractivo para raspar/exportar CLABEs reales
+   que cualquier pantalla individual del sistema.
+2. **Fuga deliberada, mínima, entre tenants**: la bandera
+   `sharedByMultipleCardholders` (misma CLABE registrada por
+   Tarjetahabientes de Clientes distintos) se calcula **sin** respetar el
+   alcance normal de RLS — es la única consulta de todo el proyecto que
+   cruza el aislamiento entre tenants a propósito. Un Admin Cliente puede
+   así inferir "existe otro registro de esta CLABE en algún lado que no
+   puedo ver", aunque nunca se le muestre cuál Cliente ni cuál
+   Tarjetahabiente es.
+3. **Mismo riesgo del punto 1, en el reporte "Pagos SPEI"**: `GET
+   /v1/spei-payments` (historial completo cross-cliente) reutiliza el
+   campo `beneficiaryClabe` de `speipayment.Payment` — el mismo campo que
+   la cola de aprobaciones (`GET /v1/spei-payments/pending`) sí necesita
+   sin enmascarar, porque ahí staff verifica la CLABE real contra el
+   banco antes de aprobar/rechazar un pago puntual. Corregido: el
+   handler del reporte usa `dto.FromSPEIPaymentForReport` (enmascara),
+   nunca `dto.FromSPEIPayment` (real) — dos funciones de mapeo separadas
+   a propósito, para que un cambio futuro en una no enmascare por
+   accidente la otra.
+
+**Mitigación de diseño:**
+- El directorio agregado de Beneficiarios y el reporte "Pagos SPEI"
+  muestran la CLABE **enmascarada por default** (`••••1234`); verla
+  completa (solo en Beneficiarios, vía "Revelar CLABE completa") exige
+  una acción explícita restringida a `canManageCardholders` (Admin
+  Cliente + Super Admin), y esa acción queda auditada
+  (`audit_log`, `spei_beneficiary_clabe_revealed`) — a diferencia de la
+  ficha individual de un Tarjetahabiente, donde la CLABE se muestra
+  completa sin fricción adicional (mismo criterio que ya aplica ahí a
+  RFC/CURP/domicilio).
+- La bandera de CLABE compartida nunca expone el otro registro (Cliente,
+  Tarjetahabiente, alias, banco) — es estrictamente un booleano. El
+  resto de cada fila del directorio sigue estrictamente acotado al
+  alcance normal de quien consulta.
+- Auditoría completa de cada revelación de CLABE, para que el uso de
+  este permiso sea en sí mismo revisable.
+
+**Lo que esto NO resuelve, marcado explícitamente como pendiente**: esto
+ayuda a un revisor humano a encontrar patrones, no sustituye una
+verificación automática contra listas de PLD/OFAC/SAT (sigue pendiente,
+ver punto 17) ni un scoring de riesgo real — la única señal automática es
+la bandera booleana de CLABE compartida, sin ningún umbral configurable
+de monto o frecuencia en esta iteración.

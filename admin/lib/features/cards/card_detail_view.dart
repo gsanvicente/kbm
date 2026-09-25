@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
 import '../../core/models/balance_operation.dart';
+import '../../core/models/card_cancelled_reason.dart';
 import '../../core/models/card_status.dart';
 import '../../core/models/cardholder.dart';
 import '../../core/models/claim_status.dart';
@@ -20,6 +21,8 @@ import '../../core/utils/date_format.dart';
 import '../../shared_widgets/card_destination_field.dart';
 import '../../shared_widgets/confirm_dialog.dart';
 import '../../shared_widgets/currency_field.dart';
+import '../../shared_widgets/pdf_download.dart';
+import '../../shared_widgets/pdf_statement.dart';
 import '../balance_operations/balance_operation_repository.dart';
 import '../balance_operations/operaciones_de_saldo_section.dart' show BalanceOperationTile;
 import '../cardholders/cardholder_repository.dart';
@@ -197,6 +200,56 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
     }
   }
 
+  // Solo para una tarjeta ya asignada y que todavía no esté cancelada —
+  // cancelar una tarjeta ya cancelada no tiene sentido. Ver
+  // docs/adr/0020-cuenta-individual-tarjetahabiente.md, "Reemplazo de
+  // tarjeta".
+  bool get _canReplace => _card.cardholderId != null && _card.status != CardStatus.cancelled;
+
+  Future<void> _replace() async {
+    setState(() => _busy = true);
+    final pool = await widget.cardRepository.listByClients([_card.clientId]);
+    final candidates = pool.where((c) => c.isAvailable).toList();
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay tarjetas disponibles en el pool de este Cliente para reemplazarla.')),
+      );
+      return;
+    }
+
+    final result = await showDialog<_ReplaceCardResult>(
+      context: context,
+      builder: (context) => _ReplaceCardDialog(candidates: candidates),
+    );
+    if (result == null) return;
+
+    setState(() => _busy = true);
+    try {
+      final replacement = await widget.cardRepository.replace(
+        oldCardId: _card.id,
+        newCardId: result.newCard.id,
+        reason: result.reason,
+      );
+      if (!mounted) return;
+      setState(() {
+        _card = replacement;
+        _ledgerFuture = widget.ledgerRepository.getByCard(replacement.id);
+        _busy = false;
+      });
+      widget.onChanged(replacement);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Tarjeta reemplazada — ${replacement.maskedPan} ya está activa con el mismo saldo.')),
+      );
+    } catch (e) {
+      setState(() => _busy = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo reemplazar la tarjeta: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -224,6 +277,8 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
                     return const Center(child: CircularProgressIndicator());
                   }
                   return _MovementsTab(
+                    card: _card,
+                    cardholderName: _cardholderName,
                     ledger: snapshot.data,
                     ledgerRepository: widget.ledgerRepository,
                     session: widget.session,
@@ -272,6 +327,16 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
             width: double.infinity,
             child: Center(child: PaymentCardVisual(card: card, cardholderName: _cardholderName, width: 440)),
           ),
+          if (card.status == CardStatus.cancelled && card.cancelledReason != null) ...[
+            const SizedBox(height: 12),
+            Center(
+              child: Text(
+                'Cancelada — ${card.cancelledReason!.label.toLowerCase()}. El saldo y el historial siguen en la tarjeta de reemplazo.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5, fontStyle: FontStyle.italic),
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           // Saldo — el dato central de la aplicación, mostrado aparte de
           // la tarjeta (una tarjeta física real nunca imprime el saldo).
@@ -297,14 +362,13 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
           ),
           const SizedBox(height: 16),
           Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 12,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                if (_busy)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 12),
-                    child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                  ),
+                if (_busy) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                 if (_canManage && !_busy && card.isAvailable)
                   FilledButton.icon(
                     onPressed: _assign,
@@ -323,6 +387,15 @@ class _CardDetailViewState extends State<CardDetailView> with SingleTickerProvid
                       foregroundColor:
                           card.status == CardStatus.blocked ? null : Colors.red.shade700,
                     ),
+                  ),
+                // Reemplazar tarjeta — staff-only (manageRoles), mismo
+                // criterio de permiso que Asignar. Ver
+                // docs/adr/0020-cuenta-individual-tarjetahabiente.md.
+                if (_canManage && !_busy && _canReplace)
+                  OutlinedButton.icon(
+                    onPressed: _replace,
+                    icon: const Icon(Icons.autorenew_rounded, size: 18),
+                    label: const Text('Reemplazar tarjeta'),
                   ),
               ],
             ),
@@ -463,11 +536,95 @@ class _AssignCardDialogState extends State<_AssignCardDialog> {
   }
 }
 
+class _ReplaceCardResult {
+  _ReplaceCardResult({required this.newCard, required this.reason});
+  final PaymentCard newCard;
+  final CardCancelledReason reason;
+}
+
+/// Reemplazo de tarjeta — pide la tarjeta del pool que la sustituye y el
+/// motivo de cancelación de la actual. Ver
+/// docs/adr/0020-cuenta-individual-tarjetahabiente.md, "Reemplazo de
+/// tarjeta": el saldo, la CLABE y el historial nunca se tocan, solo
+/// cambia el instrumento físico.
+class _ReplaceCardDialog extends StatefulWidget {
+  const _ReplaceCardDialog({required this.candidates});
+
+  final List<PaymentCard> candidates;
+
+  @override
+  State<_ReplaceCardDialog> createState() => _ReplaceCardDialogState();
+}
+
+class _ReplaceCardDialogState extends State<_ReplaceCardDialog> {
+  PaymentCard? _selected;
+  CardCancelledReason _reason = CardCancelledReason.expired;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reemplazar tarjeta'),
+      content: SizedBox(
+        width: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'La tarjeta actual quedará cancelada de forma permanente. El saldo, la CLABE y el historial pasan intactos a la nueva.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<CardCancelledReason>(
+              key: const Key('replace-reason-dropdown'),
+              initialValue: _reason,
+              decoration: const InputDecoration(labelText: 'Motivo de la cancelación'),
+              items: [
+                for (final reason in CardCancelledReason.values)
+                  DropdownMenuItem(value: reason, child: Text(reason.label)),
+              ],
+              onChanged: (value) => setState(() => _reason = value ?? _reason),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<PaymentCard>(
+              key: const Key('replace-card-dropdown'),
+              initialValue: _selected,
+              decoration: const InputDecoration(labelText: 'Tarjeta de reemplazo (del pool disponible)'),
+              items: [
+                for (final card in widget.candidates)
+                  DropdownMenuItem(value: card, child: Text(card.maskedPan)),
+              ],
+              onChanged: (value) => setState(() => _selected = value),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(
+          onPressed: _selected == null
+              ? null
+              : () => Navigator.pop(context, _ReplaceCardResult(newCard: _selected!, reason: _reason)),
+          child: const Text('Reemplazar'),
+        ),
+      ],
+    );
+  }
+}
+
 /// Historial de movimientos de una tarjeta ya asignada, con acceso al
 /// detalle de reclamos. Ver docs/feature/reclamos-de-movimientos/.
 class _MovementsTab extends StatefulWidget {
-  const _MovementsTab({required this.ledger, required this.ledgerRepository, required this.session});
+  const _MovementsTab({
+    required this.card,
+    required this.cardholderName,
+    required this.ledger,
+    required this.ledgerRepository,
+    required this.session,
+  });
 
+  final PaymentCard card;
+  final String? cardholderName;
   final LedgerAccount? ledger;
   final LedgerRepository ledgerRepository;
   final Session session;
@@ -480,6 +637,45 @@ class _MovementsTabState extends State<_MovementsTab> {
   List<LedgerEntry> _entries = [];
   Map<String, MovementClaim> _claims = {};
   bool _loading = true;
+
+  /// "Descargar" (PDF con branding de KBM) — igual que el estado de
+  /// cuenta de Cuenta Individual (ADR-0022/0023), pero a nivel de una
+  /// tarjeta puntual: identifica la tarjeta y el titular, no toda la
+  /// Cuenta Individual del Tarjetahabiente.
+  Future<void> _download() async {
+    final ledger = widget.ledger!;
+    final bytes = await buildStatementPdf(
+      accountTitle: 'Movimientos de Tarjeta ${widget.card.maskedPan}',
+      infoFields: [
+        MapEntry('Titular', widget.cardholderName ?? 'Sin asignar'),
+        MapEntry('Tarjeta', widget.card.maskedPan),
+        MapEntry('Generado por', widget.session.email),
+      ],
+      balance: ledger.balance,
+      currency: ledger.currency,
+      periodLabel: 'Historial completo',
+      rows: [
+        for (final e in _entries)
+          PdfStatementRow(
+            date: formatDateTime(e.createdAt),
+            isCredit: e.type == LedgerEntryType.credit,
+            description: e.description ?? e.type.label,
+            amount: e.amount,
+            balanceAfter: e.balanceAfter,
+          ),
+      ],
+    );
+    if (!mounted) return;
+    try {
+      downloadPdf(
+        'movimientos-${widget.card.id}-${DateTime.now().toIso8601String().split('T').first}.pdf',
+        bytes,
+      );
+    } on UnsupportedError catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'No se pudo descargar.')));
+    }
+  }
 
   @override
   void initState() {
@@ -545,43 +741,60 @@ class _MovementsTabState extends State<_MovementsTab> {
     }
 
     final currency = widget.ledger!.currency;
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: _entries.length,
-      separatorBuilder: (context, index) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        final entry = _entries[index];
-        final claim = _claims[entry.id];
-        final isCredit = entry.type == LedgerEntryType.credit;
-        return ListTile(
-          onTap: () => _openEntry(entry),
-          leading: CircleAvatar(
-            backgroundColor: (isCredit ? Colors.green : KoonsColors.navy).withValues(alpha: 0.1),
-            child: Icon(
-              isCredit ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-              color: isCredit ? Colors.green.shade700 : KoonsColors.navy,
-              size: 20,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _download,
+              icon: const Icon(Icons.download_rounded, size: 16),
+              label: const Text('Descargar'),
             ),
           ),
-          title: Text(entry.description ?? entry.type.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(formatDateTime(entry.createdAt), style: TextStyle(color: Colors.grey.shade600)),
-          trailing: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${isCredit ? '+' : '-'}${formatCurrency(entry.amount, currency)}',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: isCredit ? Colors.green.shade700 : KoonsColors.navy,
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: _entries.length,
+            separatorBuilder: (context, index) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final entry = _entries[index];
+              final claim = _claims[entry.id];
+              final isCredit = entry.type == LedgerEntryType.credit;
+              return ListTile(
+                onTap: () => _openEntry(entry),
+                leading: CircleAvatar(
+                  backgroundColor: (isCredit ? Colors.green : KoonsColors.navy).withValues(alpha: 0.1),
+                  child: Icon(
+                    isCredit ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                    color: isCredit ? Colors.green.shade700 : KoonsColors.navy,
+                    size: 20,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              if (claim != null) _ClaimBadge(status: claim.status) else const SizedBox(height: 18),
-            ],
+                title: Text(entry.description ?? entry.type.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(formatDateTime(entry.createdAt), style: TextStyle(color: Colors.grey.shade600)),
+                trailing: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${isCredit ? '+' : '-'}${formatCurrency(entry.amount, currency)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: isCredit ? Colors.green.shade700 : KoonsColors.navy,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    if (claim != null) _ClaimBadge(status: claim.status) else const SizedBox(height: 18),
+                  ],
+                ),
+              );
+            },
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 }

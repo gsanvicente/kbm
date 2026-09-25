@@ -6,6 +6,7 @@ import '../core/http_backend.dart';
 import '../features/auth/cardholder_auth_repository.dart';
 import '../features/auth/login_screen.dart';
 import '../features/cards/card_repository.dart';
+import '../features/spei/spei_repository.dart';
 import '../features/transfer/transfer_repository.dart';
 import 'auth_controller.dart';
 import 'home_shell.dart';
@@ -33,6 +34,7 @@ class _KbmCardholderAppState extends State<KbmCardholderApp> {
   late final CardholderAuthRepository _authRepository;
   late final CardRepository _cardRepository;
   late final TransferRepository _transferRepository;
+  late final SpeiRepository _speiRepository;
   late final _authController = CardholderAuthController(_authRepository);
 
   @override
@@ -44,11 +46,13 @@ class _KbmCardholderAppState extends State<KbmCardholderApp> {
       _authRepository = backend;
       _cardRepository = backend;
       _transferRepository = backend;
+      _speiRepository = backend;
     } else {
       final backend = FakeCardholderBackend();
       _authRepository = backend;
       _cardRepository = backend;
       _transferRepository = backend;
+      _speiRepository = backend;
     }
   }
 
@@ -69,6 +73,7 @@ class _KbmCardholderAppState extends State<KbmCardholderApp> {
             session: session,
             cardRepository: _cardRepository,
             transferRepository: _transferRepository,
+            speiRepository: _speiRepository,
             onLogout: _authController.logout,
           );
         },

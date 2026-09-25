@@ -117,9 +117,21 @@ func (s *Store) Assign(ctx context.Context, cardID, cardholderID string) (card.C
 			return &shared.CardLimitExceededError{Limit: max}
 		}
 
+		// La Cuenta Individual del Tarjetahabiente ya existe de antemano —
+		// nace al darlo de alta (ManagementStore.Create), no aquí. Ver
+		// docs/adr/0020-cuenta-individual-tarjetahabiente.md.
+		acct, err := q.GetIndividualAccountByCardholderID(ctx, cardholderID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return shared.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+
 		row, err := q.AssignCardIfAvailable(ctx, sqlcgen.AssignCardIfAvailableParams{
 			ID:           cardID,
 			CardholderID: &cardholderID,
+			AccountID:    &acct.ID,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Alguien más la tomó entre el check de arriba y este UPDATE.
@@ -129,26 +141,67 @@ func (s *Store) Assign(ctx context.Context, cardID, cardholderID string) (card.C
 			return err
 		}
 		assigned = mapper.ToCard(mapper.CardRow(row))
-
-		// El ledger_account nace en el momento de la asignación, con saldo
-		// cero — ver docs/business/tarjetas-y-asignacion.md.
-		if _, err := q.GetLedgerAccountByCardID(ctx, cardID); errors.Is(err, pgx.ErrNoRows) {
-			if _, err := q.CreateLedgerAccount(ctx, sqlcgen.CreateLedgerAccountParams{
-				ClientID: assigned.ClientID,
-				CardID:   cardID,
-				Currency: "MXN",
-			}); err != nil {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
 		return logCallerAudit(ctx, q, "card_assigned", "card", cardID, map[string]any{"cardholder_id": cardholderID})
 	})
 	if err != nil {
 		return card.Card{}, err
 	}
 	return assigned, nil
+}
+
+// ReplaceCard — ver internal/application/ports.CardRepository.ReplaceCard.
+// Atómico: cancela oldCardID y asigna newCardID a la misma Cuenta
+// Individual y al mismo Tarjetahabiente — el saldo (ledger_accounts.
+// account_id) y la CLABE nunca se tocan porque ninguno de los dos
+// vive en card.Card. Ver docs/adr/0020-cuenta-individual-tarjetahabiente.md.
+func (s *Store) ReplaceCard(ctx context.Context, oldCardID, newCardID string, reason card.CancelledReason) (card.Card, error) {
+	var replaced card.Card
+	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
+		old, err := s.getByIDTx(ctx, q, oldCardID)
+		if err != nil {
+			return err
+		}
+		if old.AccountID == nil || old.CardholderID == nil {
+			// Nunca fue asignada — no hay Cuenta ni Tarjetahabiente a los
+			// que reasignar la tarjeta nueva.
+			return shared.ErrNotFound
+		}
+
+		newCard, err := s.getByIDTx(ctx, q, newCardID)
+		if err != nil {
+			return err
+		}
+		if !newCard.IsAvailable() || newCard.ClientID != old.ClientID {
+			return shared.ErrCardNotAvailable
+		}
+
+		reasonStr := string(reason)
+		if _, err := q.CancelCard(ctx, sqlcgen.CancelCardParams{ID: oldCardID, CancelledReason: &reasonStr}); err != nil {
+			return err
+		}
+
+		row, err := q.AssignCardIfAvailable(ctx, sqlcgen.AssignCardIfAvailableParams{
+			ID:           newCardID,
+			CardholderID: old.CardholderID,
+			AccountID:    old.AccountID,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return shared.ErrCardNotAvailable
+		}
+		if err != nil {
+			return err
+		}
+		replaced = mapper.ToCard(mapper.CardRow(row))
+
+		if err := logCallerAudit(ctx, q, "card_cancelled", "card", oldCardID, map[string]any{"reason": reasonStr}); err != nil {
+			return err
+		}
+		return logCallerAudit(ctx, q, "card_replaced", "card", newCardID, map[string]any{"old_card_id": oldCardID, "cardholder_id": *old.CardholderID})
+	})
+	if err != nil {
+		return card.Card{}, err
+	}
+	return replaced, nil
 }
 
 func (s *Store) SetBlocked(ctx context.Context, cardID string, blocked bool) (card.Card, error) {

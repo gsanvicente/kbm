@@ -404,11 +404,12 @@ func (ns NullOperationStatus) Value() (driver.Value, error) {
 type OperationType string
 
 const (
-	OperationTypeLoad     OperationType = "load"
-	OperationTypeDebit    OperationType = "debit"
-	OperationTypeTransfer OperationType = "transfer"
-	OperationTypeBlock    OperationType = "block"
-	OperationTypeUnblock  OperationType = "unblock"
+	OperationTypeLoad        OperationType = "load"
+	OperationTypeDebit       OperationType = "debit"
+	OperationTypeTransfer    OperationType = "transfer"
+	OperationTypeBlock       OperationType = "block"
+	OperationTypeUnblock     OperationType = "unblock"
+	OperationTypeSpeiPayment OperationType = "spei_payment"
 )
 
 func (e *OperationType) Scan(src interface{}) error {
@@ -542,6 +543,8 @@ type Card struct {
 	UpdatedAt            time.Time
 	PanHash              *string
 	BlockedReason        NullCardBlockedReason
+	AccountID            *string
+	CancelledReason      *string
 }
 
 type Cardholder struct {
@@ -678,12 +681,20 @@ type ConcentratorEntry struct {
 	CreatedAt             time.Time
 }
 
+type IndividualAccount struct {
+	ID           string
+	ClientID     string
+	CardholderID string
+	Clabe        pgtype.Text
+	CreatedAt    time.Time
+}
+
 type LedgerAccount struct {
 	ID        string
 	ClientID  string
-	CardID    string
 	Currency  string
 	CreatedAt time.Time
+	AccountID string
 }
 
 type LedgerEntry struct {
@@ -720,6 +731,41 @@ type OutboxEvent struct {
 	Payload       []byte
 	CreatedAt     time.Time
 	ProcessedAt   *time.Time
+}
+
+type PaymentBeneficiary struct {
+	ID           string
+	ClientID     string
+	CardholderID string
+	Alias        string
+	Clabe        string
+	BankName     string
+	CoolingUntil time.Time
+	CreatedAt    time.Time
+}
+
+type SpeiDeposit struct {
+	ID                string
+	ClientID          string
+	AccountID         string
+	Amount            float64
+	ProviderReference string
+	CreatedAt         time.Time
+}
+
+type SpeiPayment struct {
+	ID                      string
+	ClientID                string
+	AccountID               string
+	BeneficiaryID           string
+	Amount                  float64
+	Status                  OperationStatus
+	RequestedByCardholderID string
+	ResolvedBy              *string
+	ResolutionNotes         *string
+	ProviderReference       *string
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }
 
 type User struct {

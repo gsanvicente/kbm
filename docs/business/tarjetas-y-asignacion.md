@@ -1,11 +1,13 @@
 # Tarjetas: ciclo de vida y asignación
 
-> Referencia viva. Última revisión: 2026-09-19.
+> Referencia viva. Última revisión: 2026-09-24.
 
 ## Ciclo de vida de una Tarjeta
 
 ```
-disponible → (asignación) → activa ⇄ bloqueo temporal (frozen) → bloqueada / cancelada
+disponible → (asignación) → activa ⇄ bloqueo temporal (frozen) → bloqueada
+                                  ↓
+                              cancelada → (reemplazo) → activa (nueva tarjeta, misma Cuenta)
 ```
 
 - **Disponible**: existe en el sistema, pertenece a un Cliente, pero no
@@ -22,15 +24,52 @@ disponible → (asignación) → activa ⇄ bloqueo temporal (frozen) → bloque
   `docs/business/autoservicio-tarjetahabiente.md`, "Congelar vs.
   bloquear una tarjeta". El staff nunca lo origina, solo puede
   revertirlo (o bloquear encima).
-- **Cancelada**: estado operativo aún no implementado (gestión de saldo,
-  feature futura — ver `docs/feature/operacion-saldo-con-aprobacion/`).
+- **Cancelada** (`cancelled`, implementado desde
+  `docs/adr/0020-cuenta-individual-tarjetahabiente.md`): a diferencia de
+  `blocked`/`frozen`, **nunca es reversible** — esa tarjeta física/virtual
+  específica queda retirada para siempre. Guarda `cancelled_reason`
+  (`expirada` | `robada` | `extraviada`), mismo espíritu que
+  `blocked_reason`. Dispara la sección "Reemplazo de tarjeta" más abajo.
 
 Una tarjeta nace **disponible**, siempre perteneciendo a un Cliente
 específico desde el inicio (el pool no es "global sin dueño" — una
 tarjeta que llegó para Koons Subsidiaria A no puede asignarse a un
-tarjetahabiente de Subsidiaria B). Su `ledger_account` (cuenta de saldo)
-se crea **en el momento de la asignación**, no antes — no tiene sentido
-llevar saldo de algo que nadie tiene todavía.
+tarjetahabiente de Subsidiaria B).
+
+**Corrección sobre lo que decía esta nota antes de ADR-0020**: se
+afirmaba que el `ledger_account` se crea "en el momento de la asignación,
+no antes — no tiene sentido llevar saldo de algo que nadie tiene
+todavía". Eso ya no es cierto: el saldo vive en la **Cuenta Individual**
+del Tarjetahabiente (`docs/business/saldo-y-ledger.md`), que nace al dar
+de alta al Tarjetahabiente — antes incluso de que tenga una tarjeta
+asignada. Una tarjeta ya no "trae" su propio saldo al asignarse: se
+conecta a una Cuenta que puede ya existir y tener movimientos (por
+ejemplo, un depósito SPEI recibido antes de que llegara la tarjeta — ver
+`docs/adr/0021-conector-spei.md`).
+
+## Reemplazo de tarjeta (implementado — ADR-0020)
+
+Cierra el hueco que esta misma nota dejaba pendiente hasta ahora: *"si la
+única tarjeta de alguien se pierde o esa persona cambia de tarjeta, no
+hay forma de dejarle asignar una nueva sin pasar por otro camino"*.
+
+- **Quién puede hacerlo**: solo staff — Super Admin o Admin Cliente,
+  mismo criterio que "Quién puede asignar" más abajo. El propio
+  Tarjetahabiente **no** puede iniciar un reemplazo en esta iteración
+  (revisitar si el negocio lo pide).
+- **Qué pasa, en una sola operación atómica**: la tarjeta actual pasa a
+  `cancelled` (con su motivo) y, en la misma transacción, se toma una
+  tarjeta `disponible` del mismo Cliente y se asigna a la **misma Cuenta
+  Individual** — reutiliza el pool de tarjetas disponibles que ya existe,
+  no crea una fuente nueva de tarjetas.
+- **Qué no se toca**: el saldo, la CLABE y el historial de movimientos de
+  la Cuenta — solo cambia el instrumento (PAN, vigencia) sobre esa misma
+  Cuenta. Para quien ve el historial, es continuo; solo cambian los
+  últimos 4 dígitos hacia adelante.
+- **Por qué es atómica**: mismo principio de "nunca a medias" que ya
+  rige cualquier operación de saldo en el proyecto — el invariante
+  "siempre hay una tarjeta activa por Cuenta" nunca debe romperse en un
+  estado observable, ni siquiera un instante.
 
 ## Motivo de bloqueo
 
@@ -51,13 +90,19 @@ Desactivar a un Tarjetahabiente nunca sobrescribe un `blocked_reason`
 existente — si una tarjeta ya estaba bloqueada manualmente, conserva ese
 motivo aunque su Tarjetahabiente pase a inactivo después.
 
-## Límite de tarjetas activas por Tarjetahabiente
+## Límite de Cuentas (y por tanto de tarjetas activas) por Tarjetahabiente
 
 Configurable por Cliente (`client_settings.max_active_cards_per_cardholder`,
-mismo patrón que `approval_rules`), cuenta **solo tarjetas activas** — una
-tarjeta cancelada o reemplazada libera espacio para asignar una nueva.
+mismo patrón que `approval_rules`). **Desde ADR-0020, cuenta Cuentas
+Individuales, no tarjetas activas sueltas** — dentro de cada Cuenta,
+"como máximo una tarjeta activa a la vez" ya está garantizado por
+construcción (ver "Reemplazo de tarjeta" arriba), así que el límite deja
+de necesitar la lógica de "una cancelada o reemplazada libera espacio":
+una Cuenta ocupa su cupo mientras exista, sin importar cuántas tarjetas
+haya tenido a lo largo del tiempo.
 
-**Default: 1 tarjeta activa por Tarjetahabiente** — no "sin restricción".
+**Default: 1 Cuenta (y por tanto 1 tarjeta activa) por Tarjetahabiente** —
+no "sin restricción".
 Es el tipo de cuenta actual de KBM el que exige esto; un Cliente puede
 tener un override explícito distinto (ej. Koons Subsidiaria B permite 2
 en el seed de esta iteración, para probar que el mecanismo sí varía por
@@ -88,14 +133,12 @@ Dos puntos de entrada a la misma operación, en `admin/`:
   libre y dásela a alguien". Ambos llaman al mismo
   `CardRepository.assign`, con las mismas reglas.
 
-**Fuera de alcance de esta pasada, deliberadamente**: liberar/reasignar
-una tarjeta ya asignada (devolverla al pool, o moverla a otro
-Tarjetahabiente). Con límite de 1 esto importa de verdad — hoy, si la
-única tarjeta de alguien se pierde o esa persona cambia de tarjeta, no
-hay forma de dejarle asignar una nueva sin pasar por otro camino (ej.
-bloquear la vieja no libera el cupo, `assign()` solo acepta tarjetas
-`disponible`). Se decidió no construirlo en esta pasada; revisitar antes
-de considerar el límite de 1 completamente funcional en producción.
+**Resuelto por ADR-0020** (antes era deuda pendiente marcada aquí mismo):
+reemplazar la única tarjeta de alguien (perdida, robada, vencida) ya no
+requiere "otro camino" — ver "Reemplazo de tarjeta" arriba. Sigue **fuera
+de alcance**, sin cambios: mover una tarjeta ya asignada a *otro*
+Tarjetahabiente (eso no es un reemplazo, es una reasignación entre
+personas distintas) — no solicitado.
 
 ## Quién puede bloquear / desbloquear
 
@@ -129,10 +172,10 @@ Tarjetahabiente).
   recibidas el 10/09"): se evaluó y se descartó para esta iteración —
   cada tarjeta solo tiene un estado `disponible`/`activa`/etc., sin
   entidad de lote. Revisitar si el negocio lo necesita.
-- **Congelar/cancelar una tarjeta**: es una operación de saldo aún no
-  implementada (ver `docs/feature/operacion-saldo-con-aprobacion/`).
-  Bloquear/desbloquear sí está implementado — ver
-  `docs/feature/bloqueo-de-tarjeta/`.
+- **Cancelar una tarjeta por decisión directa del staff** (fuera de los
+  tres motivos ya cubiertos por "Reemplazo de tarjeta" — expirada, robada,
+  extraviada): no implementado, no solicitado. Bloquear/desbloquear sí
+  está implementado — ver `docs/feature/bloqueo-de-tarjeta/`.
 - **Flujo de aprobación para bloquear/desbloquear**: el modelo de datos
   ya soporta configurar `approval_rules` para `operation_type = 'block'`
   o `'unblock'`, pero no hay cola de Aprobaciones todavía para resolver
@@ -150,3 +193,12 @@ límite de tarjetas activas por Cliente vive ahí de forma independiente
 (`backend/internal/adapters/memory/repository/seed.go`), no derivado de
 los datos de Cliente de `admin/` — ese backend no conoce la jerarquía de
 Clientes (ver esa ADR, alcance).
+
+## Ver también
+- `docs/adr/0020-cuenta-individual-tarjetahabiente.md` — dónde vive
+  realmente el saldo desde esta ADR, y el diseño completo de "Reemplazo
+  de tarjeta".
+- `docs/business/saldo-y-ledger.md` — el saldo, ahora de la Cuenta
+  Individual, no de la tarjeta.
+- `docs/adr/0021-conector-spei.md` — por qué el saldo tuvo que dejar de
+  vivir en la tarjeta.

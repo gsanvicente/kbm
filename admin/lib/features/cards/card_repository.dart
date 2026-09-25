@@ -1,3 +1,4 @@
+import '../../core/models/card_cancelled_reason.dart';
 import '../../core/models/payment_card.dart';
 
 abstract class CardRepository {
@@ -51,4 +52,16 @@ abstract class CardRepository {
   /// docs/business/desactivacion-de-tarjetahabientes.md). Una tarjeta que
   /// ya estaba bloqueada (por el motivo que sea) no se toca.
   Future<void> freezeAllForCardholder(String cardholderId);
+
+  /// Reemplaza [oldCardId] por [newCardId] (una tarjeta `unassigned` del
+  /// pool del mismo Cliente) sobre la misma Cuenta Individual — el saldo,
+  /// la CLABE y el historial no se tocan. [oldCardId] queda `cancelled`
+  /// con [reason]; nunca reversible. Ver
+  /// docs/adr/0020-cuenta-individual-tarjetahabiente.md, "Reemplazo de
+  /// tarjeta". Lanza [StateError] si [newCardId] ya no está disponible.
+  Future<PaymentCard> replace({
+    required String oldCardId,
+    required String newCardId,
+    required CardCancelledReason reason,
+  });
 }
