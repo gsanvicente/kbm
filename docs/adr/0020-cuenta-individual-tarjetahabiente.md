@@ -1,6 +1,8 @@
 # ADR-0020: Cuenta Individual del Tarjetahabiente — el saldo deja de vivir en la tarjeta
 
-- Estado: Aceptada
+- Estado: Aceptada — ver ADR-0028: la migración de este ADR eliminó
+  `ledger_accounts.card_id`, y una consulta de reclamos que dependía de
+  esa columna quedó rota contra Postgres real hasta esa corrección.
 - Fecha: 2026-09-24
 
 ## Contexto
@@ -128,3 +130,6 @@ duradera es entre el Tarjetahabiente y su dinero.
 - `docs/business/saldo-y-ledger.md`
 - `docs/business/domain-model.md`
 - `docs/security/threat-model.md`
+- `docs/adr/0028-reorganizacion-ux-cardholder.md` — corrige
+  `GetEntryCardholderID`, que siguió usando `ledger_accounts.card_id`
+  (eliminada aquí) hasta esa corrección.

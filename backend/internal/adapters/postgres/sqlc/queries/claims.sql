@@ -42,11 +42,16 @@ SELECT client_id FROM ledger_entries WHERE id = $1;
 -- name: GetLedgerEntryCardholderID :one
 -- Para el chequeo de pertenencia cuando quien pide/reclama es un
 -- Tarjetahabiente (getClaim/fileClaim de alcance mixto) — mismo patrón
--- que ya usa getLedger en handler.go.
-SELECT c.cardholder_id
+-- que ya usa getLedger en handler.go. Va por individual_accounts, no por
+-- cards: desde ADR-0020/migración 0009_cuenta_individual, el saldo (y su
+-- ledger_account) cuelga de la Cuenta Individual, no de la tarjeta —
+-- ledger_accounts.card_id ya no existe. Esto también es lo que hace
+-- correcto reclamar un movimiento SPEI/Dispersión de un Tarjetahabiente
+-- que todavía no tiene ninguna tarjeta asignada.
+SELECT ia.cardholder_id
 FROM ledger_entries le
 JOIN ledger_accounts la ON la.id = le.ledger_account_id
-JOIN cards c ON c.id = la.card_id
+JOIN individual_accounts ia ON ia.id = la.account_id
 WHERE le.id = $1;
 
 -- name: InsertClaim :one

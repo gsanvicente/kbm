@@ -1,6 +1,8 @@
 # ADR-0018: El Tarjetahabiente puede presentar reclamos sobre su propio movimiento
 
-- Estado: Aceptada
+- Estado: Aceptada — corregida por ADR-0028 (`GetEntryCardholderID` quedó
+  apuntando a una columna eliminada tras ADR-0020, sin que nadie lo
+  notara hasta entonces)
 - Fecha: 2026-09-21
 
 ## Contexto
@@ -100,3 +102,7 @@ el reclamo.
 - `docs/feature/reclamos-de-movimientos/README.md`
 - `docs/feature/portal-autoservicio-tarjetahabiente/README.md`
 - `backend/migrations/0007_cardholder_filed_claims.sql`
+- `docs/adr/0028-reorganizacion-ux-cardholder.md` — corrige
+  `GetEntryCardholderID` para ir por `individual_accounts`, no por
+  `cards` (columna eliminada en `migrations/0009_cuenta_individual.sql`,
+  ADR-0020).

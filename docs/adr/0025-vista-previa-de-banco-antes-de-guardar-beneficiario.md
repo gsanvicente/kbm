@@ -1,6 +1,10 @@
 # ADR-0025: Vista previa del banco (y corrección de refresco) al agregar un Beneficiario
 
-- Estado: Aceptada
+- Estado: Aceptada — **complementada por
+  `docs/adr/0027-validacion-de-saldo-y-estatus-de-pago-spei.md`**: el
+  mismo síntoma de refresco volvió a aparecer en "Enviar dinero", esta
+  vez con una corrección de raíz (`Cache-Control: no-store` en toda la
+  API) en vez de solo el parche puntual que se hizo aquí.
 - Fecha: 2026-09-25
 
 ## Contexto
@@ -124,3 +128,6 @@ una CLABE específica es la suya propia). No hay conflicto.
 - `docs/adr/0002-flutter-web-mobile-two-apps.md` — "sin código de
   runtime compartido", el precedente que justifica duplicar la
   validación en Dart.
+- `docs/adr/0027-validacion-de-saldo-y-estatus-de-pago-spei.md` — el
+  mismo síntoma de refresco en "Enviar dinero", con la corrección de
+  raíz (`Cache-Control: no-store`).

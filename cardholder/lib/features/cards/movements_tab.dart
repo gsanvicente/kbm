@@ -4,29 +4,71 @@ import '../../app/theme.dart';
 import '../../core/models/ledger_entry_type.dart';
 import '../../core/models/ledger_movement.dart';
 import '../../core/models/movement_claim.dart';
-import '../../core/models/payment_card.dart';
+import '../../core/models/spei_deposit.dart';
+import '../../core/models/spei_payment.dart';
 import '../../core/utils/currency_format.dart';
 import '../../core/utils/date_format.dart';
+import '../../shared_widgets/pdf_download.dart';
+import '../../shared_widgets/pdf_statement.dart';
+import '../spei/spei_repository.dart';
 import 'card_repository.dart';
 
 enum _Period { all, thisMonth, lastMonth, custom }
 
-/// Pestaña "Movimientos" dentro de `CardholderShell` — lista de la
-/// cuenta con filtro por periodo y resumen (depósitos/cargos/neto) del
-/// rango seleccionado, más "bancario" que el historial que ve el staff
-/// (ver docs/feature/portal-autoservicio-tarjetahabiente/README.md).
+/// Pestaña "Movimientos" — la vista completa e histórica de la Cuenta
+/// (ver docs/adr/0020-cuenta-individual-tarjetahabiente.md: Dispersión,
+/// Deducción, Transferencia C2C y SPEI entrante/saliente todos afectan
+/// el mismo saldo, así que todos aparecen aquí mezclados, un solo
+/// listado). [loadMovements] desacopla esta pantalla de que exista una
+/// tarjeta: `CardholderShell` la llama con
+/// `cardRepository.listMovements(card.id)`, y el Tarjetahabiente sin
+/// ninguna tarjeta asignada (`HomeShell._AccountOnlyShell`) con
+/// `speiRepository.getAccountLedger(cardholderId).movements` — mismo
+/// dato real (la misma Cuenta), dos formas válidas de pedirlo. Ver
+/// docs/adr/0028-reorganizacion-ux-cardholder.md.
 class MovementsTab extends StatefulWidget {
-  const MovementsTab({super.key, required this.card, required this.cardRepository});
+  const MovementsTab({
+    super.key,
+    required this.headerLabel,
+    required this.currency,
+    required this.accountBalance,
+    required this.loadMovements,
+    required this.cardRepository,
+    required this.speiRepository,
+    required this.cardholderId,
+    required this.cardholderName,
+  });
 
-  final PaymentCard card;
+  final String headerLabel;
+  final String currency;
+
+  /// Saldo actual de la Cuenta — para el bloque de identificación del
+  /// PDF descargable (ver "Descargar estado de cuenta" más abajo), no
+  /// para ningún cálculo en pantalla (el saldo puntual ya se muestra en
+  /// "Inicio").
+  final double accountBalance;
+
+  final Future<List<LedgerMovement>> Function() loadMovements;
   final CardRepository cardRepository;
+  final SpeiRepository speiRepository;
+  final String cardholderId;
+  final String cardholderName;
 
   @override
   State<MovementsTab> createState() => _MovementsTabState();
 }
 
 class _MovementsTabState extends State<MovementsTab> {
-  late final Future<List<LedgerMovement>> _future = widget.cardRepository.listMovements(widget.card.id);
+  late final Future<List<LedgerMovement>> _future = widget.loadMovements();
+
+  // Los comprobantes SPEI (folio, CLABE, estatus) no viven en
+  // LedgerMovement — se piden una sola vez, perezosamente, la primera
+  // vez que se toca un movimiento que se ve como SPEI (ver
+  // `_looksLikeSpei`), y se cachean aquí para no repetir la llamada en
+  // cada tap. Nunca se piden por adelantado para toda la lista (mismo
+  // criterio anti-N+1 que ya documenta `_MovementClaimDialog`).
+  Future<List<SpeiPayment>>? _paymentsFuture;
+  Future<List<SpeiDeposit>>? _depositsFuture;
 
   _Period _period = _Period.all;
   DateTimeRange? _customRange;
@@ -46,7 +88,6 @@ class _MovementsTabState extends State<MovementsTab> {
       case _Period.custom:
         final range = _customRange;
         if (range == null) return movements;
-        // endDate inclusivo de todo su día, no solo su medianoche.
         final end = DateTime(range.end.year, range.end.month, range.end.day, 23, 59, 59);
         return movements.where((m) => !m.createdAt.isBefore(range.start) && !m.createdAt.isAfter(end)).toList();
     }
@@ -81,6 +122,95 @@ class _MovementsTabState extends State<MovementsTab> {
     }
   }
 
+  bool _looksLikeSpei(String? description) =>
+      description != null && (description.startsWith('Pago SPEI') || description.startsWith('Depósito SPEI'));
+
+  /// Busca, dentro de los pagos/depósitos SPEI del propio Tarjetahabiente,
+  /// el que corresponde a [movement] — por monto exacto y el timestamp
+  /// más cercano dentro de una ventana corta. `LedgerMovement` no trae un
+  /// folio ni la CLABE del beneficiario (esos datos viven en
+  /// `SpeiPayment`/`SpeiDeposit`, no en el ledger genérico), así que esto
+  /// es lo más cercano a una relación real sin un campo de referencia
+  /// explícito en el backend — ver "Limitación conocida" en
+  /// docs/adr/0028-reorganizacion-ux-cardholder.md. Un movimiento
+  /// genuino de SPEI siempre tiene una coincidencia exacta de monto y
+  /// prácticamente el mismo instante (se crean en la misma transacción),
+  /// así que el margen de error real es mínimo.
+  Future<Object?> _resolveSpeiMatch(LedgerMovement movement) async {
+    if (movement.type == LedgerEntryType.credit) {
+      _depositsFuture ??= widget.speiRepository.listDeposits(widget.cardholderId);
+      final deposits = await _depositsFuture!;
+      return _closestMatch<SpeiDeposit>(deposits, movement, (d) => d.amount, (d) => d.createdAt);
+    } else {
+      _paymentsFuture ??= widget.speiRepository.listPayments(widget.cardholderId);
+      final payments = await _paymentsFuture!;
+      return _closestMatch<SpeiPayment>(payments, movement, (p) => p.amount, (p) => p.createdAt);
+    }
+  }
+
+  T? _closestMatch<T>(
+    List<T> candidates,
+    LedgerMovement movement,
+    double Function(T) amountOf,
+    DateTime Function(T) createdAtOf,
+  ) {
+    T? best;
+    Duration? bestDelta;
+    for (final c in candidates) {
+      if (amountOf(c) != movement.amount) continue;
+      final delta = createdAtOf(c).difference(movement.createdAt).abs();
+      if (delta > const Duration(minutes: 5)) continue;
+      if (bestDelta == null || delta < bestDelta) {
+        best = c;
+        bestDelta = delta;
+      }
+    }
+    return best;
+  }
+
+  Future<void> _downloadStatement(List<LedgerMovement> movements) async {
+    final bytes = await buildStatementPdf(
+      accountTitle: 'Cuenta Individual',
+      infoFields: [MapEntry('Titular', widget.cardholderName)],
+      balance: widget.accountBalance,
+      currency: widget.currency,
+      periodLabel: 'Historial completo',
+      rows: [
+        for (final m in movements)
+          PdfStatementRow(
+            date: formatMovementDate(m.createdAt),
+            isCredit: m.type == LedgerEntryType.credit,
+            description: m.description ?? '',
+            amount: m.amount,
+            balanceAfter: m.balanceAfter,
+          ),
+      ],
+    );
+    if (!mounted) return;
+    try {
+      downloadPdf('estado-de-cuenta-${widget.cardholderId}-${DateTime.now().toIso8601String().split('T').first}.pdf', bytes);
+    } on UnsupportedError catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'No se pudo descargar.')));
+    }
+  }
+
+  Future<void> _openMovement(LedgerMovement movement) async {
+    Object? speiMatch;
+    if (_looksLikeSpei(movement.description)) {
+      speiMatch = await _resolveSpeiMatch(movement);
+    }
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => _MovementDetailDialog(
+        movement: movement,
+        speiMatch: speiMatch,
+        cardRepository: widget.cardRepository,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<LedgerMovement>>(
@@ -110,9 +240,21 @@ class _MovementsTabState extends State<MovementsTab> {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                  child: Text(
-                    'Movimientos · ${widget.card.maskedPan}',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: KoonsColors.navy),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          widget.headerLabel,
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: KoonsColors.navy),
+                        ),
+                      ),
+                      if (allMovements.isNotEmpty)
+                        TextButton.icon(
+                          onPressed: () => _downloadStatement(allMovements),
+                          icon: const Icon(Icons.download_rounded, size: 16),
+                          label: const Text('Descargar'),
+                        ),
+                    ],
                   ),
                 ),
                 if (allMovements.isNotEmpty) ...[
@@ -144,20 +286,14 @@ class _MovementsTabState extends State<MovementsTab> {
                   const SizedBox(height: 12),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _PeriodSummaryCard(
-                      credits: credits,
-                      debits: debits,
-                      currency: widget.card.currency,
-                    ),
+                    child: _PeriodSummaryCard(credits: credits, debits: debits, currency: widget.currency),
                   ),
                 ],
                 if (movements.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      allMovements.isEmpty
-                          ? 'Aún no hay movimientos en esta tarjeta.'
-                          : 'No hay movimientos en el periodo seleccionado.',
+                      allMovements.isEmpty ? 'Aún no hay movimientos en tu Cuenta.' : 'No hay movimientos en el periodo seleccionado.',
                       style: TextStyle(color: Colors.grey.shade600),
                     ),
                   )
@@ -169,8 +305,8 @@ class _MovementsTabState extends State<MovementsTab> {
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, index) => _MovementTile(
                         movement: movements[index],
-                        currency: widget.card.currency,
-                        cardRepository: widget.cardRepository,
+                        currency: widget.currency,
+                        onTap: () => _openMovement(movements[index]),
                       ),
                     ),
                   ),
@@ -239,11 +375,11 @@ class _SummaryColumn extends StatelessWidget {
 }
 
 class _MovementTile extends StatelessWidget {
-  const _MovementTile({required this.movement, required this.currency, required this.cardRepository});
+  const _MovementTile({required this.movement, required this.currency, required this.onTap});
 
   final LedgerMovement movement;
   final String currency;
-  final CardRepository cardRepository;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -252,10 +388,7 @@ class _MovementTile extends StatelessWidget {
     final sign = isCredit ? '+' : '−';
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      onTap: () => showDialog(
-        context: context,
-        builder: (context) => _MovementClaimDialog(movement: movement, cardRepository: cardRepository),
-      ),
+      onTap: onTap,
       leading: CircleAvatar(
         backgroundColor: color.withValues(alpha: 0.12),
         child: Icon(isCredit ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded, color: color, size: 18),
@@ -270,23 +403,24 @@ class _MovementTile extends StatelessWidget {
   }
 }
 
-/// Detalle de un movimiento + su reclamo, si existe — o el formulario
-/// para presentar uno nuevo. Consulta el reclamo perezosamente (solo al
-/// abrir este diálogo, nunca de una sola vez para toda la lista) para
-/// evitar un patrón N+1 sobre `GET .../claim` — ver
-/// docs/feature/reclamos-de-movimientos/README.md, "N+1 en reclamos" del
-/// lado de `admin/`, el mismo riesgo que aquí se evita desde el diseño.
-class _MovementClaimDialog extends StatefulWidget {
-  const _MovementClaimDialog({required this.movement, required this.cardRepository});
+/// Detalle de un movimiento — si se identificó como un pago/depósito
+/// SPEI (ver `_looksLikeSpei`/`_resolveSpeiMatch` en `MovementsTab`),
+/// muestra primero su comprobante real (folio, CLABE/beneficiario,
+/// estatus); siempre, sin importar el origen, deja ver/presentar un
+/// reclamo — un movimiento SPEI sigue siendo dinero real que se puede
+/// disputar, igual que cualquier otro.
+class _MovementDetailDialog extends StatefulWidget {
+  const _MovementDetailDialog({required this.movement, required this.speiMatch, required this.cardRepository});
 
   final LedgerMovement movement;
+  final Object? speiMatch;
   final CardRepository cardRepository;
 
   @override
-  State<_MovementClaimDialog> createState() => _MovementClaimDialogState();
+  State<_MovementDetailDialog> createState() => _MovementDetailDialogState();
 }
 
-class _MovementClaimDialogState extends State<_MovementClaimDialog> {
+class _MovementDetailDialogState extends State<_MovementDetailDialog> {
   late Future<MovementClaim?> _future = widget.cardRepository.getClaim(widget.movement.id);
   late final _reasonController = TextEditingController();
   String? _error;
@@ -327,51 +461,65 @@ class _MovementClaimDialogState extends State<_MovementClaimDialog> {
   @override
   Widget build(BuildContext context) {
     final isCredit = widget.movement.type == LedgerEntryType.credit;
+    final match = widget.speiMatch;
     return AlertDialog(
       title: const Text('Detalle del movimiento'),
       content: SizedBox(
         width: 380,
-        child: FutureBuilder<MovementClaim?>(
-          future: _future,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
-            }
-            final claim = snapshot.data;
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.movement.description ?? (isCredit ? 'Depósito' : 'Cargo'),
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                ),
-                Text(formatMovementDate(widget.movement.createdAt), style: TextStyle(color: Colors.grey.shade600)),
-                const SizedBox(height: 16),
-                if (claim != null) ...[
-                  Text('Reclamo: ${claim.status.label}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  Text('Motivo: ${claim.reason}'),
-                  if (claim.resolutionNotes != null) ...[
-                    const SizedBox(height: 4),
-                    Text('Resolución: ${claim.resolutionNotes}'),
-                  ],
-                ] else ...[
-                  Text('¿No reconoces este movimiento?', style: TextStyle(color: Colors.grey.shade700)),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _reasonController,
-                    maxLines: 3,
-                    decoration: const InputDecoration(labelText: 'Motivo del reclamo', border: OutlineInputBorder()),
+        child: SingleChildScrollView(
+          child: FutureBuilder<MovementClaim?>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
+              }
+              final claim = snapshot.data;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.movement.description ?? (isCredit ? 'Depósito' : 'Cargo'),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                   ),
-                  if (_error != null) ...[
+                  Text(formatMovementDate(widget.movement.createdAt), style: TextStyle(color: Colors.grey.shade600)),
+                  if (match is SpeiPayment) ...[
+                    const SizedBox(height: 12),
+                    _DetailRow(label: 'Folio', value: match.id),
+                    _DetailRow(label: 'Beneficiario', value: match.beneficiaryAlias),
+                    _DetailRow(label: 'CLABE destino', value: match.beneficiaryClabe),
+                    _DetailRow(label: 'Estatus', value: match.status.label),
+                  ] else if (match is SpeiDeposit) ...[
+                    const SizedBox(height: 12),
+                    _DetailRow(label: 'Folio', value: match.id),
+                    _DetailRow(label: 'Referencia', value: match.providerReference),
+                  ],
+                  const SizedBox(height: 16),
+                  if (claim != null) ...[
+                    Text('Reclamo: ${claim.status.label}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 4),
+                    Text('Motivo: ${claim.reason}'),
+                    if (claim.resolutionNotes != null) ...[
+                      const SizedBox(height: 4),
+                      Text('Resolución: ${claim.resolutionNotes}'),
+                    ],
+                  ] else ...[
+                    Text('¿No reconoces este movimiento?', style: TextStyle(color: Colors.grey.shade700)),
                     const SizedBox(height: 8),
-                    Text(_error!, style: TextStyle(color: Colors.red.shade700, fontSize: 12.5)),
+                    TextField(
+                      controller: _reasonController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(labelText: 'Motivo del reclamo', border: OutlineInputBorder()),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 8),
+                      Text(_error!, style: TextStyle(color: Colors.red.shade700, fontSize: 12.5)),
+                    ],
                   ],
                 ],
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
       actions: [
@@ -389,6 +537,26 @@ class _MovementClaimDialogState extends State<_MovementClaimDialog> {
           },
         ),
       ],
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 110, child: Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5))),
+          Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5))),
+        ],
+      ),
     );
   }
 }

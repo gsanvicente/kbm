@@ -1,17 +1,22 @@
 # Portal de autoservicio del Tarjetahabiente
 
-- Estado: **Implementado** (2026-09-21) — login, activación de cuenta,
-  detalle de tarjeta (saldo + Transferir + Bloqueo temporal), Movimientos
-  (con filtro de periodo y resumen) y presentar un reclamo existen en
-  `cardholder/`, con una navegación persistente (sidebar en pantallas
-  anchas, barra inferior en angostas, homologada visualmente con
-  `admin/`) en vez de una sola pantalla suelta — ver "Diseño" más abajo.
+- Estado: **Implementado**, reorganizado (2026-09-25) en tres secciones —
+  Inicio (saldo + Transferencia C2C + pago SPEI), Movimientos (historial
+  único de la Cuenta, filtro de periodo, resumen, descarga de estado de
+  cuenta y presentar un reclamo) y Beneficiarios (CLABE propia +
+  directorio de pago) — con una navegación persistente (sidebar en
+  pantallas anchas, barra inferior en angostas, homologada visualmente
+  con `admin/`) en vez de una sola pantalla suelta — ver "Diseño" más
+  abajo y `docs/adr/0028-reorganizacion-ux-cardholder.md`.
 - ADR/TDR relacionados: `docs/adr/0002-flutter-web-mobile-two-apps.md`,
   `docs/adr/0009-pan-hash-transit-for-c2c-transfers.md`,
   `docs/adr/0010-in-memory-shared-backend-for-cards-and-ledger.md`,
   `docs/adr/0013-jwt-session-authentication.md`,
   `docs/adr/0018-cardholder-filed-claims.md`,
-  `docs/adr/0019-cardholder-self-activation.md`
+  `docs/adr/0019-cardholder-self-activation.md`,
+  `docs/adr/0020-cuenta-individual-tarjetahabiente.md`,
+  `docs/adr/0021-conector-spei.md`,
+  `docs/adr/0028-reorganizacion-ux-cardholder.md`
 - Amenazas relevantes: `docs/security/threat-model.md` puntos 6, 11, 12 y 16
 - Roles/actores involucrados: Tarjetahabiente únicamente (plano de
   identidad `cardholder_users`, separado de staff) — ver
@@ -73,38 +78,44 @@ de la gestión de saldos del staff (sin Concentradora/Colectora, sin
     `docs/adr/0019-cardholder-self-activation.md`.
 2. **Inicio / selector de tarjeta** (si tiene más de una) — **implementado**,
    saldo y estado de cada tarjeta.
-3. **Dentro de una tarjeta** (pestañas "Inicio" y "Movimientos" del
-   mismo marco de navegación, ver "Diseño"):
+3. **Dentro de una tarjeta** (pestañas "Inicio", "Movimientos" y
+   "Beneficiarios" del mismo marco de navegación, ver "Diseño"). Un
+   Tarjetahabiente **sin ninguna tarjeta asignada todavía** ve el mismo
+   marco de tres secciones (`HomeShell._AccountOnlyShell`), solo que
+   "Inicio" no muestra tarjeta ni Transferencia C2C — ver
+   `docs/adr/0028-reorganizacion-ux-cardholder.md`:
    - **Inicio**: tarjeta (visual, nunca el PAN completo) + saldo actual,
-     destacado. **Implementado.**
-   - **Movimientos** (lista de la cuenta, más reciente primero) —
-     **implementado**, con filtro por periodo (Todo/Este mes/Mes
-     pasado/rango personalizado) y un resumen de Depósitos/Cargos/Neto
-     del periodo seleccionado, puramente client-side sobre la misma
-     lista ya cargada (sin parámetros de fecha en el backend).
-   - Botón **Bloqueo temporal** (congelar/descongelar la propia
-     tarjeta) — **implementado** (2026-09-19), ver
-     `docs/business/autoservicio-tarjetahabiente.md`, "Congelar vs.
-     bloquear una tarjeta". Solo disponible sobre una tarjeta `active`
-     (para congelar) o `frozen` (para descongelar) — una tarjeta
-     `blocked` por el staff sí muestra el mensaje de "contacta a tu
-     administrador" en vez de cualquier acción de autoservicio, ni
-     siquiera esta.
-   - Botón **Transferir** — **implementado**, ver
-     `docs/feature/transferencia-c2c-tarjetahabiente/README.md`.
-   - Presentar un reclamo por movimiento — **implementado** (2026-09-21):
-     tocar un movimiento abre su detalle; si no tiene reclamo, un campo
-     de motivo + "Presentar reclamo"; si ya tiene uno, su
+     destacado, y las dos formas de enviar dinero desde la misma Cuenta
+     una junto a la otra — "A una tarjeta KBM" (Transferencia C2C) y "A
+     una cuenta (SPEI)" — más el botón **Bloqueo temporal**
+     (congelar/descongelar la propia tarjeta, implementado 2026-09-19,
+     ver `docs/business/autoservicio-tarjetahabiente.md`, "Congelar vs.
+     bloquear una tarjeta"; solo sobre `active`/`frozen`, nunca
+     `blocked`). Ver `docs/feature/transferencia-c2c-tarjetahabiente/README.md`
+     para la Transferencia C2C en detalle.
+   - **Movimientos** (lista única de la Cuenta — Dispersión, Deducción,
+     Transferencia C2C y SPEI entrante/saliente, más reciente primero) —
+     con filtro por periodo (Todo/Este mes/Mes pasado/rango
+     personalizado), un resumen de Depósitos/Cargos/Neto del periodo
+     seleccionado (puramente client-side), botón "Descargar" (PDF del
+     estado de cuenta) y presentar un reclamo por movimiento: tocar uno
+     abre su detalle (con folio/beneficiario/estatus si se identifica
+     como un pago/depósito SPEI); si no tiene reclamo, un campo de
+     motivo + "Presentar reclamo"; si ya tiene uno, su
      estado/motivo/notas de resolución (nunca puede resolverlo, solo
      verlo). Ver `docs/adr/0018-cardholder-filed-claims.md`.
+   - **Beneficiarios**: CLABE propia (activar/copiar) y el directorio de
+     a quién se le puede pagar por SPEI — se muestra aquí para
+     administrarlos con calma; para enviar dinero, "Inicio" también deja
+     dar de alta un Beneficiario nuevo sin salir de ese flujo.
 
 ## Diseño
 El portal usa un marco de navegación persistente una vez dentro de una
 tarjeta (`CardholderShell`), homologado con `admin/lib/app/admin_shell.dart`:
 un sidebar navy fijo (248px, mismo `KoonsColors.sidebarBackground`/
 `sidebarItemActive`/`sidebarText`) en pantallas anchas (≥900px,
-web/desktop), o una `NavigationBar` inferior en angostas (móvil), con dos
-destinos — Inicio y Movimientos. El topbar (blanco, borde inferior,
+web/desktop), o una `NavigationBar` inferior en angostas (móvil), con tres
+destinos — Inicio, Movimientos y Beneficiarios. El topbar (blanco, borde inferior,
 título de la sección a la izquierda, avatar + nombre + cerrar sesión a la
 derecha) sigue el mismo formato que el `_TopBar` de `admin/`, con un
 `onBack` opcional que `admin/` no necesita (para el selector de
@@ -144,9 +155,10 @@ Ver `docs/business/autoservicio-tarjetahabiente.md` — no se repiten aquí.
 - MFA: fuera de alcance, ver nota en el doc de negocio.
 - Notificaciones (push/email) de movimientos: fuera de alcance.
 - Descargar/exportar el estado de cuenta: **ya no está fuera de
-  alcance** — implementado después de escrito este documento, como parte
-  de la pestaña "Cuenta" (`SpeiSection`, fuera del alcance original de
-  este README), ver `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md`,
+  alcance** — implementado después de escrito este documento (fuera del
+  alcance original de este README), ahora disponible desde "Movimientos"
+  (ver `docs/adr/0028-reorganizacion-ux-cardholder.md`), ver
+  `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md`,
   punto 6, y `docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md`
   (formato PDF con branding).
 

@@ -7,23 +7,39 @@ import '../../core/models/spei_payment.dart';
 import '../../core/models/spei_payment_status.dart';
 import '../../core/utils/currency_format.dart';
 import '../../shared_widgets/currency_field.dart';
+import 'add_beneficiary_dialog.dart';
 import 'spei_repository.dart';
 
-/// Enviar un pago SPEI a un Beneficiario ya registrado — dos pasos (monto
-/// → confirmar), igual criterio que TransferDialog, pero sin resolver
-/// destino (el Beneficiario ya se eligió de una lista propia, nunca se
-/// escribe una CLABE ajena a mano aquí). Ver
-/// docs/adr/0021-conector-spei.md, puntos 5-7.
+/// Enviar un pago SPEI a un Beneficiario ya registrado, o a uno nuevo
+/// dado de alta sin salir de este mismo flujo (ver
+/// docs/adr/0028-reorganizacion-ux-cardholder.md: los Beneficiarios ya no
+/// se muestran de entrada en ningún lado — solo aquí, al momento de
+/// enviar, o en "Beneficiarios" para administrarlos con calma) — dos
+/// pasos (monto → confirmar), igual criterio que TransferDialog, pero sin
+/// resolver destino a mano (siempre por CLABE ya validada de un
+/// Beneficiario). Ver docs/adr/0021-conector-spei.md, puntos 5-7.
 class SendSpeiDialog extends StatefulWidget {
   const SendSpeiDialog({
     super.key,
     required this.cardholderId,
     required this.beneficiaries,
+    required this.balance,
+    required this.currency,
     required this.repository,
   });
 
   final String cardholderId;
   final List<Beneficiary> beneficiaries;
+
+  /// Saldo disponible de la Cuenta Individual — para bloquear un envío
+  /// que ya sabemos que no puede cubrirse, antes de siquiera mandarlo al
+  /// servidor. Ver docs/adr/0027-validacion-de-saldo-y-estatus-de-pago-spei.md:
+  /// antes de esto, un pago por encima del saldo (y por encima del
+  /// umbral de aprobación) se aceptaba igual y quedaba "pendiente de
+  /// aprobación" sin que nadie le avisara al Tarjetahabiente que ya
+  /// sabíamos, desde el momento en que lo pidió, que no había fondos.
+  final double balance;
+  final String currency;
   final SpeiRepository repository;
 
   @override
@@ -34,10 +50,24 @@ enum _Step { form, confirm }
 
 class _SendSpeiDialogState extends State<SendSpeiDialog> {
   _Step _step = _Step.form;
+  late List<Beneficiary> _beneficiaries = List.of(widget.beneficiaries);
   Beneficiary? _beneficiary;
   double _amount = 0;
   bool _busy = false;
   String? _error;
+
+  Future<void> _addBeneficiary() async {
+    final added = await showDialog<Beneficiary>(
+      context: context,
+      builder: (context) => AddBeneficiaryDialog(cardholderId: widget.cardholderId, repository: widget.repository),
+    );
+    if (added == null) return;
+    setState(() {
+      _beneficiaries = [..._beneficiaries, added];
+      _beneficiary = added;
+      _error = null;
+    });
+  }
 
   void _goToConfirm() {
     if (_beneficiary == null) {
@@ -46,6 +76,10 @@ class _SendSpeiDialogState extends State<SendSpeiDialog> {
     }
     if (_amount <= 0) {
       setState(() => _error = 'Ingresa un monto mayor a cero.');
+      return;
+    }
+    if (_amount > widget.balance) {
+      setState(() => _error = 'Saldo insuficiente — tu saldo disponible es ${formatCurrency(widget.balance, widget.currency)}.');
       return;
     }
     setState(() {
@@ -107,16 +141,31 @@ class _SendSpeiDialogState extends State<SendSpeiDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DropdownButtonFormField<Beneficiary>(
-            initialValue: _beneficiary,
-            decoration: const InputDecoration(labelText: 'Beneficiario'),
-            items: [
-              for (final b in widget.beneficiaries)
-                DropdownMenuItem(value: b, child: Text('${b.alias} · ${b.maskedClabe}')),
-            ],
-            onChanged: (value) => setState(() => _beneficiary = value),
+          if (_beneficiaries.isEmpty)
+            Text(
+              'Aún no tienes beneficiarios registrados.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontStyle: FontStyle.italic),
+            )
+          else
+            DropdownButtonFormField<Beneficiary>(
+              initialValue: _beneficiary,
+              decoration: const InputDecoration(labelText: 'Beneficiario'),
+              items: [
+                for (final b in _beneficiaries)
+                  DropdownMenuItem(value: b, child: Text('${b.alias} · ${b.maskedClabe}')),
+              ],
+              onChanged: (value) => setState(() => _beneficiary = value),
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _addBeneficiary,
+              icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+              label: const Text('Agregar nuevo beneficiario'),
+              style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           CurrencyField(onChanged: (value) => _amount = value),
           if (_beneficiary?.isCooling ?? false) ...[
             const SizedBox(height: 8),

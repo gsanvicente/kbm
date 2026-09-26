@@ -1,6 +1,6 @@
 # Reclamos sobre Movimientos
 
-> Referencia viva. Última revisión: 2026-09-21.
+> Referencia viva. Última revisión: 2026-09-25.
 
 ## Qué es un reclamo y por qué es una entidad separada
 
@@ -48,7 +48,12 @@ Separación deliberada de responsabilidades:
   mismo mecanismo (`movement_claims`), nunca sobre el movimiento de
   otro. Ver `docs/adr/0018-cardholder-filed-claims.md` para el cambio de
   schema que esto requirió (`requested_by` — staff — pasó a ser
-  opcional, con una columna paralela hacia `cardholders`).
+  opcional, con una columna paralela hacia `cardholders`). El chequeo de
+  pertenencia es por Cuenta Individual, no por tarjeta (ver
+  `docs/adr/0020-cuenta-individual-tarjetahabiente.md`,
+  `docs/adr/0028-reorganizacion-ux-cardholder.md`) — un Tarjetahabiente
+  sin ninguna tarjeta asignada todavía puede reclamar un depósito o pago
+  SPEI de su Cuenta igual que uno con tarjeta.
 - **Resolver un reclamo** (a favor o rechazado): solo **Super Admin y
   Admin Cliente** — quien opera el día a día (o el propio
   Tarjetahabiente que lo presentó) no decide el resultado de una

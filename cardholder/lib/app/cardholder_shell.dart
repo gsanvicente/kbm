@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../core/models/payment_card.dart';
+import '../core/models/spei_payment.dart';
+import '../core/models/spei_payment_status.dart';
 import '../features/cards/card_repository.dart';
 import '../features/cards/home_tab.dart';
 import '../features/cards/movements_tab.dart';
+import '../features/spei/beneficiarios_section.dart';
 import '../features/spei/spei_repository.dart';
-import '../features/spei/spei_section.dart';
 import '../features/transfer/transfer_repository.dart';
 import 'theme.dart';
 
-enum _Tab { inicio, movimientos, cuenta }
+enum _Tab { inicio, movimientos, beneficiarios }
 
 extension on _Tab {
   String get label {
@@ -18,12 +20,13 @@ extension on _Tab {
         return 'Inicio';
       case _Tab.movimientos:
         return 'Movimientos';
-      // "Cuenta" — CLABE/Beneficiarios/pagos SPEI, ver
-      // docs/adr/0021-conector-spei.md. Vive a nivel de Cuenta Individual,
-      // no de tarjeta, pero se navega desde aquí igual (todo Tarjetahabiente
-      // con una tarjeta también tiene una Cuenta, ver ADR-0020).
-      case _Tab.cuenta:
-        return 'Cuenta';
+      // "Beneficiarios" — CLABE propia + a quién se le puede pagar por
+      // SPEI, ver docs/adr/0028-reorganizacion-ux-cardholder.md. El
+      // saldo, el envío y el historial completo ya no viven aquí — esto
+      // es gestión de contactos de pago, no una segunda vista de la
+      // Cuenta.
+      case _Tab.beneficiarios:
+        return 'Beneficiarios';
     }
   }
 
@@ -33,8 +36,8 @@ extension on _Tab {
         return Icons.home_outlined;
       case _Tab.movimientos:
         return Icons.receipt_long_outlined;
-      case _Tab.cuenta:
-        return Icons.account_balance_outlined;
+      case _Tab.beneficiarios:
+        return Icons.people_outline_rounded;
     }
   }
 
@@ -44,18 +47,20 @@ extension on _Tab {
         return Icons.home_rounded;
       case _Tab.movimientos:
         return Icons.receipt_long_rounded;
-      case _Tab.cuenta:
-        return Icons.account_balance_rounded;
+      case _Tab.beneficiarios:
+        return Icons.people_alt_rounded;
     }
   }
 }
 
 /// Marco persistente de navegación una vez dentro de una tarjeta —
-/// "Inicio" y "Movimientos" — con el mismo lenguaje visual que
-/// `admin/lib/app/admin_shell.dart` (sidebar navy + topbar blanco):
-/// sidebar de escritorio en pantallas anchas, barra inferior en angostas
-/// (móvil), mismo criterio adaptativo que un portal bancario real. Ver
-/// "Pantallas" en docs/feature/portal-autoservicio-tarjetahabiente/README.md.
+/// "Inicio", "Movimientos" y "Beneficiarios" — con el mismo lenguaje
+/// visual que `admin/lib/app/admin_shell.dart` (sidebar navy + topbar
+/// blanco): sidebar de escritorio en pantallas anchas, barra inferior en
+/// angostas (móvil), mismo criterio adaptativo que un portal bancario
+/// real. Ver docs/adr/0028-reorganizacion-ux-cardholder.md para el
+/// porqué de esta reorganización (antes: "Cuenta" repetía el saldo y
+/// mezclaba gestión de Beneficiarios con historial).
 class CardholderShell extends StatefulWidget {
   const CardholderShell({
     super.key,
@@ -96,6 +101,15 @@ class _CardholderShellState extends State<CardholderShell> {
     setState(() => _card = _card.copyWith(balance: _card.balance - amount));
   }
 
+  /// A diferencia de una Transferencia (siempre inmediata), un pago SPEI
+  /// solo debita de verdad si ya se ejecutó — uno `pendingApproval` no le
+  /// resta nada al saldo mostrado todavía. Ver
+  /// docs/adr/0027-validacion-de-saldo-y-estatus-de-pago-spei.md.
+  void _onSpeiSent(SpeiPayment payment) {
+    if (payment.status != SpeiPaymentStatus.executed) return;
+    setState(() => _card = _card.copyWith(balance: _card.balance - payment.amount));
+  }
+
   void _onCardUpdated(PaymentCard updated) {
     setState(() => _card = updated);
   }
@@ -111,11 +125,22 @@ class _CardholderShellState extends State<CardholderShell> {
           cardholderName: widget.cardholderName,
           cardRepository: widget.cardRepository,
           transferRepository: widget.transferRepository,
+          speiRepository: widget.speiRepository,
           onCardUpdated: _onCardUpdated,
           onTransferred: _onTransferred,
+          onSpeiSent: _onSpeiSent,
         ),
-      _Tab.movimientos => MovementsTab(card: _card, cardRepository: widget.cardRepository),
-      _Tab.cuenta => SpeiSection(cardholderId: widget.cardholderId, cardholderName: widget.cardholderName, repository: widget.speiRepository),
+      _Tab.movimientos => MovementsTab(
+          headerLabel: 'Movimientos · ${_card.maskedPan}',
+          currency: _card.currency,
+          accountBalance: _card.balance,
+          loadMovements: () => widget.cardRepository.listMovements(_card.id),
+          cardRepository: widget.cardRepository,
+          speiRepository: widget.speiRepository,
+          cardholderId: widget.cardholderId,
+          cardholderName: widget.cardholderName,
+        ),
+      _Tab.beneficiarios => BeneficiariosSection(cardholderId: widget.cardholderId, repository: widget.speiRepository),
     };
 
     // SafeArea (top) — un AppBar real de Flutter evita la barra de estado

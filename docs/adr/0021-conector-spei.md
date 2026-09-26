@@ -214,6 +214,9 @@ tenga que leer el código para saber que existen:
 - `docs/adr/0025-vista-previa-de-banco-antes-de-guardar-beneficiario.md`
   — reutiliza en Dart el catálogo de bancos y el algoritmo de CLABE
   definidos aquí, para una vista previa client-side antes de guardar.
+- `docs/adr/0027-validacion-de-saldo-y-estatus-de-pago-spei.md` —
+  corrige "Enviar dinero": valida saldo antes de enviar y arregla el
+  estatus/refresco tras enviarlo.
 - `docs/business/autoservicio-tarjetahabiente.md`
 - `docs/business/tesoreria-cliente.md`
 - `docs/security/threat-model.md`

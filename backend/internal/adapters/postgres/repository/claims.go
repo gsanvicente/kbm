@@ -153,19 +153,25 @@ func (s *Store) FileClaimAsCardholder(ctx context.Context, ledgerEntryID, reason
 	return result, nil
 }
 
-// GetEntryCardholderID — a quién pertenece la tarjeta detrás de
+// GetEntryCardholderID — a quién pertenece la Cuenta Individual detrás de
 // [ledgerEntryID], para el chequeo de pertenencia de los endpoints de
 // alcance mixto (getClaim/fileClaim) — mismo patrón que ya usa getLedger
-// en handler.go. nil si la tarjeta no tiene Tarjetahabiente asignado.
+// en handler.go. Toda Cuenta Individual tiene un Tarjetahabiente (ver
+// migrations/0009_cuenta_individual.sql: cardholder_id NOT NULL), así que
+// el único caso nil es que [ledgerEntryID] no exista, cubierto abajo por
+// ErrNotFound.
 func (s *Store) GetEntryCardholderID(ctx context.Context, ledgerEntryID string) (*string, error) {
 	var result *string
 	err := s.withRLS(ctx, func(q *sqlcgen.Queries) error {
-		var err error
-		result, err = q.GetLedgerEntryCardholderID(ctx, ledgerEntryID)
+		cardholderID, err := q.GetLedgerEntryCardholderID(ctx, ledgerEntryID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return shared.ErrNotFound
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		result = &cardholderID
+		return nil
 	})
 	if err != nil {
 		return nil, err

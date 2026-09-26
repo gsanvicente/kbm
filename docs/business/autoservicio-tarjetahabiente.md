@@ -1,6 +1,6 @@
 # Autoservicio del Tarjetahabiente
 
-> Referencia viva. Última revisión: 2026-09-24 (reportes de staff y descarga de estado de cuenta, ADR-0022).
+> Referencia viva. Última revisión: 2026-09-25 (reorganización de navegación, ADR-0028).
 
 ## Qué es
 El plano de identidad y funcionalidad que le permite a un Tarjetahabiente
@@ -40,6 +40,33 @@ dinero de la empresa.
 6. **Recibir depósitos SPEI y pagar a terceros** desde su propia Cuenta
    Individual, con su propia CLABE — **implementado** (2026-09-24), ver
    "Pagos a terceros vía SPEI" más abajo.
+
+## Navegación: Inicio / Movimientos / Beneficiarios (reorganizado 2026-09-25)
+La app se organiza en tres secciones, iguales para quien tiene tarjeta y
+para quien todavía no tiene ninguna (ver "Pagos a terceros vía SPEI" más
+abajo):
+
+- **Inicio** — saldo y las dos formas de sacar dinero de la misma Cuenta
+  (Transferencia C2C y pago SPEI), una junto a la otra, ya que ambas
+  afectan el mismo saldo (ADR-0020). Sin tarjeta asignada solo aparece la
+  opción SPEI — la C2C exige tarjeta en ambos extremos.
+- **Movimientos** — historial completo y único de la Cuenta (incluye
+  descargar el estado de cuenta y presentar un reclamo sobre cualquier
+  movimiento, con o sin tarjeta involucrada).
+- **Beneficiarios** — CLABE propia y el directorio de a quién se le puede
+  pagar por SPEI. Ya no se muestra de entrada junto al saldo: aparece al
+  querer enviar dinero (con la opción de dar de alta uno nuevo sin salir
+  de ese flujo) o aquí, para administrarlos con calma.
+
+Antes de esta reorganización, "Cuenta" mezclaba CLABE, Beneficiarios,
+saldo, depósitos recibidos e historial en una sola pantalla — con muchos
+depósitos sembrados, la opción de enviar un SPEI podía quedar fuera de la
+vista sin hacer scroll. Ver `docs/adr/0028-reorganizacion-ux-cardholder.md`
+para el detalle completo, incluida una corrección real encontrada al
+implementar esto: el chequeo de "¿este movimiento es tuyo?" para
+reclamos seguía asumiendo que todo movimiento cuelga de una tarjeta,
+rompiendo silenciosamente esa consulta contra Postgres real desde
+ADR-0020.
 
 ## Onboarding — activación de cuenta (implementado 2026-09-21)
 El flujo de alta es: (1) el staff (Admin Cliente+) captura al
@@ -133,17 +160,26 @@ del Cliente, que son de la empresa) con su propia **CLABE**. Desde
   (`approval_rules`, mismo mecanismo que ya usan Dispersión/Deducción)
   requiere aprobación del staff; por debajo del umbral se ejecuta directo
   — mismo criterio de "sin regla configurada, requiere aprobación por
-  defecto" que ya rige el resto del sistema.
+  defecto" que ya rige el resto del sistema. Un pago por encima del
+  **saldo actual de la Cuenta** ni siquiera se deja enviar — se avisa
+  "Saldo insuficiente" antes de mandarlo, sin importar si el monto
+  hubiera requerido aprobación o no (ver
+  `docs/adr/0027-validacion-de-saldo-y-estatus-de-pago-spei.md`).
+  Después de enviarlo, ve de inmediato el estatus real (enviado /
+  pendiente de aprobación / fallido / rechazado) y el pago aparece en su
+  historial sin tener que refrescar la página a mano.
 - Recibe un comprobante propio de KBM, no el CEP oficial de Banxico —
   decisión de alcance explícita, ver la ADR. Se genera tanto para un
   pago saliente como para un depósito entrante (`GET
   .../spei-deposits`), cada uno con su propio folio y referencia del
   proveedor.
-- Puede ver el **saldo de su Cuenta** aunque no tenga ninguna tarjeta
-  asignada todavía (`GET .../account/ledger`) — antes de esta
-  corrección, ese caso (el que justamente motivó "la Cuenta nace al
-  alta", punto 3 de ADR-0020) no tenía ninguna pantalla ni endpoint que
-  lo mostrara.
+- Puede ver el **saldo y los Movimientos de su Cuenta**, y **presentar un
+  reclamo** sobre cualquiera de ellos, aunque no tenga ninguna tarjeta
+  asignada todavía (`GET .../account/ledger`) — antes de la corrección de
+  ADR-0022, ese caso (el que justamente motivó "la Cuenta nace al alta",
+  punto 3 de ADR-0020) no tenía ninguna pantalla ni endpoint que lo
+  mostrara; y hasta ADR-0028, el reclamo sobre esos movimientos ni
+  siquiera habría podido verificarse correctamente contra Postgres real.
 - Puede **descargar** (PDF con branding de KBM/Koons) el estado de
   cuenta de su propia Cuenta Individual — ver
   `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md`, punto 6,
@@ -238,4 +274,6 @@ Tarjetahabiente".
 - `docs/adr/0022-reportes-staff-y-visibilidad-beneficiarios.md` — corrección de visibilidad para staff y descarga de estado de cuenta.
 - `docs/adr/0023-estados-de-cuenta-en-pdf-con-branding.md` — formato PDF de esa descarga.
 - `docs/adr/0025-vista-previa-de-banco-antes-de-guardar-beneficiario.md` — vista previa de banco y corrección del refresco al agregar un Beneficiario.
+- `docs/adr/0027-validacion-de-saldo-y-estatus-de-pago-spei.md` — validación de saldo y corrección de estatus/refresco al enviar un pago SPEI.
+- `docs/adr/0028-reorganizacion-ux-cardholder.md` — reorganización de navegación (Inicio/Movimientos/Beneficiarios) y corrección del alcance de reclamos sin tarjeta.
 - `docs/security/threat-model.md` puntos 6, 11, 12, 16, 17 y 18.

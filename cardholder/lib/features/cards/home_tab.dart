@@ -3,19 +3,25 @@ import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../core/models/card_status.dart';
 import '../../core/models/payment_card.dart';
+import '../../core/models/spei_payment.dart';
 import '../../core/utils/currency_format.dart';
 import '../../shared_widgets/payment_card_visual.dart';
+import '../spei/send_spei_dialog.dart';
+import '../spei/spei_repository.dart';
 import '../transfer/transfer_dialog.dart';
 import '../transfer/transfer_repository.dart';
 import 'card_repository.dart';
 
-/// Pestaña "Inicio" dentro de `CardholderShell` — tarjeta, saldo,
-/// Transferir y el autocongelamiento ("Bloqueo temporal") de la propia
-/// tarjeta. Ver "Pantallas" en
-/// docs/feature/portal-autoservicio-tarjetahabiente/README.md y
-/// docs/business/autoservicio-tarjetahabiente.md, "Congelar vs. bloquear
-/// una tarjeta".
-class HomeTab extends StatelessWidget {
+/// Pestaña "Inicio" dentro de `CardholderShell` — tarjeta, saldo, y las
+/// dos formas de mandar dinero desde la misma Cuenta (ver
+/// docs/adr/0020-cuenta-individual-tarjetahabiente.md: Transferencia C2C
+/// y pago SPEI afectan el mismo saldo, así que viven aquí juntas, no
+/// repartidas entre pestañas distintas — ver
+/// docs/adr/0028-reorganizacion-ux-cardholder.md), más el
+/// autocongelamiento ("Bloqueo temporal") de la propia tarjeta. Ver
+/// docs/business/autoservicio-tarjetahabiente.md, "Congelar vs.
+/// bloquear una tarjeta".
+class HomeTab extends StatefulWidget {
   const HomeTab({
     super.key,
     required this.card,
@@ -23,7 +29,9 @@ class HomeTab extends StatelessWidget {
     required this.cardholderName,
     required this.cardRepository,
     required this.transferRepository,
+    required this.speiRepository,
     required this.onTransferred,
+    required this.onSpeiSent,
     required this.onCardUpdated,
   });
 
@@ -32,11 +40,17 @@ class HomeTab extends StatelessWidget {
   final String cardholderName;
   final CardRepository cardRepository;
   final TransferRepository transferRepository;
+  final SpeiRepository speiRepository;
 
   /// El diálogo ya aplicó el débito en el repositorio — el llamador
   /// (`CardholderShell`) refleja el nuevo saldo localmente con el monto
   /// que el propio diálogo confirmó, sin otra ida y vuelta.
   final ValueChanged<double> onTransferred;
+
+  /// A diferencia de una Transferencia (siempre inmediata), un pago SPEI
+  /// puede quedar `pendingApproval` — el llamador decide si le resta algo
+  /// al saldo mostrado según el estatus real del pago devuelto.
+  final ValueChanged<SpeiPayment> onSpeiSent;
 
   /// Congelar/descongelar cambia el `status` de la tarjeta — a
   /// diferencia de una transferencia, el repositorio ya devuelve la
@@ -44,25 +58,54 @@ class HomeTab extends StatelessWidget {
   /// cual en vez de recalcular un delta.
   final ValueChanged<PaymentCard> onCardUpdated;
 
+  @override
+  State<HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<HomeTab> {
+  bool _loadingBeneficiaries = false;
+
   Future<void> _openTransfer(BuildContext context) async {
     final transferredAmount = await showDialog<double>(
       context: context,
       builder: (context) => TransferDialog(
-        originCard: card,
-        cardholderId: cardholderId,
-        repository: transferRepository,
+        originCard: widget.card,
+        cardholderId: widget.cardholderId,
+        repository: widget.transferRepository,
       ),
     );
     if (transferredAmount == null) return;
-    onTransferred(transferredAmount);
+    widget.onTransferred(transferredAmount);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transferencia realizada.')));
   }
 
+  Future<void> _openSendSpei(BuildContext context) async {
+    setState(() => _loadingBeneficiaries = true);
+    final beneficiaries = await widget.speiRepository.listBeneficiaries(widget.cardholderId);
+    if (!mounted) return;
+    setState(() => _loadingBeneficiaries = false);
+
+    final payment = await showDialog<SpeiPayment>(
+      context: context,
+      builder: (context) => SendSpeiDialog(
+        cardholderId: widget.cardholderId,
+        beneficiaries: beneficiaries,
+        balance: widget.card.balance,
+        currency: widget.card.currency,
+        repository: widget.speiRepository,
+      ),
+    );
+    if (payment == null) return;
+    widget.onSpeiSent(payment);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(speiResultMessage(payment))));
+  }
+
   Future<void> _toggleFrozen(BuildContext context, bool freeze) async {
     try {
-      final updated = await cardRepository.setFrozen(cardholderId, card.id, freeze);
-      onCardUpdated(updated);
+      final updated = await widget.cardRepository.setFrozen(widget.cardholderId, widget.card.id, freeze);
+      widget.onCardUpdated(updated);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(freeze ? 'Bloqueaste temporalmente tu tarjeta.' : 'Quitaste el bloqueo temporal.')),
@@ -89,7 +132,7 @@ class HomeTab extends StatelessWidget {
               // admin/lib/features/cards/card_detail_view.dart, reemplaza
               // cualquier texto de Red/Vigencia/Estado como filas planas,
               // esos datos ya están dibujados en la propia tarjeta.
-              Center(child: PaymentCardVisual(card: card, cardholderName: cardholderName, width: 440)),
+              Center(child: PaymentCardVisual(card: widget.card, cardholderName: widget.cardholderName, width: 440)),
               const SizedBox(height: 24),
               // Saldo — el dato central de la app, mostrado aparte de la
               // tarjeta (una tarjeta física real nunca imprime el saldo).
@@ -110,7 +153,7 @@ class HomeTab extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      formatCurrency(card.balance, card.currency),
+                      formatCurrency(widget.card.balance, widget.card.currency),
                       style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: KoonsColors.navy),
                     ),
                   ],
@@ -129,17 +172,38 @@ class HomeTab extends StatelessWidget {
   /// "Congelar vs. bloquear una tarjeta": un bloqueo de staff
   /// (`blocked`) nunca deja ninguna acción de autoservicio disponible,
   /// ni siquiera "descongelar" (nunca estuvo `frozen` desde la
-  /// perspectiva del Tarjetahabiente).
+  /// perspectiva del Tarjetahabiente). "Enviar dinero" agrupa
+  /// Transferencia (a una tarjeta KBM) y SPEI (a una cuenta externa) como
+  /// las dos formas de sacar dinero de la misma Cuenta — ver el doc de la
+  /// clase.
   List<Widget> _actionsFor(BuildContext context) {
-    switch (card.status) {
+    switch (widget.card.status) {
       case CardStatus.active:
         return [
-          FilledButton.icon(
-            onPressed: () => _openTransfer(context),
-            icon: const Icon(Icons.arrow_upward_rounded, size: 18),
-            label: const Text('Transferir'),
+          Text('ENVIAR DINERO', style: TextStyle(color: Colors.grey.shade600, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => _openTransfer(context),
+                  icon: const Icon(Icons.credit_card_rounded, size: 18),
+                  label: const Text('A una tarjeta KBM'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _loadingBeneficiaries ? null : () => _openSendSpei(context),
+                  icon: _loadingBeneficiaries
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.account_balance_outlined, size: 18),
+                  label: const Text('A una cuenta (SPEI)'),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           OutlinedButton.icon(
             onPressed: () => _toggleFrozen(context, true),
             icon: const Icon(Icons.lock_outline_rounded, size: 18),

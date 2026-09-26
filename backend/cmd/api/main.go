@@ -91,7 +91,7 @@ func main() {
 	addr := "127.0.0.1:" + cfg.HTTPPort
 
 	log.Printf("kbm-backend api (%s) listening on %s (env=%s)", backend, addr, cfg.Env)
-	if err := http.ListenAndServe(addr, middleware.CORS(h.Routes())); err != nil {
+	if err := http.ListenAndServe(addr, middleware.CORS(middleware.NoStore(h.Routes()))); err != nil {
 		log.Fatal(err)
 	}
 }
